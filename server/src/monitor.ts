@@ -30,6 +30,8 @@ const LABEL: Record<string, (s: any) => string> = {
   'ledger.adjustment': s => `Koreksi saldo: ${(BigInt(s.amountMicro) / 1_000_000n).toLocaleString('id-ID')} token. Alasan: ${s.reason}`,
   'admin.second_factor': s => `Admin lolos faktor kedua (${s.method})`,
   'admin.bootstrap': () => 'Akun admin dibuat',
+  'admin.password_change': () => 'Password admin diganti',
+  'admin.totp_rotation_confirm': () => 'Autentikator admin diganti; kode pemulihan lama tidak berlaku',
   'upstream.create': s => `Upstream baru: ${s.name}`,
   'upstream.update': s => `Upstream diubah${s.urlChanged ? ', base URL berubah' : ''}${s.keyReplaced ? ', API key diganti' : ''}`,
   'upstream.status': s => `Status upstream: ${s.from} -> ${s.to}. Alasan: ${s.reason}`,
@@ -55,7 +57,8 @@ export async function statusReport(db: Db): Promise<string> {
     (select count(*) from hold where status='ACTIVE') open_holds,
     (select count(*) from tenant where status='ACTIVE') tenants,
     (select count(*) from ledger_account where posted < 0) negative,
-    (select coalesce(sum(posted),0) from ledger_account) balances,
+    (select coalesce(sum(a.posted),0) from ledger_account a join tenant t on t.id=a.tenant_id where t.status <> 'CLOSED') balances,
+    (select coalesce(sum(a.posted),0) from ledger_account a join tenant t on t.id=a.tenant_id where t.status = 'CLOSED') closed_balances,
     (select coalesce(sum(amount),0) from voucher where status='ACTIVE' and (expires_at is null or expires_at > now())) vouchers`);
   const ups = await q("select name, status, key_enc is not null as key from upstream order by name");
   const bad = (await invariantViolations(db)).length;
@@ -65,7 +68,7 @@ export async function statusReport(db: Db): Promise<string> {
     `Tagihan 24 jam: ${credits(r.debit_24h)}; estimasi ${r.est_24h} request; input tidak ditagih ${Number(r.unbilled_24h).toLocaleString('id-ID')} token`,
     `Menunggu keputusan: ${r.unresolved}; dana tertahan aktif: ${r.open_holds} request`,
     `Pelanggan aktif: ${r.tenants}; saldo minus: ${r.negative}`,
-    `Total saldo pelanggan: ${credits(r.balances)}; kode belum ditukar: ${credits(r.vouchers)}`,
+    `Total saldo pelanggan: ${credits(r.balances)}${BigInt(r.closed_balances) !== 0n ? ` (di luar ${credits(r.closed_balances)} pada akun tertutup)` : ''}; kode belum ditukar: ${credits(r.vouchers)}`,
     `Upstream: ${ups.length ? ups.map(u => `${u.name} ${u.status}${u.key ? '' : ' (tanpa key)'}`).join(', ') : 'belum ada'}`,
     bad ? `PERINGATAN: ${bad} ketidakcocokan saldo terhadap ledger` : 'Saldo cocok dengan ledger',
   ].join('\n');

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { AppError, withTx, type Db } from './db/pool.ts';
 import { audit } from './audit.ts';
-import { base32, hashPassword, seal, tokenHash, totpMatch, unseal } from './crypto.ts';
+import { base32, hashPassword, seal, tokenHash, totpMatch, unseal, verifyPassword } from './crypto.ts';
 import { passwordLogin, type Principal } from './identity.ts';
 import * as rl from './ratelimit.ts';
 
@@ -65,4 +65,60 @@ export function requireAdmin(p: Principal | null, opts: { stepUp?: boolean } = {
   if (!p.mfaVerified) throw new AppError('second_factor_required', 'Second factor required', 401);
   if (opts.stepUp && Date.now() - p.authAt.getTime() > ADMIN_LIMITS.stepUpMaxAgeSec * 1000) throw new AppError('step_up_required', 'Enter your authenticator code to continue', 401);
   return p;
+}
+
+const otpauth = (username: string, b32: string) => `otpauth://totp/Router:${encodeURIComponent(username)}?secret=${b32}&issuer=Router&algorithm=SHA1&digits=6&period=30`;
+
+/** Change the admin's own password. Requires the current password; every other admin session is revoked. */
+export async function changeAdminPassword(db: Db, p: Principal, a: { current: unknown; next: unknown }): Promise<void> {
+  if (typeof a.next !== 'string' || a.next.length < 14 || a.next.length > 200) throw new AppError('weak_password', 'Admin password must be 14 to 200 characters', 400);
+  const bucket = `adminpw:${p.userId}`;
+  await rl.check(db, bucket, ADMIN_LIMITS.totpPerAccount, ADMIN_LIMITS.totpWindowSec);
+  const u = (await db.query("select password_hash from app_user where id=$1 and role='ADMIN' and status='ACTIVE'", [p.userId])).rows[0];
+  if (!u || typeof a.current !== 'string' || !(await verifyPassword(a.current, u.password_hash))) { await rl.hit(db, bucket, ADMIN_LIMITS.totpWindowSec); throw new AppError('invalid_credentials', 'Current password does not match', 401); }
+  const hash = await hashPassword(a.next);
+  await withTx(db, async tx => {
+    await tx.query('update app_user set password_hash=$2 where id=$1', [p.userId, hash]);
+    await tx.query('update session set revoked_at=now() where user_id=$1 and id<>$2 and revoked_at is null', [p.userId, p.sessionId]);
+    await audit(tx, { actorUser: p.userId, actorKind: 'ADMIN', action: 'admin.password_change', targetType: 'user', targetId: p.userId });
+  });
+  await rl.clear(db, bucket);
+}
+
+/** Step 1 of replacing the authenticator: create a new secret and keep it pending. The current one keeps working. Shown once. */
+export async function startTotpRotation(db: Db, key: Buffer, p: Principal): Promise<{ secretBase32: string; otpauthUri: string }> {
+  const secret = crypto.randomBytes(20);
+  await withTx(db, async tx => {
+    const r = await tx.query('update admin_credential set pending_totp_enc=$2 where user_id=$1', [p.userId, seal(key, secret)]);
+    if (r.rowCount !== 1) throw new AppError('not_found', 'Not found', 404);
+    await audit(tx, { actorUser: p.userId, actorKind: 'ADMIN', action: 'admin.totp_rotation_start', targetType: 'user', targetId: p.userId });
+  });
+  const b32 = base32(secret);
+  return { secretBase32: b32, otpauthUri: otpauth(p.username, b32) };
+}
+
+/**
+ * Step 2: prove the new authenticator works with one code from it. Only then is the old secret replaced, the old recovery
+ * codes discarded, new ones issued (shown once) and every other admin session revoked. A wrong code changes nothing.
+ */
+export async function confirmTotpRotation(db: Db, key: Buffer, p: Principal, code: unknown, nowMs = Date.now()): Promise<{ recoveryCodes: string[] }> {
+  const bucket = `totp:${p.userId}`;
+  await rl.check(db, bucket, ADMIN_LIMITS.totpPerAccount, ADMIN_LIMITS.totpWindowSec);
+  const codes = Array.from({ length: ADMIN_LIMITS.recoveryCodes }, () => crypto.randomBytes(10).toString('hex'));
+  const ok = await withTx(db, async tx => {
+    const c = (await tx.query('select pending_totp_enc from admin_credential where user_id=$1 for update', [p.userId])).rows[0];
+    if (!c?.pending_totp_enc) throw new AppError('no_rotation', 'There is no authenticator change in progress', 409);
+    const step = totpMatch(unseal(key, c.pending_totp_enc), String(code ?? '').trim(), nowMs);
+    if (step === null) return false;
+    await tx.query('update admin_credential set totp_secret_enc=pending_totp_enc, pending_totp_enc=null, last_totp_step=$2 where user_id=$1', [p.userId, String(step)]);
+    await tx.query('delete from admin_recovery_code where user_id=$1', [p.userId]);
+    for (const rc of codes) await tx.query('insert into admin_recovery_code(user_id, code_hash) values($1,$2)', [p.userId, tokenHash(rc)]);
+    await tx.query('update session set revoked_at=now() where user_id=$1 and id<>$2 and revoked_at is null', [p.userId, p.sessionId]);
+    await tx.query('update session set auth_at=now() where id=$1', [p.sessionId]);
+    await audit(tx, { actorUser: p.userId, actorKind: 'ADMIN', action: 'admin.totp_rotation_confirm', targetType: 'user', targetId: p.userId });
+    return true;
+  });
+  if (!ok) { await rl.hit(db, bucket, ADMIN_LIMITS.totpWindowSec); throw new AppError('invalid_code', 'The code is not valid', 401); }
+  await rl.clear(db, bucket);
+  return { recoveryCodes: codes };
 }

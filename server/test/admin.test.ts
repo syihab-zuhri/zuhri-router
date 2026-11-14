@@ -113,3 +113,40 @@ test('when the invitation email cannot be sent the admin gets the activation lin
     assert.equal((await new Client(app).post('/admin/api/invites', { email: 'x@example.test' })).status, 401);
   } finally { mailer.invite = real; }
 });
+
+test('admin changes their own password: current password and step-up required, other sessions revoked', async () => {
+  const admin = await adminClient(app, adm); const other = new Client(app, '10.8.8.1'); await other.post('/admin/api/login', { identifier: ADMIN.username, password: ADMIN.password }); await other.post('/admin/api/second-factor', { code: adm.code(0) });
+  const next = 'a-brand-new-admin-password-2';
+  assert.equal((await admin.post('/admin/api/account/password', { current: 'salah-salah-salah', next })).status, 401);
+  assert.equal((await admin.post('/admin/api/account/password', { current: ADMIN.password, next: 'pendek' })).json.error.code, 'weak_password');
+  assert.equal((await new Client(app).post('/admin/api/account/password', { current: ADMIN.password, next })).status, 401);
+  assert.equal((await admin.post('/admin/api/account/password', { current: ADMIN.password, next })).status, 200);
+  assert.equal((await other.get('/admin/api/audit')).status, 401, 'the other session is signed out'); assert.equal((await admin.get('/admin/api/audit')).status, 200);
+  assert.equal((await new Client(app, '10.8.8.2').post('/admin/api/login', { identifier: ADMIN.username, password: ADMIN.password })).status, 401);
+  assert.equal((await new Client(app, '10.8.8.3').post('/admin/api/login', { identifier: ADMIN.username, password: next })).status, 200);
+  await db.query("update session set auth_at = now() - interval '6 minutes' where kind='ADMIN'");
+  assert.equal((await admin.post('/admin/api/account/password', { current: next, next: ADMIN.password })).json.error.code, 'step_up_required');
+});
+
+test('authenticator replacement: nothing changes until a code from the new secret is verified; then old codes stop working', async () => {
+  const { totpAt, totpStep } = await import('../src/crypto.ts'); const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const unb32 = (s: string) => { let bits = 0, v = 0; const out: number[] = []; for (const ch of s) { v = (v << 5) | B32.indexOf(ch); bits += 5; if (bits >= 8) { out.push((v >>> (bits - 8)) & 255); bits -= 8; } } return Buffer.from(out); };
+  const admin = await adminClient(app, adm);
+  assert.equal((await admin.post('/admin/api/account/authenticator/confirm', { code: '123456' })).json.error.code, 'no_rotation');
+  const start = (await admin.post('/admin/api/account/authenticator/start')).json;
+  assert.match(start.otpauthUri, /^otpauth:\/\/totp\/Router:founder\?secret=[A-Z2-7]{32}&/); assert.notEqual(start.secretBase32, adm.totpSecretBase32);
+  assert.equal((await admin.post('/admin/api/account/authenticator/confirm', { code: '000000' })).status, 401);
+  const stillOld = new Client(app, '10.8.9.1'); await stillOld.post('/admin/api/login', { identifier: ADMIN.username, password: ADMIN.password });
+  assert.equal((await stillOld.post('/admin/api/second-factor', { code: adm.code(0) })).status, 200, 'until confirmed, the old authenticator still works');
+  const newCode = totpAt(unb32(start.secretBase32), totpStep(Date.now()));
+  const done = await admin.post('/admin/api/account/authenticator/confirm', { code: newCode });
+  assert.equal(done.status, 200); assert.equal(done.json.recoveryCodes.length, 8);
+  assert.equal((await stillOld.get('/admin/api/audit')).status, 401, 'other sessions are signed out');
+  const fresh = new Client(app, '10.8.9.2'); await fresh.post('/admin/api/login', { identifier: ADMIN.username, password: ADMIN.password });
+  assert.equal((await fresh.post('/admin/api/second-factor', { code: adm.code(1) })).status, 401, 'a code from the old secret is refused');
+  assert.equal((await fresh.post('/admin/api/second-factor', { code: adm.recoveryCodes[0] })).status, 401, 'old recovery codes are refused');
+  assert.equal((await fresh.post('/admin/api/second-factor', { code: done.json.recoveryCodes[0] })).status, 200, 'a new recovery code works');
+  const dump = JSON.stringify((await db.query('select (select json_agg(t) from admin_credential t) a, (select json_agg(t) from audit_event t) b, (select json_agg(t) from admin_recovery_code t) c')).rows[0]);
+  for (const s of [start.secretBase32, ...done.json.recoveryCodes]) assert.ok(!dump.includes(s));
+  assert.equal((await new Client(app).post('/admin/api/account/authenticator/start')).status, 401);
+});

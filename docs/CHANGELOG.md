@@ -1,9 +1,23 @@
 # Changelog: Router AI Komersial
 
-Version: 0.32.0
+Version: 0.33.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.33.0: Ganti password dan autentikator admin; pembaruan pertama di VPS
+
+CR-031
+Source: founder menempelkan URI autentikator admin di percakapan dan meminta lanjut (2026-11-14). Kunci itu dianggap terpapar dan diganti.
+
+- Migrasi 012 dan rute admin baru, semuanya dengan step-up: `POST /admin/api/account/password` (password saat ini wajib; sesi admin lain dicabut) dan penggantian autentikator dua langkah, `.../authenticator/start` lalu `.../authenticator/confirm`. Kunci baru hanya menggantikan yang lama setelah satu kode darinya terverifikasi; kode pemulihan lama dibuang dan delapan yang baru diterbitkan sekali; sesi lain dicabut.
+- `/status` bot kini memisahkan saldo akun tertutup dari total saldo pelanggan; bot juga mengabarkan ganti password dan ganti autentikator.
+- `server/scripts/admin-rotate-authenticator.ts`: pembantu operator yang menjalankan penggantian lewat API dan menulis rincian baru ke berkas privat.
+- Pembaruan di VPS: backup dibuat lebih dulu, image lama ditandai `zrouter:prev`, image baru dimuat dan dipakai lewat `APP_IMAGE`, migrasi 012 diterapkan saat start, `/readyz` sehat dari dalam dan publik, invariant ledger bersih. Jalur upgrade yang sama diuji lebih dulu secara lokal pada database berisi data.
+- Autentikator admin di server produksi diganti lewat skrip; rincian baru ditulis ke folder rahasia founder, berkas lama dihapus, dan kode dari kunci lama dipastikan ditolak server (401). Password admin tidak diubah.
+- rclone dipasang di VPS; belum ada remote, menunggu login Google founder.
+
+Verification: 2 test baru dan 1 penegasan baru; suite server 132/132; typecheck exit 0.
 
 ## 0.32.0: Bot Telegram aktif; rahasia disalin keluar VPS
 
@@ -503,4 +517,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.32.0 -->
+<!-- END ROUTER-CHANGELOG v0.33.0 -->

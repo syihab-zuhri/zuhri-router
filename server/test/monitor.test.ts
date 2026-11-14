@@ -50,6 +50,8 @@ test('/status answers only in the configured chat and reports balances, requests
   assert.match(sent[0].text, /Pelanggan aktif: 1; saldo minus: 0/); assert.match(sent[0].text, /Total saldo pelanggan: 250\.000 token/); assert.match(sent[0].text, /Saldo cocok dengan ledger/); assert.match(sent[0].text, /Upstream: belum ada/);
   assert.equal(await m.handleUpdate({ message: { chat: { id: CHAT }, text: '/hapus semua' } }), false, 'there are no commands that change anything');
   assert.match(await statusReport(db), /Request 1 jam: 0/);
+  await db.query("update tenant set status='CLOSED'"); const closed = await statusReport(db);
+  assert.match(closed, /Total saldo pelanggan: 0 token \(di luar 250\.000 token pada akun tertutup\)/, 'closed accounts are reported separately');
 });
 
 test('a ledger mismatch and waiting requests raise alerts; a dead Telegram never breaks the server', async () => {

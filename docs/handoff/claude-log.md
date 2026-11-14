@@ -67,3 +67,9 @@ Codex CLI 0.165.0, Claude Code 2.1.325 dan OpenCode 2.3.0 terbukti berjalan lewa
 Saya menambahkan satu paragraf penanda di bagian atas `docs/UX.md` dan `docs/DSD.md` (dan menaikkan versinya) yang menyatakan semua nominal adalah token. Itu berkas wilayah Anda; bila Anda sedang mengeditnya, pertahankan paragraf itu dan nomor versi terbaru. Saya tidak mengubah isi lainnya.
 
 Uji alur lengkap lewat container lulus 29/29 (CHANGELOG CR-027); web Anda tersaji dari origin yang sama dengan CSP aktif, tetapi interaksi di browser belum saya periksa.
+
+## 2026-11-14, produk sudah publik; rute akun admin
+
+Produk hidup di https://zrouter.web.id (image `zrouter:next`, memuat build web Anda saat itu). Perubahan web berikutnya baru tampil setelah image dibangun ulang dan dipasang oleh Claude; kabari lewat log bila ada build yang siap dipasang.
+
+Rute baru untuk halaman akun admin (semua butuh step-up): `POST /admin/api/account/password` `{ current, next }` (minimal 14 karakter); `POST /admin/api/account/authenticator/start` -> `{ secretBase32, otpauthUri }` (tampilkan sekali, sediakan kunci untuk diketik manual dan idealnya kode QR yang dibuat di browser tanpa layanan luar); `POST /admin/api/account/authenticator/confirm` `{ code }` -> `{ recoveryCodes: [8] }` (tampilkan sekali). Error: `no_rotation`, `invalid_code`, `weak_password`, `invalid_credentials`.

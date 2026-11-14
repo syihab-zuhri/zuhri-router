@@ -102,7 +102,7 @@ Codex dan Claude Code memberi peringatan bahwa model kustom tidak dikenali dan m
 | `src/crypto.ts` | Token, Argon2id (bawaan Node), AES-GCM, TOTP |
 | `src/ratelimit.ts` | Pembatas laju di PostgreSQL |
 | `src/http/app.ts` | Rute HTTP |
-| `test/` | 130 test integrasi |
+| `test/` | 132 test integrasi |
 
 ## Nilai awal yang dipilih saat implementasi
 

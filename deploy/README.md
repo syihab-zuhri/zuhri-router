@@ -58,6 +58,8 @@ Berkas di Drive yang lebih tua dari 30 hari dihapus oleh skrip. Dump berisi selu
     git pull
     docker compose -f deploy/compose.yml --env-file deploy/.env up -d --build
 
+Untuk susunan tunnel: bangun image di mesin lain, `docker save <image> | gzip | ssh <server> 'gunzip | sudo docker load'`, jalankan backup, set `APP_IMAGE=<image>` di `.env`, lalu `up -d`. Image sebelumnya tetap ada dengan tag lama untuk kembali bila perlu (kembali ke image lama tidak membatalkan migrasi).
+
 Migrasi dijalankan saat start. Stream yang sedang berjalan diberi waktu 60 detik saat container berhenti; sesudah itu terputus dan ditagih sebagai estimasi.
 
 ## Bila domain di belakang proxy lain (misalnya Cloudflare)

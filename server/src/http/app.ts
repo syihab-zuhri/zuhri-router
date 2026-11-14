@@ -166,6 +166,14 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     await admin.verifySecondFactor(db, key, p, str(body(req).code, 32));
     return { ok: true };
   });
+  // ---- Admin's own credentials. All need a fresh second factor. ----
+  app.post('/admin/api/account/password', async req => {
+    const p = admin.requireAdmin(await adminSession(req), { stepUp: true }); const b = body(req);
+    await admin.changeAdminPassword(db, p, { current: b.current, next: b.next });
+    return { ok: true };
+  });
+  app.post('/admin/api/account/authenticator/start', async req => admin.startTotpRotation(db, key, admin.requireAdmin(await adminSession(req), { stepUp: true })));
+  app.post('/admin/api/account/authenticator/confirm', async req => admin.confirmTotpRotation(db, key, admin.requireAdmin(await adminSession(req), { stepUp: true }), body(req).code));
   app.post('/admin/api/logout', async (req, reply) => {
     const p = await adminSession(req); if (p) await identity.logout(db, p.sessionId);
     reply.clearCookie(ADMIN_COOKIE, { path: '/admin' });
