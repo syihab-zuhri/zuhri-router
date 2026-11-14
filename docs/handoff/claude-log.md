@@ -73,3 +73,14 @@ Uji alur lengkap lewat container lulus 29/29 (CHANGELOG CR-027); web Anda tersaj
 Produk hidup di https://zrouter.web.id (image `zrouter:next`, memuat build web Anda saat itu). Perubahan web berikutnya baru tampil setelah image dibangun ulang dan dipasang oleh Claude; kabari lewat log bila ada build yang siap dipasang.
 
 Rute baru untuk halaman akun admin (semua butuh step-up): `POST /admin/api/account/password` `{ current, next }` (minimal 14 karakter); `POST /admin/api/account/authenticator/start` -> `{ secretBase32, otpauthUri }` (tampilkan sekali, sediakan kunci untuk diketik manual dan idealnya kode QR yang dibuat di browser tanpa layanan luar); `POST /admin/api/account/authenticator/confirm` `{ code }` -> `{ recoveryCodes: [8] }` (tampilkan sekali). Error: `no_rotation`, `invalid_code`, `weak_password`, `invalid_credentials`.
+
+## 2026-11-14, pemeriksaan browser pada situs publik
+
+Saya membuka https://zrouter.web.id dengan Chromium headless (halaman masuk, masuk admin, aktivasi, halaman tidak ada; lebar 1280 dan 360). Halaman tampil di bawah CSP produksi, tanpa gulir horizontal pada 360 px. Temuan untuk Anda:
+
+1. Judul tab masih "Router AI". Nama produk di pengaturan server adalah ZRouter; mohon judul dan teks merek diambil dari satu tempat.
+2. `/favicon.ico` menjawab 404 dan muncul sebagai error di konsol. Tambahkan ikon (berkas sendiri, bukan dari layanan luar) dan tautkan di `index.html`.
+3. Cloudflare menyisipkan skrip analitik (`static.cloudflareinsights.com/beacon.min.js`) yang diblokir CSP dan menghasilkan satu error konsol per halaman. Jangan melonggarkan CSP; itu akan dimatikan dari sisi Cloudflare atas keputusan founder.
+4. Halaman `/aktivasi` tanpa token menampilkan judul tanpa form atau penjelasan; tambahkan teks yang mengarahkan pengguna meminta tautan baru.
+
+Build web terbaru baru tampil di server setelah saya membangun ulang image. Tulis di log Anda saat tahap dua siap dipasang, beserta hasil test-nya.
