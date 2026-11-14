@@ -97,3 +97,19 @@ test('customer list: paged by username, prefix filter, admin only, no closed acc
   assert.ok(!JSON.stringify(all).includes('@'), 'no email addresses in the list');
   assert.equal((await made.andi.get('/admin/api/customers')).status, 401); assert.equal((await new Client(app).get('/admin/api/customers')).status, 401);
 });
+
+test('when the invitation email cannot be sent the admin gets the activation link once; when it is sent, no link is returned', async () => {
+  const admin = await adminClient(app, adm);
+  const sentOk = await admin.post('/admin/api/invites', { email: 'andi@example.test' });
+  assert.deepEqual([sentOk.json.emailSent, sentOk.json.activationLink], [true, null]);
+  const { mailer } = await import('./helpers.ts'); const real = mailer.invite; mailer.invite = async () => { throw new Error('smtp down'); };
+  try {
+    const r = await admin.post('/admin/api/invites', { email: 'budi@example.test' });
+    assert.equal(r.json.emailSent, false); assert.match(r.json.activationLink, /^\/aktivasi#token=[A-Za-z0-9_-]{43}$/);
+    const token = r.json.activationLink.split('token=')[1];
+    assert.equal((await new Client(app).post('/api/auth/activate', { token, username: 'budi', password: 'customer-password-1' })).status, 201, 'the link works');
+    const dump = JSON.stringify((await db.query('select (select json_agg(t) from invite t) a, (select json_agg(t) from audit_event t) b')).rows[0]);
+    assert.ok(!dump.includes(token), 'the token is neither stored nor audited');
+    assert.equal((await new Client(app).post('/admin/api/invites', { email: 'x@example.test' })).status, 401);
+  } finally { mailer.invite = real; }
+});

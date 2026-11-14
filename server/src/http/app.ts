@@ -15,6 +15,7 @@ import { creditsToMicro } from '../money.ts';
 
 export type AppDeps = { db: Db; key: Buffer; mailer: identity.Mailer; secureCookies: boolean; logger?: boolean; resolveHost?: Resolver; gateway?: Partial<GatewayDeps>;
   /** Folder with the built web app; when set it is served from this origin. */ webDist?: string;
+  /** Public origin, used to build activation links shown to the admin when email is not delivered. */ publicBaseUrl?: string;
   /** Number of reverse proxies in front of the server whose X-Forwarded-For is trusted. 0 when the server faces clients directly. */ trustProxy?: number };
 
 const CUSTOMER_COOKIE = 'sid', ADMIN_COOKIE = 'asid';
@@ -173,7 +174,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.post('/admin/api/invites', async (req, reply) => {
     const p = admin.requireAdmin(await adminSession(req));
     const r = await identity.createInvite(db, { email: str(body(req).email, 254), adminUser: p.userId }, mailer);
-    return reply.code(201).send(r);
+    // Email not delivered: hand the one-time activation link to the admin, once, to send through another channel.
+    return reply.code(201).send({ inviteId: r.inviteId, emailSent: r.emailSent, activationLink: r.manualToken ? `${deps.publicBaseUrl ?? ''}/aktivasi#token=${r.manualToken}` : null });
   });
   app.post('/admin/api/topups', async (req, reply) => {
     const p = admin.requireAdmin(await adminSession(req), { stepUp: true });
@@ -204,6 +206,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       return identity.changeTenantStatus(db, { username: str((req.params as { username: string }).username, 64), to, expectedVersion: str(b.expectedVersion, 19), reason: str(b.reason, 500), actorUser: p.userId });
     });
   }
+  app.get('/admin/api/customers/:username/usage', async req => {
+    admin.requireAdmin(await adminSession(req));
+    const target = await identity.findTenantByUsername(db, (req.params as { username: string }).username);
+    if (!target) throw new AppError('username_not_found', 'No customer with that username', 404);
+    return { username: target.username, ...(await identity.customerUsage(db, target.tenantId, (req.query as { days?: string }).days)) };
+  });
   app.get('/admin/api/customers/:username/keys', async req => {
     admin.requireAdmin(await adminSession(req));
     const target = await identity.findTenantByUsername(db, (req.params as { username: string }).username);

@@ -30,7 +30,7 @@ function assertPassword(p: string) {
   if (typeof p !== 'string' || p.length < LIMITS.minPasswordLength || p.length > LIMITS.maxPasswordLength) throw new AppError('weak_password', `Password must be ${LIMITS.minPasswordLength} to ${LIMITS.maxPasswordLength} characters`, 400);
 }
 
-export async function createInvite(db: Db, a: { email: string; adminUser: string }, mailer: Mailer): Promise<{ inviteId: string; emailSent: boolean }> {
+export async function createInvite(db: Db, a: { email: string; adminUser: string }, mailer: Mailer): Promise<{ inviteId: string; emailSent: boolean; manualToken: string | null }> {
   const email = normEmail(a.email);
   if (!EMAIL.test(email)) throw new AppError('invalid_request', 'Invalid email', 400);
   const token = newToken();
@@ -43,8 +43,9 @@ export async function createInvite(db: Db, a: { email: string; adminUser: string
     return r.id as string;
   });
   let emailSent = true;
-  try { await mailer.invite(email, token); } catch { emailSent = false; } // admin can re-issue; the token is not recoverable
-  return { inviteId, emailSent };
+  try { await mailer.invite(email, token); } catch { emailSent = false; }
+  // When the email could not be sent, the admin gets the one-time token once to pass on by another channel. It is never stored or logged.
+  return { inviteId, emailSent, manualToken: emailSent ? null : token };
 }
 
 /** FR-006: activation creates user, tenant, owner membership and ledger account exactly once. */
@@ -281,4 +282,23 @@ export async function closeAccount(db: Db, p: Principal & { tenantId: string }, 
   if (!valid) {
     throw new AppError('invalid_credentials', 'Current password does not match', 401);
   }
+}
+
+/**
+ * Per-customer usage for the admin (FR-014, API-040): daily totals per model and per API key, plus recent requests.
+ * Metadata only; never prompt content. "billed" token counts are what was charged, "unbilled" what the business absorbed.
+ */
+export async function customerUsage(db: Db, tenantId: string, daysInput: unknown) {
+  const days = Math.min(Math.max(Number.isInteger(Number(daysInput)) ? Number(daysInput) : 7, 1), 90);
+  const agg = (group: string, label: string) => db.query(
+    `select ${group} as k, count(*) as requests, count(*) filter (where r.estimated) as estimated, count(*) filter (where r.state='FAILED') as failed,
+            coalesce(sum(r.debit),0) as debit, coalesce(sum(r.unbilled_input_tokens),0) as unbilled,
+            coalesce(sum((r.usage_norm->>'input')::bigint + (r.usage_norm->>'cacheRead')::bigint + (r.usage_norm->>'cacheWrite')::bigint),0) as input_tokens,
+            coalesce(sum((r.usage_norm->>'output')::bigint),0) as output_tokens
+     from request r ${label} where r.tenant_id=$1 and r.created_at > now() - make_interval(days => $2) group by 1 order by 1`, [tenantId, days]);
+  const shape = (rows: any[]) => rows.map(r => ({ key: r.k instanceof Date ? r.k.toISOString().slice(0, 10) : String(r.k), requests: Number(r.requests), failed: Number(r.failed), estimated: Number(r.estimated), debitMicro: String(r.debit), inputTokens: String(r.input_tokens), outputTokens: String(r.output_tokens), unbilledInputTokens: String(r.unbilled) }));
+  const [byDay, byModel, byKey] = await Promise.all([agg("date_trunc('day', r.created_at)", ''), agg('r.model_id', ''), agg("k.name || ' (' || k.prefix || '…)'", 'join api_key k on k.id=r.api_key_id')]);
+  const recent = (await db.query('select id, model_id, protocol, state, debit, estimated, unbilled_input_tokens, created_at from request where tenant_id=$1 order by created_at desc limit 50', [tenantId])).rows;
+  return { days, byDay: shape(byDay.rows), byModel: shape(byModel.rows), byKey: shape(byKey.rows),
+    recent: recent.map(r => ({ id: r.id as string, model: r.model_id as string, protocol: r.protocol as string, state: r.state as string, debitMicro: r.debit === null ? null : String(r.debit), estimated: r.estimated as boolean, unbilledInputTokens: r.unbilled_input_tokens as number, createdAt: (r.created_at as Date).toISOString() })) };
 }

@@ -270,3 +270,19 @@ test('customer catalogue lists only callable models with per-token credit cost a
   assert.deepEqual(list[1].creditsPerToken, { input: '1.25', output: '5', cacheRead: '0.125', cacheWrite: '1.25' });
   assert.ok(!JSON.stringify(res.json).match(/127\.0\.0\.1|upstream|sk-/i)); assert.equal((await new Client(app).get('/api/models')).status, 401);
 });
+
+test('admin sees usage per customer by day, model and key; it matches what the customer sees; other customers are separate', async () => {
+  await model('m/a', '2', [['CHAT', 'ok', 1]]); await model('m/b', '1', [['CHAT', 'ok', 1]]);
+  for (const m of ['m/a', 'm/a', 'm/b']) { const r = await call('/v1/chat/completions', m, { stream: false }); await settled(r.headers.get('x-request-id')!); }
+  const small = await fetch(base + '/v1/chat/completions', { method: 'POST', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: 'm/b', messages: [{ role: 'user', content: 'ok' }] }) }); const sr = await settled(small.headers.get('x-request-id')!);
+  await (await call('/v1/chat/completions', 'tidak/ada')).text();
+  const u = (await admin.get('/admin/api/customers/budi/usage?days=7')).json;
+  assert.deepEqual(u.byModel.map((m: any) => [m.key, m.requests, m.debitMicro]), [['m/a', 2, String(44_000n * C)], ['m/b', 2, String((11_000n + BigInt(sr.max_input) + 1000n) * C)]]);
+  assert.equal(u.byModel[1].unbilledInputTokens, String(10000 - sr.max_input)); assert.equal(u.byDay.length, 1); assert.equal(u.byDay[0].requests, 4);
+  assert.deepEqual(u.byKey.map((k: any) => [k.key.startsWith('tool (rtr_'), k.requests]), [[true, 4]]); assert.equal(u.recent.length, 4);
+  const mine = (await cust.get('/api/requests')).json.requests; const total = (xs: any[]) => xs.reduce((s, x) => s + BigInt(x.debitMicro), 0n);
+  assert.equal(total(u.recent), total(mine), 'admin and customer see the same charges');
+  assert.ok(!JSON.stringify(u).includes('PENANDA-PROMPT-RAHASIA')); assert.ok(!JSON.stringify(u).includes(apiKey));
+  await makeCustomer(app, admin, 'siti'); assert.deepEqual((await admin.get('/admin/api/customers/siti/usage')).json.byModel, []);
+  assert.equal((await admin.get('/admin/api/customers/nobody/usage')).status, 404); assert.equal((await cust.get('/admin/api/customers/budi/usage')).status, 401);
+});

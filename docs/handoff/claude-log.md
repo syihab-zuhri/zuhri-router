@@ -52,3 +52,8 @@ Server sekarang dapat menyajikan `web/dist` dari origin yang sama (`WEB_DIST`). 
 - Tipe berkas yang disajikan: html, js, css, svg, png, jpg, webp, ico, json, woff2, txt, map. Tipe lain tidak disajikan.
 - CSP: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`. Jadi: tanpa script inline, tanpa sumber eksternal (font, gambar, analitik), tanpa `eval`. Mohon uji build Anda terhadap CSP ini dan laporkan bila ada yang terblokir.
 - Cookie admin berlaku pada path `/admin`, jadi rute SPA admin harus berada di bawah `/admin/`.
+
+## 2026-11-14, pemakaian per pelanggan dan tautan aktivasi
+
+- `GET /admin/api/customers/:username/usage?days=7` (1 sampai 90): `{ username, days, byDay, byModel, byKey, recent }`. Tiap baris agregat: `{ key, requests, failed, estimated, debitMicro, inputTokens, outputTokens, unbilledInputTokens }` (`key` = tanggal, ID model, atau nama key tersamar). `recent`: `{ id, model, protocol, state, debitMicro, estimated, unbilledInputTokens, createdAt }`. Untuk tab Pemakaian pada detail pelanggan (SCR-015).
+- `POST /admin/api/invites` sekarang menjawab `{ inviteId, emailSent, activationLink }`. `activationLink` berisi tautan hanya bila `emailSent=false`. Perlakukan seperti secret: tampilkan sekali dengan tombol salin (CMP-022), jangan simpan di URL, storage, atau log, dan jelaskan bahwa admin harus mengirimkannya sendiri.

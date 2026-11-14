@@ -1,9 +1,19 @@
 # Changelog: Router AI Komersial
 
-Version: 0.26.0
+Version: 0.27.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.27.0: Pemakaian per pelanggan dan tautan aktivasi manual
+
+CR-025
+Source: founder meminta lanjut (2026-11-14). Kedua butir berasal dari kebutuhan yang sudah dinyatakan founder: memantau usage tiap pelanggan (CR-004) dan jalur undangan saat email tidak terkirim (pertanyaan terbuka pada HANDOFF).
+
+- `GET /admin/api/customers/:username/usage?days=` (API-040): total per hari, per model dan per API key (request, gagal, estimasi, token input dan output yang ditagih, tagihan, input tidak ditagih) serta 50 request terakhir. Hanya metadata. Test memastikan jumlah tagihan sama dengan yang dilihat pelanggan itu sendiri.
+- Undangan: bila email tidak terkirim (penyedia mati atau `MAILER=none`), jawaban kepada admin memuat `activationLink` satu kali untuk diteruskan lewat kanal lain. Token tetap tidak disimpan dan tidak masuk audit. Bila email terkirim, tautan tidak dikembalikan. Dengan ini pilot dapat berjalan tanpa penyedia email.
+
+Verification: 2 test baru; suite server 130/130 dua kali; typecheck exit 0.
 
 ## 0.26.0: Bot Telegram dan backup ke Google Drive
 
@@ -426,4 +436,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.26.0 -->
+<!-- END ROUTER-CHANGELOG v0.27.0 -->

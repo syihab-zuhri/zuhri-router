@@ -1,6 +1,6 @@
 # Tasks, Test Specification dan Traceability: Router AI Komersial
 
-Version: 0.15.0
+Version: 0.16.0
 Status: Draft; backend TASK-010 selesai untuk API key/admission lokal, UI/gateway belum
 Owner keputusan: founder
 Updated: 2026-11-14, Asia/Jakarta
@@ -41,7 +41,7 @@ Definition of Done umum: AC terkait terpenuhi; test pada spesifikasi dijalankan 
 | TASK-012 | Inti gateway dan permukaan tahap A (Chat Completions): validasi, admission, relay, pembatalan, error | FR-011 / AC-011 | API-001, API-002; ARCHITECTURE.md section 2, 3, 5.1; ABU-004 | Upstream menyediakan format ini (OQ-007); kontrak adapter dari TASK-024; batas ukuran/durasi/konkurensi ditetapkan | INTI SELESAI terhadap upstream tiruan 2026-11-14: Chat Completions dan Anthropic Messages, stream dan non-stream, admission, fallback, settlement, daftar model, riwayat request; di ../server/src/gateway.ts (13 test). Belum: upstream nyata, kesehatan route lintas proses, batas konkurensi per route, worker pemulihan hold, batas laju per key |
 | TASK-013 | Registry upstream dengan input base URL dan API key, validasi CTL-017, uji koneksi, route per protokol, cost profile dengan kurs, retry terbatas, circuit breaker | FR-012 / AC-012 | API-035; ARCHITECTURE.md section 5.4, 6; SCR-016 | Minimal satu entri eligibility (OQ-002); penyimpanan secret dipilih | REGISTRY SELESAI 2026-11-14: upstream (base URL per protokol, API key tulis-saja, eligibility), validasi CTL-017, route per model dan protokol, pemilihan kandidat; di ../server/. Cost profile, uji koneksi, retry dan circuit breaker belum (ikut TASK-003 dan TASK-012) |
 | TASK-014 | Tampilan saldo, pemakaian, rincian request, riwayat ledger | FR-013 / AC-013 | API-013, 017, 018; SCR-007, 010, 011 | TASK-002, TASK-022 | PLANNED |
-| TASK-015 | Backoffice pelanggan: cari lewat username, pemakaian per pelanggan, tambah saldo langsung, undang, suspend, restore, adjustment, cabut key | FR-014 / AC-014 | API-031, API-032, API-040; SCR-015; FLOW-008; ABU-008 | TASK-007, TASK-008, TASK-022 | SEBAGIAN: tambah saldo lewat username dan lihat pelanggan (API); undang (API); suspend/restore dengan step-up dan version check serta adjustment idempotent lewat API lulus; cabut API key oleh admin lulus; pemakaian rinci dan UI belum |
+| TASK-015 | Backoffice pelanggan: cari lewat username, pemakaian per pelanggan, tambah saldo langsung, undang, suspend, restore, adjustment, cabut key | FR-014 / AC-014 | API-031, API-032, API-040; SCR-015; FLOW-008; ABU-008 | TASK-007, TASK-008, TASK-022 | BACKEND SELESAI 2026-11-14: daftar dan detail pelanggan, undang (dengan tautan manual bila email gagal), suspend/restore, tambah saldo lewat username, adjustment, cabut key, pemakaian per pelanggan (API-040). UI sebagian oleh Hermes |
 | TASK-016 | Antrean unresolved, penyelesaian kasus, laporan kewajiban voucher dan selisih | FR-015 / AC-015 | API-036, API-037; SCR-014, SCR-017 | TASK-002; OQ-006 diputuskan | PLANNED |
 | TASK-017 | Audit event append-only dan layar audit | FR-016 / AC-016 | API-038; SCR-018; CTL-013 | TASK-009 | SEBAGIAN: pencatatan dan API baca audit; layar belum |
 | TASK-018 | Health/readiness, kill switch, batas global, alert, backup dan uji restore, runbook | FR-017 / AC-017 | API-039; ARCHITECTURE.md section 8; SCR-014 | Host dipilih; kanal alert dipilih | PLANNED |
@@ -107,4 +107,4 @@ Journey end-to-end yang wajib sebelum penilaian Gate D pilot: FLOW-001, FLOW-002
 
 Cakupan: 19 dari 19 FR P0 memiliki AC, task dan test specification. Cakupan ini menyatakan keterhubungan dokumen, bukan kesiapan rilis. Fondasi lokal diizinkan founder (CR-008, CR-009); fitur upstream nyata dan UI tetap mengikuti syarat siap masing-masing. TASK-010 dan TASK-001 backend selesai; berikutnya TASK-013 registry upstream sesuai ../HANDOFF.md. Gateway dan UI tetap belum dinyatakan selesai.
 
-<!-- END ROUTER-TASKS v0.15.0 -->
+<!-- END ROUTER-TASKS v0.16.0 -->
