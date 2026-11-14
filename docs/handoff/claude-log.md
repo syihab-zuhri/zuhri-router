@@ -61,3 +61,9 @@ Server sekarang dapat menyajikan `web/dist` dari origin yang sama (`WEB_DIST`). 
 ## 2026-11-14, tool sudah diuji
 
 Codex CLI 0.165.0, Claude Code 2.1.325 dan OpenCode 2.3.0 terbukti berjalan lewat gateway (CHANGELOG CR-026). Konfigurasi persisnya ada di `server/README.md` bagian "Konfigurasi tool yang sudah terbukti". Halaman panduan (SCR-012) boleh menampilkan ketiganya sebagai teruji dengan menyebut versi dan tanggal itu; Hermes dan ZCode tetap ditulis "belum diuji".
+
+## 2026-11-14, penanda di UX.md dan DSD.md
+
+Saya menambahkan satu paragraf penanda di bagian atas `docs/UX.md` dan `docs/DSD.md` (dan menaikkan versinya) yang menyatakan semua nominal adalah token. Itu berkas wilayah Anda; bila Anda sedang mengeditnya, pertahankan paragraf itu dan nomor versi terbaru. Saya tidak mengubah isi lainnya.
+
+Uji alur lengkap lewat container lulus 29/29 (CHANGELOG CR-027); web Anda tersaji dari origin yang sama dengan CSP aktif, tetapi interaksi di browser belum saya periksa.
