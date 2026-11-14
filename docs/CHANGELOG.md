@@ -1,9 +1,22 @@
 # Changelog: Router AI Komersial
 
-Version: 0.18.0
+Version: 0.19.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.19.0: Uji asap terhadap upstream nyata
+
+CR-017
+Source: founder menyerahkan berkas kredensial upstream untuk uji coba key (2026-11-14). Berkas dibaca oleh skrip tanpa menampilkan key; berkas dikecualikan dari Git.
+
+- `server/scripts/smoke-upstream.ts`: mendaftarkan upstream lewat API admin dengan pemeriksa base URL dan DNS sungguhan, lalu mengirim beberapa request kecil lewat gateway lokal pada database terpisah `router_smoke`. Dua kali dijalankan, sekitar 12 request kecil seluruhnya ditambah satu probe langsung.
+- Hasil (E3, satu upstream, satu model, satu waktu): registrasi lolos; stream Chat lengkap dengan usage dan `[DONE]`, byte pertama sekitar 0,6 detik, ditagih dari usage upstream; non-stream Chat dan pemanggilan tool berjalan; permukaan Anthropic pada host yang sama menjawab dengan bentuk yang benar; pembatalan klien menghasilkan settlement estimasi tunggal; key upstream salah menghasilkan 503 tanpa debit dan tanpa membocorkan host; tidak ada hold tersisa dan invariant ledger bersih.
+- Bug ditemukan dan diperbaiki: gateway tidak mengirim `stream` bila klien menghilangkannya, dan upstream ini membalas dengan SSE secara default sehingga jawaban non-stream tidak terbaca dan ditagih sebagai estimasi. Gateway kini selalu mengirim `stream` secara eksplisit; test regresi ditambahkan.
+- Temuan upstream (bukan bug gateway): pada request non-stream upstream ini melaporkan sekitar 4.060 token input untuk prompt enam kata, sedangkan pada stream sekitar 60. Upstream tampaknya menambahkan konteksnya sendiri pada jalur non-stream. Akibat: pelanggan tertagih token yang tidak ia kirim, dan hold terlampaui (`bound_exceeded`). Perlu keputusan founder; opsi teknis: tambahan batas input per route, atau tidak menagih input di atas batas body.
+- Upstream yang diuji bukan Dahono maupun DeepSeek; identitas dan sumber di belakangnya tidak diperiksa. Bila di belakangnya akun langganan, RSK-016 berlaku.
+
+Verification: suite server 115/115 lulus setelah perbaikan; typecheck exit 0. Laporan mentah uji asap disimpan lokal di evidence/2026-11-14-smoke/result.json (tidak masuk repo).
 
 ## 0.18.0: Inti gateway terhadap upstream tiruan
 
@@ -328,4 +341,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.18.0 -->
+<!-- END ROUTER-CHANGELOG v0.19.0 -->

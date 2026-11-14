@@ -156,7 +156,7 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
       let up: Response, reader: ReadableStreamDefaultReader<Uint8Array> | null = null, first: Uint8Array | undefined;
       try {
         const base = deps.unsafeAllowAnyUpstreamUrl ? c.baseUrl : await assertSafeUpstreamUrl(c.baseUrl, deps.resolveHost); // re-checked at connect time: DNS answers can change
-        const out: Record<string, any> = { ...json, model: c.upstreamModel };
+        const out: Record<string, any> = { ...json, model: c.upstreamModel, stream }; // always explicit: some upstreams stream by default when the field is absent
         if (s === 'CHAT') { delete out.max_completion_tokens; out.max_tokens = adm.maxOut; if (stream) out.stream_options = { ...(json.stream_options ?? {}), include_usage: true }; } else out.max_tokens = adm.maxOut;
         const headers: Record<string, string> = { 'content-type': 'application/json' };
         if (s === 'CHAT') headers.authorization = `Bearer ${c.apiKey}`;

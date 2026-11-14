@@ -62,6 +62,8 @@ test('anthropic stream and non-stream chat charge the same; anthropic headers ar
   const viaXApiKey = await fetch(base + '/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'content-type': 'application/json' }, body: JSON.stringify({ model: 'ds/flash', max_tokens: 100, messages: [] }) });
   assert.equal(viaXApiKey.status, 200); const body = await viaXApiKey.json(); assert.equal(body.usage.input_tokens, 2000);
   const n = await call('/v1/chat/completions', 'ds/flash', { stream: false }); assert.equal((await n.json()).usage.prompt_tokens, 10000);
+  const omitted = await fetch(base + '/v1/chat/completions', { method: 'POST', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: 'ds/flash', messages: [] }) }); await omitted.json();
+  assert.equal(stats.last!.body.stream, false, 'stream is sent explicitly even when the client omitted it'); assert.equal((await settled(omitted.headers.get('x-request-id')!)).estimated, false);
   for (const res of [a, viaXApiKey, n]) assert.equal(BigInt((await settled(res.headers.get('x-request-id')!)).debit), 11_000n * C);
   await clean();
 });
