@@ -149,3 +149,24 @@ export async function snapshotForAdmission(tx: Db | Tx, id: string): Promise<{ p
   const r = (await tx.query(`select ${PRICE_COLS} from price_version where model_id=$1 and status='PUBLISHED'`, [id])).rows[0];
   return r ? { priceVersionId: r.id, price: toPrice(r), currency: r.currency } : null;
 }
+
+/** n / 10^scale as an exact decimal string without trailing zeros. */
+function scaled(n: bigint, scale: number): string {
+  const s = n.toString().padStart(scale + 1, '0'); const frac = s.slice(-scale).replace(/0+$/, '');
+  return s.slice(0, -scale) + (frac ? '.' + frac : '');
+}
+/**
+ * Customer catalogue (FR-010, TASK-011): models that can be called right now, with what one token costs in token credits.
+ * A model appears only with a published price and at least one enabled route on an eligible upstream. No upstream names or costs.
+ */
+export async function catalogue(db: Db) {
+  const rows = (await db.query(
+    `select m.id, m.display_name, pv.input_rate, pv.output_rate, pv.cache_read_rate, pv.cache_write_rate, pv.multiplier_e4,
+            array_agg(distinct r.protocol order by r.protocol) as protocols
+     from public_model m join price_version pv on pv.model_id=m.id and pv.status='PUBLISHED'
+     join route r on r.model_id=m.id and r.enabled join upstream u on u.id=r.upstream_id and u.status='ELIGIBLE' and u.key_enc is not null
+     group by m.id, m.display_name, pv.input_rate, pv.output_rate, pv.cache_read_rate, pv.cache_write_rate, pv.multiplier_e4 order by m.id`)).rows;
+  const per = (rate: unknown, e4: bigint) => scaled(BigInt(rate as string) * e4, 16); // micro per 1M tokens x multiplier(e4) -> credits per token
+  return { models: rows.map(r => { const e4 = BigInt(r.multiplier_e4); return { id: r.id as string, displayName: r.display_name as string, multiplier: e4ToString(e4), protocols: r.protocols as string[],
+    creditsPerToken: { input: per(r.input_rate, e4), output: per(r.output_rate, e4), cacheRead: per(r.cache_read_rate, e4), cacheWrite: per(r.cache_write_rate, e4) } }; }) };
+}

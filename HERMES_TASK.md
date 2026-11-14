@@ -62,3 +62,28 @@ Untuk tiap layar: berjalan terhadap server lokal, dapat dipakai dengan keyboard 
 ## Yang belum bisa dikerjakan Hermes
 
 Layar pemakaian per request, model dan harga untuk pelanggan, upstream dan route: server-nya belum ada. Claude akan menulis di `docs/handoff/claude-log.md` saat rute baru siap dipakai.
+
+---
+
+# Tahap dua (2026-11-14)
+
+Tahap satu diterima: 12/12 test browser lulus menurut laporan Anda. Pembagian wilayah dan aturan di atas tetap berlaku. Kontrak rute ada di `docs/handoff/claude-log.md` (baca seluruhnya) dan `server/src/http/app.ts`.
+
+Database: pakai `router_test` atau schema privat Anda; Claude memakai `router_test_claude`. Jangan menghentikan container `router-spike-pg`.
+
+## Pekerjaan, berurutan
+
+1. **Pemakaian (SCR-010)**: `GET /api/requests`. Tampilkan model, waktu, status, token yang ditagih per kategori, dan biaya dalam token. `final=false` berarti "Biaya belum final, dana ditahan"; `estimated=true` berarti "Biaya dari estimasi". Jangan menampilkan `unbilled`; itu urusan admin.
+2. **Model dan harga untuk pelanggan (SCR-009)**: `GET /api/models` mengembalikan `{ models: [{ id, displayName, multiplier, protocols: ["CHAT"|"ANTHROPIC"|"RESPONSES"], creditsPerToken: { input, output, cacheRead, cacheWrite } }] }` (nilai string desimal: berapa token saldo terpakai per satu token). Bila keempat nilai sama, tampilkan cukup pengalinya ("x2"); bila berbeda, tampilkan per kategori.
+3. **Panduan integrasi (SCR-012)**: base URL adalah origin halaman ditambah `/v1`; tiga permukaan (`/v1/chat/completions`, `/v1/messages`, `/v1/responses`), daftar model `/v1/models`, cara mengirim key, daftar kode error beserta tindakan, dan catatan bahwa `/v1/responses` tidak mendukung percakapan tersimpan. Contoh memakai placeholder key. Jangan menulis "teruji dengan <tool>"; belum ada tool yang diuji.
+4. **Upstream dan route (SCR-016)**: form upstream dengan base URL per protokol, field API key bertipe password yang tidak pernah diisi ulang dari server (hanya `keySet`/`keySetAt`), ubah status dengan alasan, daftar dan form route. Tangani `base_url_rejected`, `api_key_required`, `protocol_not_offered`, `version_conflict`, dan step-up.
+5. **Daftar pelanggan (SCR-015)**: `GET /admin/api/customers` berhalaman dengan filter awalan; dari daftar masuk ke detail yang sudah ada.
+6. **Request menunggu keputusan (SCR-017)**: `GET /admin/api/requests/unresolved` dan `POST /admin/api/requests/:id/resolve`. Dialog konfirmasi menampilkan username, dana ditahan dan jumlah yang akan ditagih; `0` berarti dilepas.
+7. **Pengaturan batas lebih-pakai** dan **audit (SCR-018)**: `GET|POST /admin/api/settings/overdraft`, `GET /admin/api/audit`.
+8. **Build produksi**: pastikan `npm run build` menghasilkan `web/dist` yang berjalan bila disajikan dari origin yang sama dengan API (tanpa proxy Vite), dengan fallback SPA ke `index.html`. Tulis di `web/README.md` rute mana saja yang harus jatuh ke `index.html` dan mana yang tidak boleh (`/api/`, `/admin/api/`, `/v1/`, `/healthz`, `/readyz`). Claude akan memasang penyajiannya di server.
+
+Untuk tiap layar berlaku syarat "Selesai berarti" di atas. Catat hasil di `docs/handoff/hermes-log.md` pada bagian baru bertanggal, jangan menimpa catatan lama.
+
+## Tetap bukan pekerjaan Hermes
+
+Deploy, perubahan `server/`, maskot (placeholder tetap dipakai), dan commit ke Git untuk berkas di luar `web/`. Untuk `web/` sendiri: jangan meng-commit `node_modules`, `dist`, `test-results`, atau berkas kredensial; tanyakan founder sebelum push.

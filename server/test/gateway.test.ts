@@ -257,3 +257,16 @@ test('responses surface (Codex): stream and non-stream are relayed and charged; 
   assert.equal((await call('/v1/chat/completions', 'gpt/sol')).status, 503, 'and a responses-only model is not served on the chat surface');
   assert.equal((await db.query("select count(*) n from ledger_entry where kind='DEBIT_USAGE'")).rows[0].n, '2'); await clean();
 });
+
+test('customer catalogue lists only callable models with per-token credit cost and never upstream details', async () => {
+  await model('gpt/luna', '2', [['RESPONSES', 'ok', 1], ['CHAT', 'ok', 2]]); await model('m/pending', '1', [['CHAT', 'ok', 1]], 'PENDING');
+  await admin.post('/admin/api/models', { id: 'm/unpriced', displayName: 'x' }); await admin.post('/admin/api/models', { id: 'm/weighted', displayName: 'Berbobot' });
+  const d = (await admin.post('/admin/api/models/price/draft', { id: 'm/weighted', expectedVersion: '1', multiplier: '1.25', outputRateMicro: '4000000000000', cacheReadRateMicro: '100000000000' })).json;
+  await admin.post('/admin/api/models/price/publish', { id: 'm/weighted', expectedVersion: d.version, reason: 'bobot output' });
+  const up = (await db.query("select upstream_id from route limit 1")).rows[0].upstream_id; await db.query("insert into route(model_id, upstream_id, protocol, upstream_model) values('m/weighted',$1,'ANTHROPIC','ok')", [up]);
+  const res = await cust.get('/api/models'); const list = res.json.models;
+  assert.deepEqual(list.map((m: any) => m.id), ['gpt/luna', 'm/weighted']);
+  assert.deepEqual(list[0], { id: 'gpt/luna', displayName: 'gpt/luna', multiplier: '2', protocols: ['CHAT', 'RESPONSES'], creditsPerToken: { input: '2', output: '2', cacheRead: '2', cacheWrite: '2' } });
+  assert.deepEqual(list[1].creditsPerToken, { input: '1.25', output: '5', cacheRead: '0.125', cacheWrite: '1.25' });
+  assert.ok(!JSON.stringify(res.json).match(/127\.0\.0\.1|upstream|sk-/i)); assert.equal((await new Client(app).get('/api/models')).status, 401);
+});

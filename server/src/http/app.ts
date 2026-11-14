@@ -134,6 +134,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const p = await customer(req); const b = await ledger.getBalance(db, p.tenantId);
     return { currency: b.currency, postedMicro: String(b.posted), heldMicro: String(b.held), availableMicro: String(b.available) };
   });
+  app.get('/api/models', async req => { await customer(req); return pricing.catalogue(db); });
   app.get('/api/requests', async req => { const p = await customer(req); return listRequests(db, p.tenantId, req.query as { before?: string; limit?: string }); });
   app.get('/api/ledger', async req => {
     const p = await customer(req); const q = req.query as { before?: string; limit?: string };

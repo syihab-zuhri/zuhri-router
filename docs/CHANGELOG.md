@@ -1,9 +1,20 @@
 # Changelog: Router AI Komersial
 
-Version: 0.22.0
+Version: 0.23.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.23.0: Katalog model pelanggan dan tugas tahap dua Hermes
+
+CR-021
+Source: founder meneruskan laporan Hermes (12/12 test browser lulus) dan bertanya pekerjaan berikutnya (2026-11-14).
+
+- `GET /api/models`: model yang dapat dipanggil saat ini, pengali, protokol yang tersedia, dan biaya per token dalam kredit per kategori sebagai string desimal eksak. Tanpa nama atau biaya upstream.
+- HERMES_TASK.md ditambah "Tahap dua": layar pemakaian, model dan harga, panduan integrasi, upstream dan route, daftar pelanggan, request menunggu keputusan, pengaturan lebih-pakai, audit, dan build produksi yang dapat disajikan dari origin yang sama.
+- Laporan Hermes dicatat sebagaimana disampaikan; Claude tidak menjalankan ulang suite web.
+
+Verification: 1 test baru; suite server 120/120; typecheck exit 0.
 
 ## 0.22.0: Permukaan Responses
 
@@ -379,4 +390,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.22.0 -->
+<!-- END ROUTER-CHANGELOG v0.23.0 -->
