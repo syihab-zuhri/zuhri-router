@@ -1,6 +1,6 @@
 // TASK-012 / FR-011: inference gateway. Same-protocol pass-through with admission, fallback before the first byte,
 // and exactly-once settlement in token credits. See docs/ARCHITECTURE.md sections 2, 3, 10 and docs/TOKEN_CREDIT.md.
-// Not here yet: Responses surface, margin guard, per-route concurrency limits, persistent circuit state, recovery worker.
+// Not here yet: margin guard, per-route concurrency limits, persistent circuit state, recovery worker.
 import crypto from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { AppError, withTx, type Db } from './db/pool.ts';
@@ -17,7 +17,7 @@ import { assertSafeUpstreamUrl, type Resolver } from './netguard.ts';
 export type GatewayDeps = { db: Db; key: Buffer; resolveHost: Resolver; firstByteTimeoutMs?: number; idleTimeoutMs?: number; maxTotalMs?: number; maxAttempts?: number;
   /** Abuse limits (ABU-004), per process. */ requestsPerMinutePerKey?: number; concurrentPerTenant?: number; authFailuresPerMinutePerIp?: number;
   /** Test-only: skip the base URL guard so a loopback mock upstream can be used. Never set from configuration. */ unsafeAllowAnyUpstreamUrl?: boolean };
-type Surface = 'CHAT' | 'ANTHROPIC';
+type Surface = 'CHAT' | 'ANTHROPIC' | 'RESPONSES';
 export const GATEWAY_LIMITS = { bodyBytes: 8 * 1024 * 1024, defaultMaxOutput: 4096, maxOutputCap: 393_216, nonStreamBytes: 16 * 1024 * 1024 };
 
 const errBody = (s: Surface, code: string, message: string) => (s === 'ANTHROPIC' ? { type: 'error', error: { type: code, message } } : { error: { code, type: code, message } });
@@ -33,6 +33,11 @@ export function normalizeUsage(s: Surface, raw: any): Usage | null {
     const hit = n(raw.prompt_cache_hit_tokens ?? raw.prompt_tokens_details?.cached_tokens ?? 0);
     if (total === null || out === null || hit === null || hit > total) return null;
     if (raw.prompt_cache_miss_tokens !== undefined && n(raw.prompt_cache_miss_tokens) !== total - hit) return null; // inclusive total must equal hit + miss
+    return { input: total - hit, output: out, cacheRead: hit, cacheWrite: 0 };
+  }
+  if (s === 'RESPONSES') { // input_tokens includes cached tokens, reported under input_tokens_details
+    const total = n(raw.input_tokens), out = n(raw.output_tokens), hit = n(raw.input_tokens_details?.cached_tokens ?? 0);
+    if (total === null || out === null || hit === null || hit > total) return null;
     return { input: total - hit, output: out, cacheRead: hit, cacheWrite: 0 };
   }
   const inp = n(raw.input_tokens), out = n(raw.output_tokens), hit = n(raw.cache_read_input_tokens ?? 0), write = n(raw.cache_creation_input_tokens ?? 0);
@@ -73,6 +78,10 @@ class StreamObserver {
       const d = j.choices?.[0]?.delta;
       for (const t of [d?.content, d?.reasoning_content]) if (typeof t === 'string') this.contentChars += t.length;
       for (const tc of d?.tool_calls ?? []) if (typeof tc?.function?.arguments === 'string') this.contentChars += tc.function.arguments.length;
+    } else if (this.s === 'RESPONSES') {
+      // The stream ends with response.completed / response.incomplete / response.failed carrying the full response; there is no [DONE].
+      if (typeof j.type === 'string' && /^response\.(completed|incomplete|failed)$/.test(j.type)) { this.done = true; if (j.response?.usage) this.usageRaw = j.response.usage; }
+      else if (typeof j.type === 'string' && j.type.endsWith('.delta') && typeof j.delta === 'string') this.contentChars += j.delta.length;
     } else {
       if (j.type === 'message_start' && j.message?.usage) this.usageRaw = { ...j.message.usage };
       if (j.type === 'message_delta' && j.usage) this.usageRaw = { ...(this.usageRaw ?? {}), ...j.usage };
@@ -155,7 +164,9 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
     if (typeof model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(model)) return fail(reply, s, 400, 'invalid_request', 'model is required');
     const stream = json.stream === true;
     const bodyText = JSON.stringify(json);
-    const asked = s === 'CHAT' ? json.max_completion_tokens ?? json.max_tokens : json.max_tokens;
+    const asked = s === 'CHAT' ? json.max_completion_tokens ?? json.max_tokens : s === 'RESPONSES' ? json.max_output_tokens : json.max_tokens;
+    // Stateless only: responses are not stored upstream on the customer's behalf, so a request cannot continue an earlier one.
+    if (s === 'RESPONSES' && (json.previous_response_id != null || json.conversation != null || json.background === true)) return fail(reply, s, 400, 'invalid_request', 'Stored conversations and background mode are not supported; send the full input with each request');
     if (asked !== undefined && asked !== null && (!Number.isInteger(asked) || asked < 1)) return fail(reply, s, 400, 'invalid_request', 'max_tokens must be a positive integer');
     const requestId = 'req_' + crypto.randomUUID();
     const maxIn = Buffer.byteLength(bodyText); // upper bound: a token is never shorter than one byte of the request
@@ -204,11 +215,13 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
       try {
         const base = deps.unsafeAllowAnyUpstreamUrl ? c.baseUrl : await assertSafeUpstreamUrl(c.baseUrl, deps.resolveHost); // re-checked at connect time: DNS answers can change
         const out: Record<string, any> = { ...json, model: c.upstreamModel, stream }; // always explicit: some upstreams stream by default when the field is absent
-        if (s === 'CHAT') { delete out.max_completion_tokens; out.max_tokens = adm.maxOut; if (stream) out.stream_options = { ...(json.stream_options ?? {}), include_usage: true }; } else out.max_tokens = adm.maxOut;
+        if (s === 'CHAT') { delete out.max_completion_tokens; out.max_tokens = adm.maxOut; if (stream) out.stream_options = { ...(json.stream_options ?? {}), include_usage: true }; }
+        else if (s === 'RESPONSES') { out.max_output_tokens = adm.maxOut; out.store = false; }
+        else out.max_tokens = adm.maxOut;
         const headers: Record<string, string> = { 'content-type': 'application/json' };
-        if (s === 'CHAT') headers.authorization = `Bearer ${c.apiKey}`;
+        if (s !== 'ANTHROPIC') headers.authorization = `Bearer ${c.apiKey}`;
         else { headers['x-api-key'] = c.apiKey; headers['anthropic-version'] = String(req.headers['anthropic-version'] ?? '2023-06-01'); if (req.headers['anthropic-beta']) headers['anthropic-beta'] = String(req.headers['anthropic-beta']); }
-        up = await fetch(base + (s === 'CHAT' ? '/chat/completions' : '/v1/messages'), { method: 'POST', headers, body: JSON.stringify(out), redirect: 'error', signal: AbortSignal.any([client.signal, fb.signal]) });
+        up = await fetch(base + (s === 'CHAT' ? '/chat/completions' : s === 'RESPONSES' ? '/responses' : '/v1/messages'), { method: 'POST', headers, body: JSON.stringify(out), redirect: 'error', signal: AbortSignal.any([client.signal, fb.signal]) });
         if (up.status === 400 || up.status === 422) { // the request itself is wrong: forward, never fall back, never charge
           clearTimeout(timer); const text = (await up.text()).slice(0, 65_536); await note('rejected_' + up.status);
           await done(null, false, 'FAILED', null, 'upstream_rejected');
@@ -265,6 +278,7 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
   const opts = { bodyLimit: GATEWAY_LIMITS.bodyBytes };
   app.post('/v1/chat/completions', opts, (req, reply) => guarded('CHAT', req, reply));
   app.post('/v1/messages', opts, (req, reply) => guarded('ANTHROPIC', req, reply));
+  app.post('/v1/responses', opts, (req, reply) => guarded('RESPONSES', req, reply));
 
   /** Models this key can call right now: published price, in key scope, and at least one usable route. */
   app.get('/v1/models', async (req, reply) => {
@@ -273,7 +287,7 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
       const rows = (await db.query(
         `select distinct m.id, extract(epoch from m.created_at)::bigint as created from public_model m
          join price_version pv on pv.model_id=m.id and pv.status='PUBLISHED'
-         join route r on r.model_id=m.id and r.enabled and r.protocol in ('CHAT','ANTHROPIC')
+         join route r on r.model_id=m.id and r.enabled 
          join upstream u on u.id=r.upstream_id and u.status='ELIGIBLE' and u.key_enc is not null order by m.id`)).rows;
       const data = rows.filter(r => p.allowedModels === null || p.allowedModels.includes(r.id)).map(r => ({ id: r.id as string, object: 'model', created: Number(r.created), owned_by: 'router' }));
       return { object: 'list', data };

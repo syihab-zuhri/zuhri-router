@@ -1,6 +1,6 @@
 # Tasks, Test Specification dan Traceability: Router AI Komersial
 
-Version: 0.13.0
+Version: 0.14.0
 Status: Draft; backend TASK-010 selesai untuk API key/admission lokal, UI/gateway belum
 Owner keputusan: founder
 Updated: 2026-11-14, Asia/Jakarta
@@ -52,7 +52,7 @@ Definition of Done umum: AC terkait terpenuhi; test pada spesifikasi dijalankan 
 | TASK-023 | Shell aplikasi dan komponen bersama (navigasi UAR-038, dialog step-up, tabel, form) | FR-006 sampai FR-016 pada sisi UI | UI_REFERENCES.md section 3, 4 | TASK-022 | SEBAGIAN oleh Hermes 2026-11-14: SPA portal dan backoffice di ../web/ untuk rute yang tersedia; lihat handoff/hermes-log.md. Layar pemakaian, model/harga pelanggan, upstream dan route belum |
 | TASK-024 | Entri provider eligibility pertama (upstream reseller) dan kontrak adapter per protokol: semantic usage dan cache, pembatalan, error, partial, timeout, header yang diteruskan | FR-012, FR-002 | ARCHITECTURE.md section 6, ADR-002; BILLING_REDEEM.md section 2.1 | OQ-007 dijawab; dokumentasi dan ketentuan upstream dibaca | SEBAGIAN: kontrak DeepSeek di ADAPTERS.md dari dokumentasi; belum ada pengamatan runtime; sumber lain belum teridentifikasi |
 | TASK-025 | Permukaan tahap B (Anthropic Messages) termasuk hitung token opsional dan penerusan header | FR-011 / AC-011 | API-003, API-004; ADR-002 | TASK-012; upstream menyediakan format ini | Tercakup di TASK-012 (permukaan /v1/messages; hitung token belum) |
-| TASK-026 | Permukaan tahap C (Responses) mode stateless | FR-011 / AC-011 | API-005; ADR-002 | TASK-012; upstream menyediakan format ini; perilaku penyimpanan respons di upstream dinilai | PLANNED |
+| TASK-026 | Permukaan tahap C (Responses) mode stateless | FR-011 / AC-011 | API-005; ADR-002 | TASK-012; upstream menyediakan format ini; perilaku penyimpanan respons di upstream dinilai | SELESAI untuk gateway 2026-11-14: POST /v1/responses stateless, stream dan non-stream; diuji pada upstream tiruan dan satu upstream nyata. Belum diuji dengan Codex sendiri |
 | TASK-027 | AGENTS.md dan context pack untuk agen coding: urutan baca, sumber otoritatif, invariant uang dan tenant, aturan UIArc, perintah verifikasi yang sudah diperiksa, Definition of Done, larangan deploy/biaya tanpa otorisasi | Handoff; CHK-38 | Seluruh dokumen; kontrak section 12.7 | ADR-004 divalidasi; TASK-020 dan TASK-022 selesai | DRAFT DITULIS: ../AGENTS.md v0.3.0 dengan perintah terverifikasi; vetting UI dan kesiapan rilis tetap terpisah |
 | TASK-028 | Aset brand: daftar aset dengan hak pakai, maskot orisinal untuk enam adegan minimum, pemilihan font display beserta lisensinya, pengukuran nilai coral dan cream dari berkas sumber | CHK-33; ASM-009 | DESIGN.md section 11; DSD.md CMP-036, CMP-037 | OQ-008 dijawab | PLANNED |
 
@@ -107,4 +107,4 @@ Journey end-to-end yang wajib sebelum penilaian Gate D pilot: FLOW-001, FLOW-002
 
 Cakupan: 19 dari 19 FR P0 memiliki AC, task dan test specification. Cakupan ini menyatakan keterhubungan dokumen, bukan kesiapan rilis. Fondasi lokal diizinkan founder (CR-008, CR-009); fitur upstream nyata dan UI tetap mengikuti syarat siap masing-masing. TASK-010 dan TASK-001 backend selesai; berikutnya TASK-013 registry upstream sesuai ../HANDOFF.md. Gateway dan UI tetap belum dinyatakan selesai.
 
-<!-- END ROUTER-TASKS v0.13.0 -->
+<!-- END ROUTER-TASKS v0.14.0 -->

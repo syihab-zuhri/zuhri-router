@@ -67,6 +67,16 @@ if (up.id) {
   if (an.id) { await route(an.id, 'ANTHROPIC', 10); res = await fetch(base + '/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'content-type': 'application/json', 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: MODEL, max_tokens: 16, messages: msg('Jawab satu kata: ok') }) }); body = await res.json().catch(() => null); id = res.headers.get('x-request-id');
     step('anthropic non-stream', { status: res.status, type: body?.type ?? null, errorCode: body?.error?.type ?? null, attempts: await attempts(id), settled: await row(id) }); }
 }
+// 7. Responses surface (what Codex speaks), if the upstream offers it at the same base URL
+const rs = await upstream('responses-probe', { RESPONSES: env.UPSTREAM_BASE_URL }, env.UPSTREAM_API_KEY);
+if (rs.id) {
+  await route(rs.id, 'RESPONSES', 10);
+  for (const stream of [false, true]) {
+    const res = await post('/v1/responses', { model: MODEL, input: 'Jawab satu kata: ok', max_output_tokens: 32, stream }); const raw = await res.text(); const id = res.headers.get('x-request-id');
+    let j: any = null; try { j = JSON.parse(raw); } catch { /* stream */ }
+    step(`responses ${stream ? 'stream' : 'non-stream'}`, { status: res.status, object: j?.object ?? null, errorCode: j?.error?.code ?? null, completedEvent: /response\.completed/.test(raw), events: stream ? raw.split('\n\n').filter(Boolean).length : null, attempts: await attempts(id), settled: await row(id) });
+  }
+}
 const bal = (await cust.get('/api/balance')).json; const inv = (await import('../src/ledger.ts')).invariantViolations;
 step('final', { postedMicro: bal.postedMicro, heldMicro: bal.heldMicro, invariantViolations: (await inv(db)).length, openHolds: (await db.query("select count(*) n from hold where status='ACTIVE'")).rows[0].n });
 if (process.argv[3]) fs.writeFileSync(process.argv[3], JSON.stringify(report, null, 2) + '\n');

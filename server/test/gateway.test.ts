@@ -24,13 +24,13 @@ beforeEach(async () => {
 });
 
 /** Publishes a model at the given multiplier and adds routes [protocol, mock mode, priority] on eligible upstreams. */
-async function model(id: string, multiplier: string, routes: ['CHAT' | 'ANTHROPIC', string, number][], upstreamStatus = 'ELIGIBLE') {
+async function model(id: string, multiplier: string, routes: ['CHAT' | 'ANTHROPIC' | 'RESPONSES', string, number][], upstreamStatus = 'ELIGIBLE') {
   await admin.post('/admin/api/models', { id, displayName: id });
   const d = (await admin.post('/admin/api/models/price/draft', { id, expectedVersion: '1', multiplier })).json;
   await admin.post('/admin/api/models/price/publish', { id, expectedVersion: d.version, reason: 'uji gateway' });
   let i = 0;
   for (const [protocol, mode, priority] of routes) {
-    const up = (await db.query('insert into upstream(name, status, base_url_chat, base_url_anthropic, key_enc, key_set_at) values($1,$2,$3,$4,$5,now()) returning id', [`${id}-${++i}`, upstreamStatus, `http://127.0.0.1:${MOCK}/v1`, `http://127.0.0.1:${MOCK}/anthropic`, seal(KEY, Buffer.from(UPKEY))])).rows[0];
+    const up = (await db.query('insert into upstream(name, status, base_url_chat, base_url_anthropic, base_url_responses, key_enc, key_set_at) values($1,$2,$3,$4,$3,$5,now()) returning id', [`${id}-${++i}`, upstreamStatus, `http://127.0.0.1:${MOCK}/v1`, `http://127.0.0.1:${MOCK}/anthropic`, seal(KEY, Buffer.from(UPKEY))])).rows[0];
     await db.query('insert into route(model_id, upstream_id, protocol, upstream_model, priority) values($1,$2,$3,$4,$5)', [id, up.id, protocol, mode, priority]);
   }
 }
@@ -240,4 +240,20 @@ test('recovery: a request lost before the first byte is released; one lost mid-s
   assert.equal((await admin.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: '500', reason: 'perkiraan dari log upstream' })).json.state, 'RESOLVED');
   assert.equal((await admin.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: '500', reason: 'ulang' })).json.error.code, 'not_unresolved');
   assert.equal((await balance()).posted, before - 500n * C); await clean();
+});
+
+test('responses surface (Codex): stream and non-stream are relayed and charged; stateless only; no cross-protocol routing', async () => {
+  await model('gpt/sol', '2', [['RESPONSES', 'ok', 1]]); await model('m/chatonly', '1', [['CHAT', 'ok', 1]]);
+  const resp = (m: string, extra: object = {}) => fetch(base + '/v1/responses', { method: 'POST', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: m, instructions: 'Asisten.', input: 'halo PENANDA-PROMPT-RAHASIA' + PAD, max_output_tokens: 2000, ...extra }) });
+  const s = await resp('gpt/sol', { stream: true }); const text = await s.text();
+  assert.equal(s.status, 200); assert.match(text, /event: response\.created/); assert.match(text, /event: response\.completed/); assert.doesNotMatch(text, /\[DONE\]/);
+  const sr = await settled(s.headers.get('x-request-id')!);
+  assert.deepEqual(sr.usage_norm, { input: 2000, output: 1000, cacheRead: 8000, cacheWrite: 0 }); assert.equal(BigInt(sr.debit), 22_000n * C); assert.equal(sr.estimated, false);
+  assert.deepEqual([stats.last!.url, stats.last!.body.store, stats.last!.body.max_output_tokens, stats.last!.body.model, stats.last!.headers.authorization], ['/v1/responses', false, 2000, 'ok', `Bearer ${UPKEY}`]);
+  const n = await resp('gpt/sol'); const body = await n.json(); assert.equal(body.usage.input_tokens, 10000); assert.equal(stats.last!.body.stream, false);
+  assert.equal(BigInt((await settled(n.headers.get('x-request-id')!)).debit), 22_000n * C);
+  for (const extra of [{ previous_response_id: 'resp_abc' }, { background: true }, { conversation: 'conv_1' }]) { const r = await resp('gpt/sol', extra); assert.equal(r.status, 400); assert.equal((await r.json()).error.code, 'invalid_request'); }
+  assert.equal((await resp('m/chatonly')).status, 503, 'a chat-only model is not served on the responses surface');
+  assert.equal((await call('/v1/chat/completions', 'gpt/sol')).status, 503, 'and a responses-only model is not served on the chat surface');
+  assert.equal((await db.query("select count(*) n from ledger_entry where kind='DEBIT_USAGE'")).rows[0].n, '2'); await clean();
 });

@@ -13,6 +13,17 @@ export function startMock(port: number): Promise<{ server: http.Server; stats: M
     stats.calls[mode] = (stats.calls[mode] ?? 0) + 1;
     let finished = false; res.on('close', () => { if (!finished) stats.aborts++; });
     const anthropic = req.url!.includes('/messages');
+    if (req.url!.endsWith('/responses')) { // OpenAI Responses shape
+      if (mode === 'fail503') { res.writeHead(503); finished = true; return res.end('{}'); }
+      const usage = { input_tokens: 10000, input_tokens_details: { cached_tokens: 8000 }, output_tokens: 1000, output_tokens_details: { reasoning_tokens: 0 }, total_tokens: 11000 };
+      const full = { id: 'resp_mock', object: 'response', status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Halo dari upstream tiruan' }] }], usage };
+      if (j.stream !== true) { finished = true; res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify(full)); }
+      res.writeHead(200, { 'content-type': 'text/event-stream' }); let seq = 0;
+      const ev = (type: string, extra: object) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, sequence_number: seq++, ...extra })}\n\n`);
+      ev('response.created', { response: { id: 'resp_mock', status: 'in_progress' } });
+      for (const w of ['Halo', ' dari', ' upstream']) { if (mode === 'die-mid' && seq === 3) { await sleep(40); finished = true; return res.destroy(); } ev('response.output_text.delta', { delta: w }); if (mode === 'slow') await sleep(150); }
+      ev('response.completed', { response: full }); finished = true; return res.end();
+    }
     if (mode === 'fail503') { res.writeHead(503, { 'content-type': 'application/json' }); finished = true; return res.end('{"error":{"message":"overloaded"}}'); }
     if (mode === 'bad400') { res.writeHead(400, { 'content-type': 'application/json' }); finished = true; return res.end('{"error":{"message":"invalid format"}}'); }
     if (mode === 'hang-first') { await sleep(5000); finished = true; return res.destroy(); }

@@ -1,9 +1,21 @@
 # Changelog: Router AI Komersial
 
-Version: 0.21.0
+Version: 0.22.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.22.0: Permukaan Responses
+
+CR-020
+Source: founder meminta lanjut (2026-11-14).
+
+- `POST /v1/responses` (migrasi 011): pass-through ke endpoint `/responses` upstream berprotokol sama. Hanya mode stateless: `previous_response_id`, `conversation` dan `background` ditolak 400, dan `store: false` dipaksakan ke upstream, sehingga isi tidak disimpan di upstream atas nama pelanggan. Batas output lewat `max_output_tokens`.
+- Usage dibaca dari objek respons pada event akhir (`response.completed`, `.incomplete`, `.failed`) atau dari body non-stream; `input_tokens` dianggap sudah mencakup token cache yang dirinci di `input_tokens_details.cached_tokens`. Bentuk itu mengikuti API Responses OpenAI; rincian cache belum terlihat pada upstream nyata yang diuji (ia hanya mengirim input, output, total).
+- Uji nyata pada router milik founder: non-stream dan stream menjawab 200, usage terbaca, ditagih tanpa estimasi, tidak ada hold tersisa. Dua request kecil.
+- Ketiga permukaan untuk tool target kini ada di gateway. Belum ada tool (Codex, Claude Code, OpenCode, Hermes, ZCode) yang diuji langsung terhadap gateway; itu memerlukan gateway yang dapat dijangkau tool tersebut.
+
+Verification: 1 test baru; suite 119/119 dua kali berturut-turut; typecheck exit 0.
 
 ## 0.21.0: Batas laju gateway dan pemulihan request yang terputus
 
@@ -367,4 +379,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.21.0 -->
+<!-- END ROUTER-CHANGELOG v0.22.0 -->

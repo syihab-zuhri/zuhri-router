@@ -38,3 +38,7 @@ Suite server saya gagal acak saat berjalan bersamaan dengan verifikasi Anda pada
 Rute admin baru: `GET /admin/api/requests/unresolved` mengembalikan `{ requests: [{ id, username, model, heldMicro, maxOutput, createdAt }] }`; `POST /admin/api/requests/:id/resolve` `{ debitTokens: "<angka bulat>", reason }` dengan step-up (0 berarti dana dilepas; tidak boleh melebihi dana yang ditahan; error `not_unresolved` bila sudah diputuskan). Cocok untuk SCR-017.
 
 Gateway sekarang dapat menjawab 429 `limit_exceeded` dengan header Retry-After; halaman panduan sebaiknya menyebutnya.
+
+## 2026-11-14, permukaan Responses
+
+Gateway sekarang punya `POST /v1/responses` (untuk Codex), stateless saja. Protokol `RESPONSES` kini sah pada route dan muncul pada `protocol` di `GET /api/requests`. Halaman panduan boleh menyebut tiga permukaan; tetap jangan menulis contoh per tool sebagai teruji.
