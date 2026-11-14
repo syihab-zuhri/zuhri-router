@@ -1,6 +1,6 @@
 # Project Manifest: Router AI Komersial
 
-Version: 0.24.0
+Version: 0.25.0
 Status: Draft
 Owner keputusan: founder
 Updated: 2026-11-14, Asia/Jakarta
@@ -55,8 +55,8 @@ Nilai non-null untuk profile/risk/surface/lifecycle/runtime/release/strategy mer
 | UI_REFERENCES.md | v0.3.0 Draft | Provenance UIArc: indeks UAR-001 sampai 010, definisi UAR-011 sampai 043, CUSTOM_GAP navigasi | UX, evidence |
 | TASKS.md | v0.15.0 Draft | Status eksekusi, TASK-006 sampai 028, TEST-006 sampai 020, traceability P0 | Semua di atas |
 | TOKEN_CREDIT.md | v0.3.0 Draft | Unit saldo kredit token dan cara tagih; mengalahkan dokumen lain soal unit | BILLING_REDEEM, ARCHITECTURE |
-| CHANGELOG.md | v0.24.0 Recorded | Riwayat perubahan dan keputusan | – |
-| PROJECT_MANIFEST.md | v0.24.0 Draft | Registry, kesiapan, resume pointer | – |
+| CHANGELOG.md | v0.25.0 Recorded | Riwayat perubahan dan keputusan | – |
+| PROJECT_MANIFEST.md | v0.25.0 Draft | Registry, kesiapan, resume pointer | – |
 | DESIGN.md | v0.2.0 Draft | Makna dan nilai awal token visual, strategi UIArc, kontras terhitung, lapisan brand anime editorial dan analisis gambar referensi | UX, UI_REFERENCES |
 | DSD.md | v0.2.0 Draft | Perilaku komponen CMP-001 sampai 037 | DESIGN, UX, UI_REFERENCES |
 | ADAPTERS.md | v0.2.0 Draft | Semantic per upstream: DeepSeek dan Dahono Router, dari dokumentasi | ARCHITECTURE, BILLING_REDEEM |
@@ -153,4 +153,4 @@ Baca untuk melanjutkan: ../HANDOFF.md, ../AGENTS.md, manifest ini, TASKS.md dan 
 
 Tidak ada layanan, credential, DNS, atau sumber upstream milik user yang disentuh. Tidak ada komitmen harga, kapasitas, jadwal, pembelian, atau rilis.
 
-<!-- END ROUTER-MANIFEST v0.24.0 -->
+<!-- END ROUTER-MANIFEST v0.25.0 -->

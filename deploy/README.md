@@ -28,7 +28,7 @@ Periksa: `https://<domain>/readyz` menjawab `{"ok":true}`.
 
 ## Yang wajib ada sebelum pelanggan nyata
 
-- **Backup**: belum diotomatiskan. Minimal `docker compose exec db pg_dump -U zrouter zrouter | gzip > backup-$(date +%F).sql.gz` terjadwal dan disalin keluar server, dan satu kali uji pemulihan ke database kosong. Tanpa ini, kerusakan disk berarti seluruh saldo pelanggan hilang.
+- **Backup**: `sh deploy/backup.sh <folder>` membuat satu berkas dump dan menyimpan 14 hari. Jadwalkan lewat cron (contoh ada di dalam skrip) dan salin berkasnya keluar server; backup di disk yang sama tidak selamat bila disk itu rusak. Pemulihan: `CONFIRM=restore sh deploy/restore.sh <berkas>`, lalu `docker compose ... exec app node scripts/check-invariants.ts` harus keluar tanpa pelanggaran. Dump dan pemulihan sudah diuji lokal dengan alat yang sama (pg_dump, pg_restore); skrip compose-nya sendiri belum dijalankan di server.
 - **`APP_SECRET_KEY`** disimpan juga di luar server.
 - **Pemantauan**: belum ada alert. Minimal pemeriksa uptime eksternal ke `/readyz` dan pengecekan berkala daftar "request menunggu keputusan".
 - **Email**: `MAILER=smtp` dengan app password; tanpa itu undangan tidak terkirim.

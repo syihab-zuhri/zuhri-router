@@ -14,6 +14,7 @@ RUN npm ci --omit=dev --ignore-scripts --fetch-retries=5 --fetch-retry-mintimeou
 COPY server/src ./src
 COPY server/migrations ./migrations
 COPY server/scripts/bootstrap-admin.ts ./scripts/bootstrap-admin.ts
+COPY server/scripts/check-invariants.ts ./scripts/check-invariants.ts
 COPY --from=web /web/dist /app/web-dist
 ENV WEB_DIST=/app/web-dist HOST=0.0.0.0 PORT=8080
 USER node

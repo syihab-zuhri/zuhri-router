@@ -1,9 +1,19 @@
 # Changelog: Router AI Komersial
 
-Version: 0.24.0
+Version: 0.25.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.25.0: Backup dan pemulihan
+
+CR-023
+Source: founder menunda pembahasan server dan domain; pekerjaan yang tidak bergantung pada itu dilanjutkan (2026-11-14).
+
+- `deploy/backup.sh` (dump berformat custom, retensi 14 hari, menolak hasil kosong) dan `deploy/restore.sh` (wajib `CONFIRM=restore`, menghentikan aplikasi lebih dulu).
+- `server/scripts/check-invariants.ts`: pemeriksaan saldo terhadap entri ledger dan hold; keluar dengan kode 1 bila ada pelanggaran. Ikut dalam image.
+- Diuji lokal: dump database uji asap (8 entri ledger, 8 request) dipulihkan ke database kosong; jumlah baris dan total saldo sama persis, tidak ada pelanggaran invariant, trigger append-only tetap menolak perubahan entri ledger, dan migrasi melaporkan tidak ada yang tertunda. Ini memenuhi sebagian TEST-017; RPO/RTO belum diukur dan skrip compose belum dijalankan di server.
+- Deploy tetap menunggu pembahasan server dan domain dengan founder.
 
 ## 0.24.0: Persiapan deploy
 
@@ -403,4 +413,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.24.0 -->
+<!-- END ROUTER-CHANGELOG v0.25.0 -->
