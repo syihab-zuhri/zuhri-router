@@ -10,9 +10,12 @@ import * as vouchers from '../vouchers.ts';
 import * as upstreams from '../upstreams.ts';
 import { registerGateway, listRequests, listUnresolved, resolveRequest, type GatewayDeps } from '../gateway.ts';
 import { systemResolver, type Resolver } from '../netguard.ts';
+import { registerStatic } from './static.ts';
 import { creditsToMicro } from '../money.ts';
 
-export type AppDeps = { db: Db; key: Buffer; mailer: identity.Mailer; secureCookies: boolean; logger?: boolean; resolveHost?: Resolver; gateway?: Partial<GatewayDeps> };
+export type AppDeps = { db: Db; key: Buffer; mailer: identity.Mailer; secureCookies: boolean; logger?: boolean; resolveHost?: Resolver; gateway?: Partial<GatewayDeps>;
+  /** Folder with the built web app; when set it is served from this origin. */ webDist?: string;
+  /** Number of reverse proxies in front of the server whose X-Forwarded-For is trusted. 0 when the server faces clients directly. */ trustProxy?: number };
 
 const CUSTOMER_COOKIE = 'sid', ADMIN_COOKIE = 'asid';
 const str = (v: unknown, max = 500): string => { if (typeof v !== 'string' || v.length > max) throw new AppError('invalid_request', 'Invalid request', 400); return v; };
@@ -21,6 +24,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const { db, key, mailer } = deps; const resolveHost = deps.resolveHost ?? systemResolver;
   const app = Fastify({
     bodyLimit: 64 * 1024,
+    // Trust exactly the first N hops counted from the socket. Rate limits key on req.ip: trusting too much lets clients spoof it,
+    // too little collapses everyone into the proxy address.
+    trustProxy: deps.trustProxy && deps.trustProxy > 0 ? (_addr: string, hop: number) => hop < deps.trustProxy! : false,
     logger: deps.logger ? { redact: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'] } : false,
   });
   await app.register(cookie);
@@ -43,7 +49,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     if (req.url.startsWith('/v1/')) return; // API-key surface: no cookies are read there, so there is nothing for CSRF to ride on
     if (req.method !== 'GET' && req.method !== 'HEAD' && req.headers['x-router-csrf'] !== '1') throw new AppError('csrf', 'Missing request header', 403);
   });
-  app.addHook('onSend', async (_req, reply) => { reply.header('cache-control', 'no-store'); reply.header('x-content-type-options', 'nosniff'); });
+  app.addHook('onSend', async (_req, reply) => {
+    if (!reply.hasHeader('cache-control')) reply.header('cache-control', 'no-store');
+    reply.header('x-content-type-options', 'nosniff');
+    if (deps.secureCookies) reply.header('strict-transport-security', 'max-age=31536000');
+  });
 
   const customer = async (req: FastifyRequest) => {
     const p = await identity.authenticate(db, req.cookies[CUSTOMER_COOKIE], 'CUSTOMER', identity.LIMITS.customerIdleHours);
@@ -287,6 +297,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return { events: rows.map(r => ({ id: String(r.id), actorUser: r.actor_user, actorKind: r.actor_kind, action: r.action, targetType: r.target_type, targetId: r.target_id, summary: r.summary, createdAt: r.created_at.toISOString() })) };
   });
 
+  if (deps.webDist) registerStatic(app, deps.webDist);
   return app;
 }
 

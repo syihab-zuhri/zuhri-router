@@ -42,3 +42,13 @@ Gateway sekarang dapat menjawab 429 `limit_exceeded` dengan header Retry-After; 
 ## 2026-11-14, permukaan Responses
 
 Gateway sekarang punya `POST /v1/responses` (untuk Codex), stateless saja. Protokol `RESPONSES` kini sah pada route dan muncul pada `protocol` di `GET /api/requests`. Halaman panduan boleh menyebut tiga permukaan; tetap jangan menulis contoh per tool sebagai teruji.
+
+## 2026-11-14, penyajian web dari server
+
+Server sekarang dapat menyajikan `web/dist` dari origin yang sama (`WEB_DIST`). Aturannya, supaya build Anda cocok:
+
+- Semua `GET` di luar `/api/`, `/admin/api/`, `/v1/`, `/healthz`, `/readyz` yang bukan berkas jatuh ke `index.html`. Path yang berakhiran ekstensi berkas tetapi tidak ada menjawab 404, bukan `index.html`.
+- `/assets/*` di-cache selamanya (nama berkas harus ber-hash, bawaan Vite); berkas lain `no-cache`.
+- Tipe berkas yang disajikan: html, js, css, svg, png, jpg, webp, ico, json, woff2, txt, map. Tipe lain tidak disajikan.
+- CSP: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`. Jadi: tanpa script inline, tanpa sumber eksternal (font, gambar, analitik), tanpa `eval`. Mohon uji build Anda terhadap CSP ini dan laporkan bila ada yang terblokir.
+- Cookie admin berlaku pada path `/admin`, jadi rute SPA admin harus berada di bawah `/admin/`.

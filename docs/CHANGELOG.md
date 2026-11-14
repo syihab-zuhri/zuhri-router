@@ -1,9 +1,22 @@
 # Changelog: Router AI Komersial
 
-Version: 0.23.0
+Version: 0.24.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.24.0: Persiapan deploy
+
+CR-022
+Source: founder meminta lanjut (2026-11-14). Tidak ada deploy yang dilakukan; server tujuan belum diketahui.
+
+- `src/http/static.ts`: web hasil build disajikan dari origin yang sama (`WEB_DIST`). Berkas didaftar sekali saat start dan dicari dengan path persis, sehingga tidak ada jalan keluar dari folder. Fallback SPA untuk rute klien; path API tetap menjawab JSON 404; CSP, X-Frame-Options, Referrer-Policy pada halaman; HSTS pada deployment aman.
+- `TRUST_PROXY`: jumlah proxy di depan aplikasi yang dipercaya untuk alamat klien. Test menangkap bahwa memberi angka langsung ke Fastify tidak berlaku pada versi ini (semua klien terbaca sebagai alamat proxy, sehingga batas per alamat menimpa semua orang); diganti fungsi hop eksplisit.
+- `deploy/`: Dockerfile dua tahap (build web, lalu server; berjalan sebagai user non-root; migrasi saat start), compose (Caddy untuk TLS, aplikasi, PostgreSQL), Caddyfile tanpa buffering untuk stream, `.env.example`, dan README berisi langkah serta daftar yang wajib ada sebelum pelanggan nyata (backup, kunci, pemantauan, email).
+- Diuji lokal: image terbangun (356 MB); container berjalan terhadap database kosong, migrasi 001 sampai 011 diterapkan, `/readyz` 200, halaman web dan aset tersaji, API menjawab 401 JSON, header keamanan ada, proses berjalan sebagai `node`. Build pertama gagal karena koneksi terputus saat mengunduh paket; lulus setelah percobaan ulang dengan opsi retry.
+- Belum diuji: compose lengkap dengan Caddy dan sertifikat (butuh domain dan server publik), backup dan pemulihan, perilaku di belakang proxy nyata, dan apakah UI Hermes berjalan penuh di bawah CSP ini (hanya pemuatan halaman dan aset yang diperiksa, bukan interaksi di browser).
+
+Verification: 4 test baru; suite server 124/124 dua kali berturut-turut; typecheck exit 0.
 
 ## 0.23.0: Katalog model pelanggan dan tugas tahap dua Hermes
 
@@ -390,4 +403,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.23.0 -->
+<!-- END ROUTER-CHANGELOG v0.24.0 -->

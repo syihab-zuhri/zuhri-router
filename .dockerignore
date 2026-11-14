@@ -1,0 +1,11 @@
+**/node_modules
+.git
+docs/evidence
+spike
+web/dist
+web/test-results
+web/evidence
+*credential*.json
+codex-*.json
+**/.env
+Portrait Version.jpg

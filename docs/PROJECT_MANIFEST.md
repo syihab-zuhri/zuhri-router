@@ -1,6 +1,6 @@
 # Project Manifest: Router AI Komersial
 
-Version: 0.23.0
+Version: 0.24.0
 Status: Draft
 Owner keputusan: founder
 Updated: 2026-11-14, Asia/Jakarta
@@ -55,8 +55,8 @@ Nilai non-null untuk profile/risk/surface/lifecycle/runtime/release/strategy mer
 | UI_REFERENCES.md | v0.3.0 Draft | Provenance UIArc: indeks UAR-001 sampai 010, definisi UAR-011 sampai 043, CUSTOM_GAP navigasi | UX, evidence |
 | TASKS.md | v0.15.0 Draft | Status eksekusi, TASK-006 sampai 028, TEST-006 sampai 020, traceability P0 | Semua di atas |
 | TOKEN_CREDIT.md | v0.3.0 Draft | Unit saldo kredit token dan cara tagih; mengalahkan dokumen lain soal unit | BILLING_REDEEM, ARCHITECTURE |
-| CHANGELOG.md | v0.23.0 Recorded | Riwayat perubahan dan keputusan | – |
-| PROJECT_MANIFEST.md | v0.23.0 Draft | Registry, kesiapan, resume pointer | – |
+| CHANGELOG.md | v0.24.0 Recorded | Riwayat perubahan dan keputusan | – |
+| PROJECT_MANIFEST.md | v0.24.0 Draft | Registry, kesiapan, resume pointer | – |
 | DESIGN.md | v0.2.0 Draft | Makna dan nilai awal token visual, strategi UIArc, kontras terhitung, lapisan brand anime editorial dan analisis gambar referensi | UX, UI_REFERENCES |
 | DSD.md | v0.2.0 Draft | Perilaku komponen CMP-001 sampai 037 | DESIGN, UX, UI_REFERENCES |
 | ADAPTERS.md | v0.2.0 Draft | Semantic per upstream: DeepSeek dan Dahono Router, dari dokumentasi | ARCHITECTURE, BILLING_REDEEM |
@@ -135,7 +135,7 @@ Pemeriksaan lintas dokumen (penilaian manual kecuali disebut deterministik):
 
 ## Resume pointer
 
-Terakhir selesai (2026-11-14): CR-020: permukaan Responses; 119 test lulus. Berikutnya persiapan deploy (menunggu info server dari founder) dan margin guard. Sebelumnya: CR-019: batas laju gateway dan pemulihan request terputus; 118 test lulus. Berikutnya permukaan Responses, lalu persiapan deploy. Sebelumnya: CR-018: input yang ditagih dibatasi ukuran request; 116 test lulus. Sebelumnya: CR-017: uji asap upstream nyata lewat gateway lokal berhasil; temuan token input tambahan dari upstream pada non-stream menunggu keputusan founder. Sebelumnya: CR-016: inti gateway terhadap upstream tiruan (115 test lulus), repo di-push. Berikutnya: uji asap terhadap upstream nyata dengan izin founder, margin guard, permukaan Responses. Sebelumnya: CR-015: registry upstream di server (102 test lulus), web oleh Hermes di ../web/, Git lokal. Berikutnya inti gateway (TASK-012) terhadap upstream tiruan. Sebelumnya: CR-014: upstream Dahono dan DeepSeek difinalkan founder; paket token dan kode redeem di backend (95 test lulus). Berikutnya TASK-013 registry upstream, lalu inti gateway. Sebelumnya: CR-013 saldo kredit token (86 test lulus); baca TOKEN_CREDIT.md sebelum dokumen billing lain. Sebelumnya: pengirim email SMTP dan pencatatan CR-012 (domain zrouter.web.id, Gmail SMTP, promo sebagai OQ-009); 81 test lulus. Sebelumnya: backend TASK-001 harga dan multiplier; 78 test lulus; berikutnya TASK-013 registry upstream. Sebelumnya: sisa API M1 di ../server/ (suspend/restore, guard admission, adjustment, penutupan akun); 69 test lulus. Backend TASK-010 API key juga selesai; berikutnya TASK-001 harga dan multiplier sesuai ../HANDOFF.md. Job retensi masih menunggu keputusan founder; tidak ada upstream eligible atau UI.
+Terakhir selesai (2026-11-14): CR-022: persiapan deploy (image dan compose di deploy/, diuji lokal); 124 test lulus. Deploy menunggu info server dan izin founder. Sebelumnya: CR-020: permukaan Responses; 119 test lulus. Berikutnya persiapan deploy (menunggu info server dari founder) dan margin guard. Sebelumnya: CR-019: batas laju gateway dan pemulihan request terputus; 118 test lulus. Berikutnya permukaan Responses, lalu persiapan deploy. Sebelumnya: CR-018: input yang ditagih dibatasi ukuran request; 116 test lulus. Sebelumnya: CR-017: uji asap upstream nyata lewat gateway lokal berhasil; temuan token input tambahan dari upstream pada non-stream menunggu keputusan founder. Sebelumnya: CR-016: inti gateway terhadap upstream tiruan (115 test lulus), repo di-push. Berikutnya: uji asap terhadap upstream nyata dengan izin founder, margin guard, permukaan Responses. Sebelumnya: CR-015: registry upstream di server (102 test lulus), web oleh Hermes di ../web/, Git lokal. Berikutnya inti gateway (TASK-012) terhadap upstream tiruan. Sebelumnya: CR-014: upstream Dahono dan DeepSeek difinalkan founder; paket token dan kode redeem di backend (95 test lulus). Berikutnya TASK-013 registry upstream, lalu inti gateway. Sebelumnya: CR-013 saldo kredit token (86 test lulus); baca TOKEN_CREDIT.md sebelum dokumen billing lain. Sebelumnya: pengirim email SMTP dan pencatatan CR-012 (domain zrouter.web.id, Gmail SMTP, promo sebagai OQ-009); 81 test lulus. Sebelumnya: backend TASK-001 harga dan multiplier; 78 test lulus; berikutnya TASK-013 registry upstream. Sebelumnya: sisa API M1 di ../server/ (suspend/restore, guard admission, adjustment, penutupan akun); 69 test lulus. Backend TASK-010 API key juga selesai; berikutnya TASK-001 harga dan multiplier sesuai ../HANDOFF.md. Job retensi masih menunggu keputusan founder; tidak ada upstream eligible atau UI.
 
 Keputusan dan tindakan founder yang dibutuhkan, urut dampak:
 1. Hak menjual kembali: mendaftar program reseller Dahono atau meminta konfirmasi tertulis bahwa gateway sendiri diperbolehkan; DeepSeek Terms of Use perlu dibaca.
@@ -153,4 +153,4 @@ Baca untuk melanjutkan: ../HANDOFF.md, ../AGENTS.md, manifest ini, TASKS.md dan 
 
 Tidak ada layanan, credential, DNS, atau sumber upstream milik user yang disentuh. Tidak ada komitmen harga, kapasitas, jadwal, pembelian, atau rilis.
 
-<!-- END ROUTER-MANIFEST v0.23.0 -->
+<!-- END ROUTER-MANIFEST v0.24.0 -->

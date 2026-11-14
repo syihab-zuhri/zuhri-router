@@ -1,0 +1,36 @@
+# Single-server deployment: Caddy (TLS) -> app -> PostgreSQL. Copy .env.example to .env and fill it in first.
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zrouter
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: zrouter
+    volumes: [ "pgdata:/var/lib/postgresql" ]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U zrouter"], interval: 10s, timeout: 5s, retries: 10 }
+  app:
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      DATABASE_URL: postgres://zrouter:${POSTGRES_PASSWORD}@db:5432/zrouter
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?set APP_SECRET_KEY in .env}
+      TRUST_PROXY: "1"            # exactly one proxy (Caddy) in front
+      MAILER: ${MAILER:-none}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      PUBLIC_BASE_URL: https://${DOMAIN:?set DOMAIN in .env}
+      PRODUCT_NAME: ${PRODUCT_NAME:-ZRouter}
+    stop_grace_period: 60s        # let running streams finish
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [ app ]
+    ports: [ "80:80", "443:443" ]
+    environment: { DOMAIN: "${DOMAIN}" }
+    volumes: [ "./Caddyfile:/etc/caddy/Caddyfile:ro", "caddydata:/data", "caddyconfig:/config" ]
+volumes: { pgdata: {}, caddydata: {}, caddyconfig: {} }

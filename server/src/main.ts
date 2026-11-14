@@ -19,7 +19,8 @@ const mailer: Mailer = (() => {
 })();
 
 const db = createPool(need('DATABASE_URL'));
-const app = await buildApp({ db, key: loadKey(need('APP_SECRET_KEY')), mailer, secureCookies: process.env.INSECURE_COOKIES !== '1', logger: true });
+const app = await buildApp({ db, key: loadKey(need('APP_SECRET_KEY')), mailer, secureCookies: process.env.INSECURE_COOKIES !== '1', logger: true,
+  webDist: process.env.WEB_DIST || undefined, trustProxy: Number.isInteger(Number(process.env.TRUST_PROXY)) ? Number(process.env.TRUST_PROXY) : 0 });
 // Requests left open by a crashed process are released or flagged for the admin (see recoverStuck).
 setInterval(() => { recoverStuck(db).then(r => { if (r.released || r.unresolved) app.log.warn(r, 'recovered stuck requests'); }).catch(e => app.log.error({ code: e?.code }, 'recovery failed')); }, 5 * 60_000).unref();
 await app.listen({ host: process.env.HOST ?? '127.0.0.1', port: Number(process.env.PORT ?? 8080) });
