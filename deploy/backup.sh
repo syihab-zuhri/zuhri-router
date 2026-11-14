@@ -8,7 +8,8 @@ set -eu
 DIR="${1:?usage: backup.sh <backup-dir>}"
 mkdir -p "$DIR"
 OUT="$DIR/zrouter-$(date -u +%Y%m%dT%H%M%SZ).dump"
-docker compose -f deploy/compose.yml --env-file deploy/.env exec -T db pg_dump -U zrouter -Fc zrouter > "$OUT.tmp"
+# Override for other layouts, e.g. COMPOSE_FILE=deploy/compose.tunnel.yml COMPOSE_PROJECT=zrouter DOCKER="sudo docker"
+${DOCKER:-docker} compose ${COMPOSE_PROJECT:+-p "$COMPOSE_PROJECT"} -f "${COMPOSE_FILE:-deploy/compose.yml}" --env-file "${ENV_FILE:-deploy/.env}" exec -T db pg_dump -U zrouter -Fc zrouter > "$OUT.tmp"
 [ -s "$OUT.tmp" ] || { echo "backup is empty" >&2; rm -f "$OUT.tmp"; exit 1; }
 mv "$OUT.tmp" "$OUT"
 find "$DIR" -name 'zrouter-*.dump' -mtime +14 -delete

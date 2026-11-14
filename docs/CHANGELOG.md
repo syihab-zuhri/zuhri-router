@@ -1,9 +1,22 @@
 # Changelog: Router AI Komersial
 
-Version: 0.30.0
+Version: 0.31.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.31.0: Terbuka di https://zrouter.web.id
+
+CR-029
+Source: founder meminta agen web menambahkan hostname publik di Cloudflare lalu meminta lanjut (2026-11-14). Decision owner: founder.
+
+- Publikasi (dikerjakan Hermes, lihat handoff/hermes-log.md): `zrouter.web.id` ditambahkan sebagai public hostname pada tunnel `lighthouse-9router-go` menuju `http://localhost:18080`; hostname lama dilaporkan tidak berubah.
+- Uji alur lewat alamat publik (Claude): `e2e-container.ts` terhadap `https://zrouter.web.id` lulus 31 dari 31 langkah, termasuk stream lewat Cloudflare dan satu request nyata per permukaan. Kredensial admin dibaca skrip dari berkas di VPS tanpa ditampilkan; salinan sementaranya dihapus.
+- Skrip mendapat mode `E2E_CLEANUP=1`: sesudah uji, harga model uji ditarik, upstream uji diblokir, paket uji disembunyikan, akun uji ditutup. Baris ledger dan audit dari uji tetap ada (append-only): satu akun tertutup dengan sisa 1.999.516 token, satu kode ditukar, tiga request. Tidak ada data yang dihapus.
+- Alamat klien di log aplikasi adalah alamat publik pemanggil, bukan proxy; `TRUST_PROXY=1` benar untuk susunan ini. Entri `127.0.0.1` di log berasal dari healthcheck container.
+- Backup: `deploy/backup.sh` kini dapat dipakai untuk susunan tunnel (`COMPOSE_FILE`, `COMPOSE_PROJECT`, `DOCKER`). Di VPS terpasang cron tiap jam ke `~/zrouter-backups` (700), satu backup dibuat dan dipulihkan ke database sementara di server yang sama: jumlah entri ledger dan total saldo sama; database sementara dihapus. Unggah ke Google Drive belum: rclone belum terpasang dan memerlukan login Google founder.
+- Temuan saat memasang cron: perintah gabungan dengan `set -e` memasang crontab kosong karena `grep -v` tanpa hasil dianggap gagal; diperbaiki dan dipastikan terpasang.
+- Belum ada: email, bot Telegram, unggah backup keluar server, pemantau uptime eksternal, penggantian kata sandi admin lewat aplikasi. Berkas `ADMIN_LOGIN_PERTAMA.txt` masih di VPS menunggu diambil founder.
 
 ## 0.30.0: Terpasang di VPS, belum dibuka ke publik
 
@@ -480,4 +493,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.30.0 -->
+<!-- END ROUTER-CHANGELOG v0.31.0 -->

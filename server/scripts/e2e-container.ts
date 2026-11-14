@@ -92,6 +92,20 @@ check('audit has the admin actions and no secrets', audit.includes('voucher.issu
 const page = await fetch(origin + '/'); const html = await page.text();
 check('web app is served from the same origin with a CSP', page.status === 200 && html.includes('<div id="root"') && (page.headers.get('content-security-policy') ?? '').includes("frame-ancestors 'none'"));
 
+// With E2E_CLEANUP=1 (use this on a live deployment) the test objects are switched off afterwards. Ledger and audit rows stay, by design.
+if (process.env.E2E_CLEANUP === '1') {
+  const mv = (await admin.get('/admin/api/models?id=' + encodeURIComponent(MODEL))).json?.version;
+  const c1 = await admin.post('/admin/api/models/price/retire', { id: MODEL, expectedVersion: mv, reason: 'uji alur selesai' });
+  const uv = ((await admin.get('/admin/api/upstreams')).json?.upstreams ?? []).find((u: any) => u.id === up.json.id)?.version;
+  const c2 = await admin.post(`/admin/api/upstreams/${up.json.id}/status`, { status: 'BLOCKED', expectedVersion: uv, reason: 'uji alur selesai' });
+  const pv = ((await admin.get('/admin/api/packs')).json?.packs ?? []).find((p: any) => p.id === pack.json.id);
+  const c3 = await admin.post('/admin/api/packs/' + pack.json.id, { name: pv.name, tokens: pv.tokens, displayPriceIdr: pv.displayPriceIdr, active: false, expectedVersion: pv.version });
+  const me = (await cust.get('/api/me')).json;
+  const c4 = await cust.post('/api/account/close', { currentPassword: 'pilot-password-' + run, confirmUsername: username, expectedVersion: me?.version });
+  check('cleanup: price retired, upstream blocked, pack hidden, test account closed', c1.status === 200 && c2.status === 200 && c3.status === 200 && c4.status === 200, [c1.status, c2.status, c3.status, c4.status]);
+  check('cleanup: the test key no longer works and the model is gone from the gateway', (await fetch(origin + '/v1/models', { headers: { authorization: `Bearer ${apiKey}` } })).status === 401);
+}
+
 const failed = steps.filter(s => !s.ok).length;
 console.log(`\n${steps.length - failed}/${steps.length} steps passed`);
 if (outFile) fs.writeFileSync(outFile, JSON.stringify({ at: new Date().toISOString(), origin, passed: steps.length - failed, total: steps.length, steps }, null, 2) + '\n');
