@@ -1,9 +1,20 @@
 # Changelog: Router AI Komersial
 
-Version: 0.33.0
+Version: 0.34.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.34.0: Backup ke Google Drive
+
+CR-032
+Source: founder login Google lewat tautan otorisasi dan meminta backup ke Drive (2026-11-14).
+
+- Otorisasi rclone untuk Google Drive dibuat dengan cakupan `drive.file` (hanya berkas yang dibuat rclone sendiri), di mesin founder, lalu dipindahkan ke `~/zrouter/rclone.conf` (600) di VPS. Salinan di mesin founder dihapus setelah unggahan dari VPS terbukti.
+- `deploy/backup-cron.sh`: pembungkus cron yang mengirim peringatan Telegram bila backup gagal (kode 1) atau unggah gagal (kode 2). Cron tiap jam di VPS kini mengunggah ke `gdrive:zrouter-backups`; berkas Drive berumur lebih dari 30 hari dihapus skrip.
+- Diuji: satu backup dibuat dan diunggah dari VPS; berkas diunduh kembali dari Drive dan checksum-nya sama dengan berkas di server; remote yang sengaja salah menghasilkan kode 2 dan peringatan Telegram.
+- Kesalahan agen pada percobaan pertama: langkah pembersihan lokal tetap berjalan setelah pemindahan ke VPS gagal (folder `~/.config` di VPS milik root), sehingga otorisasi pertama terhapus sebelum sampai ke VPS dan founder harus mengotorisasi ulang. Tidak ada data yang terdampak. Perbaikan cara kerja: pembersihan hanya dijalankan setelah hasil di tujuan diverifikasi.
+- Risiko terbuka: rclone memperingatkan bahwa client ID Google bawaannya dihentikan selama 2026, sehingga unggahan dapat berhenti kapan saja. Kegagalan akan terlihat lewat peringatan Telegram. Perbaikan permanen: client ID Google milik founder sendiri.
 
 ## 0.33.0: Ganti password dan autentikator admin; pembaruan pertama di VPS
 
@@ -517,4 +528,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.33.0 -->
+<!-- END ROUTER-CHANGELOG v0.34.0 -->

@@ -49,7 +49,10 @@ Bot hanya membaca. Ia mengirim: server menyala, kode redeem diterbitkan atau dic
 ## Backup ke Google Drive
 
 1. Pasang rclone di server dan jalankan `rclone config` sekali: buat remote bertipe Google Drive (misalnya bernama `gdrive`) dengan akun Google Anda sendiri.
-2. Jadwalkan: `15 * * * *  cd /srv/zrouter && RCLONE_REMOTE=gdrive:zrouter-backups sh deploy/backup.sh /srv/zrouter-backups`.
+2. Jadwalkan lewat `deploy/backup-cron.sh`, yang juga mengirim peringatan Telegram bila backup atau unggahan gagal: `17 * * * *  cd /srv/zrouter && RCLONE_REMOTE=gdrive:zrouter-backups sh deploy/backup-cron.sh /srv/zrouter-backups`. Bila berkas pengaturan rclone tidak di lokasi bawaan, tambahkan `RCLONE_CONFIG=<path>`.
+3. Server tanpa browser: jalankan `rclone authorize "drive"` di komputer yang punya browser dan pindahkan hasilnya; cakupan `drive.file` cukup.
+
+rclone memperingatkan bahwa client ID Google bawaannya dihentikan selama 2026. Buat client ID sendiri di Google Cloud Console dan isikan pada remote agar unggahan tidak berhenti.
 
 Berkas di Drive yang lebih tua dari 30 hari dihapus oleh skrip. Dump berisi seluruh database, termasuk email pelanggan dan API key upstream dalam bentuk terenkripsi; kunci enkripsinya (`APP_SECRET_KEY`) tidak ada di dalam dump dan harus disimpan terpisah. Unggahan ke Drive belum pernah dijalankan; hanya dump dan pemulihan lokal yang sudah diuji.
 
