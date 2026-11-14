@@ -8,7 +8,7 @@ import * as keys from '../keys.ts';
 import * as pricing from '../pricing.ts';
 import * as vouchers from '../vouchers.ts';
 import * as upstreams from '../upstreams.ts';
-import { registerGateway, listRequests, type GatewayDeps } from '../gateway.ts';
+import { registerGateway, listRequests, listUnresolved, resolveRequest, type GatewayDeps } from '../gateway.ts';
 import { systemResolver, type Resolver } from '../netguard.ts';
 import { creditsToMicro } from '../money.ts';
 
@@ -262,6 +262,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.get('/admin/api/routes', async req => { admin.requireAdmin(await adminSession(req)); const id = (req.query as { modelId?: string }).modelId; return upstreams.listRoutes(db, id === undefined ? undefined : pricing.modelId(id)); });
   app.post('/admin/api/routes', async (req, reply) => { const p = admin.requireAdmin(await adminSession(req), { stepUp: true }); return reply.code(201).send(await upstreams.createRoute(db, body(req), p.userId)); });
   app.post('/admin/api/routes/:id', async req => { const p = admin.requireAdmin(await adminSession(req), { stepUp: true }); return upstreams.updateRoute(db, (req.params as { id: string }).id, body(req), p.userId); });
+
+  // ---- Requests waiting for a decision (API-037, FR-015) ----
+  app.get('/admin/api/requests/unresolved', async req => { admin.requireAdmin(await adminSession(req)); return listUnresolved(db); });
+  app.post('/admin/api/requests/:id/resolve', async req => { const p = admin.requireAdmin(await adminSession(req), { stepUp: true }); return resolveRequest(db, (req.params as { id: string }).id, body(req), p.userId); });
 
   // ---- Overrun allowance (CR-013) ----
   app.get('/admin/api/settings/overdraft', async req => {

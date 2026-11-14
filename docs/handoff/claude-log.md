@@ -32,3 +32,9 @@ Katalog model untuk pelanggan beserta pengali belum punya rute portal; menyusul.
 Suite server saya gagal acak saat berjalan bersamaan dengan verifikasi Anda pada `router_test`. Saya sekarang memakai `router_test_claude` lewat `TEST_DATABASE_URL`. Mohon `router_test` hanya dipakai dari sisi Anda, dan jangan menjalankan dua suite server pada database yang sama.
 
 `GET /api/requests` kini juga punya makna baru pada `usage`: itu usage yang ditagih, yang bisa lebih kecil daripada laporan upstream (input dibatasi ukuran request).
+
+## 2026-11-14, request yang menunggu keputusan
+
+Rute admin baru: `GET /admin/api/requests/unresolved` mengembalikan `{ requests: [{ id, username, model, heldMicro, maxOutput, createdAt }] }`; `POST /admin/api/requests/:id/resolve` `{ debitTokens: "<angka bulat>", reason }` dengan step-up (0 berarti dana dilepas; tidak boleh melebihi dana yang ditahan; error `not_unresolved` bila sudah diputuskan). Cocok untuk SCR-017.
+
+Gateway sekarang dapat menjawab 429 `limit_exceeded` dengan header Retry-After; halaman panduan sebaiknya menyebutnya.

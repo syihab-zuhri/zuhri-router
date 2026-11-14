@@ -1,9 +1,22 @@
 # Changelog: Router AI Komersial
 
-Version: 0.20.0
+Version: 0.21.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.21.0: Batas laju gateway dan pemulihan request yang terputus
+
+CR-019
+Source: founder menyetujui urutan lanjutan (2026-11-14).
+
+- Batas di gateway (ABU-004), di memori proses, ditolak sebelum menyentuh database: 120 request per menit per API key, 20 request berjalan bersamaan per tenant, 30 kegagalan autentikasi per menit per alamat; semuanya 429 `limit_exceeded` dengan Retry-After dan tanpa hold. Nilai awal dipilih agen dan dapat diubah lewat konfigurasi aplikasi.
+- Durasi total satu stream dibatasi 30 menit.
+- `recoverStuck` berjalan tiap 5 menit dari proses server: request yang terbuka lebih dari 45 menit dan belum mengirim byte apa pun dilepas hold-nya; yang sudah mulai stream menjadi UNRESOLVED dengan hold dipertahankan (migrasi 010). Aman dijalankan berulang.
+- Admin: `GET /admin/api/requests/unresolved` dan `POST /admin/api/requests/:id/resolve` dengan jumlah token yang ditagih (0 melepas), alasan, step-up, tepat sekali, diaudit; tagihan tidak boleh melebihi dana yang ditahan.
+- Batas: limiter dan kesehatan route hanya berlaku per proses; lebih dari satu instance gateway memerlukan penyimpanan bersama. Belum ada alert saat request menjadi UNRESOLVED.
+
+Verification: 2 test baru (test pemulihan mensimulasikan proses mati dengan mengembalikan state hold ke kondisi sesudah admission); suite 118/118 dua kali berturut-turut pada database terpisah; typecheck exit 0.
 
 ## 0.20.0: Batas tagihan input
 
@@ -354,4 +367,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.20.0 -->
+<!-- END ROUTER-CHANGELOG v0.21.0 -->

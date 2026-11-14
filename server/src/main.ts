@@ -1,6 +1,7 @@
 import { createPool } from './db/pool.ts';
 import { loadKey } from './crypto.ts';
 import { buildApp } from './http/app.ts';
+import { recoverStuck } from './gateway.ts';
 import type { Mailer } from './identity.ts';
 import { createSmtpMailer, smtpConfigFromEnv } from './mailer.ts';
 
@@ -17,5 +18,8 @@ const mailer: Mailer = (() => {
   return { invite: fail, passwordReset: fail };
 })();
 
-const app = await buildApp({ db: createPool(need('DATABASE_URL')), key: loadKey(need('APP_SECRET_KEY')), mailer, secureCookies: process.env.INSECURE_COOKIES !== '1', logger: true });
+const db = createPool(need('DATABASE_URL'));
+const app = await buildApp({ db, key: loadKey(need('APP_SECRET_KEY')), mailer, secureCookies: process.env.INSECURE_COOKIES !== '1', logger: true });
+// Requests left open by a crashed process are released or flagged for the admin (see recoverStuck).
+setInterval(() => { recoverStuck(db).then(r => { if (r.released || r.unresolved) app.log.warn(r, 'recovered stuck requests'); }).catch(e => app.log.error({ code: e?.code }, 'recovery failed')); }, 5 * 60_000).unref();
 await app.listen({ host: process.env.HOST ?? '127.0.0.1', port: Number(process.env.PORT ?? 8080) });

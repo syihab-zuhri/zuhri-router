@@ -20,7 +20,7 @@ export async function setup(): Promise<{ db: Db; app: FastifyInstance }> {
   await migrate(db);
   // Existing suites assert strict balance limits, so they run with no overrun allowance. test/overdraft.test.ts covers the allowance.
   await db.query("update system_setting set value=0 where name='overdraft_micro'");
-  const app = await buildApp({ db, key: KEY, mailer, secureCookies: false, resolveHost: fakeResolver, gateway: { unsafeAllowAnyUpstreamUrl: true, firstByteTimeoutMs: 800, idleTimeoutMs: 1500 } });
+  const app = await buildApp({ db, key: KEY, mailer, secureCookies: false, resolveHost: fakeResolver, gateway: { unsafeAllowAnyUpstreamUrl: true, firstByteTimeoutMs: 800, idleTimeoutMs: 1500, requestsPerMinutePerKey: 12, concurrentPerTenant: 4, authFailuresPerMinutePerIp: 5 } });
   return { db, app };
 }
 export async function wipe(db: Db) {

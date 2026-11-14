@@ -3,7 +3,7 @@ import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { setup, wipe, makeAdmin, adminClient, makeCustomer, Client, KEY } from './helpers.ts';
 import { startMock, type MockStats } from './fixtures/mock-upstream.ts';
-import { resetRouteHealth, normalizeUsage } from '../src/gateway.ts';
+import { resetRouteHealth, normalizeUsage, recoverStuck } from '../src/gateway.ts';
 import { seal } from '../src/crypto.ts';
 import * as ledger from '../src/ledger.ts';
 import type { Db } from '../src/db/pool.ts';
@@ -193,8 +193,51 @@ test('nothing from the prompt, the customer key or the upstream key is stored; c
 test('parallel requests never hold more than the balance', async () => {
   await model('m/slow', '1', [['CHAT', 'slow', 1]]);
   await admin.post('/admin/api/adjustments', { username: 'budi', amountMicro: String(-950_000n * C), reason: 'sisakan lima puluh ribu', idempotencyKey: 'adjust-gw-0002' }); // 50,000 credits; each hold is about 14,100
-  const rs = await Promise.all(Array.from({ length: 12 }, () => call('/v1/chat/completions', 'm/slow').then(async r => { await r.text(); return r; })));
-  const ok = rs.filter(r => r.status === 200).length; assert.ok(ok >= 1 && ok <= 3, `admitted ${ok}`); assert.ok(rs.every(r => r.status === 200 || r.status === 402));
+  const rs = await Promise.all(Array.from({ length: 4 }, () => call('/v1/chat/completions', 'm/slow').then(async r => { await r.text(); return r; })));
+  const ok = rs.filter(r => r.status === 200).length; assert.equal(ok, 3, `admitted ${ok}: 50,000 credits fit three holds of about 14,100, the fourth is refused`); assert.ok(rs.every(r => r.status === 200 || r.status === 402));
   for (const r of rs.filter(r => r.status === 200)) await settled(r.headers.get('x-request-id')!);
   await clean();
+});
+
+test('rate limits: per key, per tenant concurrency and failed-auth per address answer 429 with Retry-After and place no hold', async () => {
+  await model('m/slow', '1', [['CHAT', 'slow', 1]]); await model('m/a', '1', [['CHAT', 'ok', 1]]);
+  // helpers.ts configures 12 requests per minute per key, 4 concurrent per tenant and 5 failed authentications per address for tests
+  const slow = await Promise.all(Array.from({ length: 6 }, () => call('/v1/chat/completions', 'm/slow').then(async r => { await r.text(); return r; })));
+  assert.equal(slow.filter(r => r.status === 200).length, 4); const busy = slow.find(r => r.status === 429)!; assert.equal((await Promise.resolve(busy.headers.get('retry-after'))) !== null, true);
+  const more = []; for (let i = 0; i < 8; i++) more.push(await call('/v1/chat/completions', 'm/a', { stream: false }));
+  assert.deepEqual(more.map(r => r.status), [200, 200, 200, 200, 200, 200, 429, 429], 'six more fit in the per-key minute, then the key is limited');
+  assert.ok(Number(more[7].headers.get('retry-after')) > 0); assert.equal((await more[7].json()).error.code, 'limit_exceeded');
+  assert.equal((await db.query('select count(*) n from request')).rows[0].n, '10', 'limited requests never reach admission');
+  const other = (await cust.post('/api/keys', { name: 'kedua', idempotencyKey: 'key-gw-00009' })).json.secret;
+  assert.equal((await fetch(base + '/v1/chat/completions', { method: 'POST', headers: { authorization: `Bearer ${other}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: 'm/a', messages: [{ role: 'user', content: PAD }], stream: false }) })).status, 200, 'another key has its own budget');
+  const wrong = () => fetch(base + '/v1/models', { headers: { authorization: 'Bearer rtr_' + 'x'.repeat(43) } });
+  const bad = []; for (let i = 0; i < 5; i++) bad.push((await fetch(base + '/v1/chat/completions', { method: 'POST', headers: { authorization: 'Bearer rtr_' + 'y'.repeat(43), 'content-type': 'application/json' }, body: '{"model":"m/a"}' })).status); void wrong;
+  assert.deepEqual(bad, [401, 401, 401, 401, 401]);
+  assert.equal((await call('/v1/chat/completions', 'm/a', { stream: false })).status, 429, 'the address is paused after repeated bad keys');
+  await clean();
+});
+
+test('recovery: a request lost before the first byte is released; one lost mid-stream waits for the admin, who settles it once', async () => {
+  await model('m/a', '1', [['CHAT', 'ok', 1]]);
+  const mk = async (state: string) => { const res = await call('/v1/chat/completions', 'm/a', { stream: false }); const id = res.headers.get('x-request-id')!; const r = await settled(id);
+    // put the request back as if the process had died before settlement: reopen the hold exactly as admission left it
+    await db.query('alter table ledger_entry disable trigger ledger_entry_append_only'); await db.query("delete from ledger_entry where kind='DEBIT_USAGE' and idem_key=$1", [id]); await db.query('alter table ledger_entry enable trigger ledger_entry_append_only');
+    await db.query("update hold set status='ACTIVE', closed_at=null, settled_debit=null where request_id=$1", [id]);
+    await db.query('update ledger_account set posted=posted+$1, held=held+$2 where tenant_id=$3', [r.debit, r.hold, tenantId]);
+    await db.query('update api_key set spent=spent-$1, held=held+$2 where id=$3', [r.debit, r.hold, r.api_key_id]);
+    await db.query("update request set state=$2, debit=null, settled_at=null, usage_norm=null, created_at=now() - interval '2 hours' where id=$1", [id, state]); return { id, hold: BigInt(r.hold) }; };
+  const a = await mk('ADMITTED'); const s = await mk('STREAMING');
+  assert.deepEqual(await ledger.invariantViolations(db), [], 'the simulated crash state is itself consistent');
+  const fresh = await call('/v1/chat/completions', 'm/a', { stream: false }); await settled(fresh.headers.get('x-request-id')!);
+  assert.deepEqual(await recoverStuck(db), { released: 1, unresolved: 1 }); assert.deepEqual(await recoverStuck(db), { released: 0, unresolved: 0 }, 'running it again changes nothing');
+  assert.deepEqual([(await row(a.id)).state, BigInt((await row(a.id)).debit)], ['FAILED', 0n]); assert.equal((await row(s.id)).state, 'UNRESOLVED');
+  assert.equal((await balance()).held, s.hold, 'the unresolved hold is kept');
+  const list = (await admin.get('/admin/api/requests/unresolved')).json.requests; assert.deepEqual(list.map((x: any) => [x.id, x.username]), [[s.id, 'budi']]);
+  assert.equal((await cust.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: '0', reason: 'x y z' })).status, 401);
+  assert.equal((await admin.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: String(s.hold / C + 1n), reason: 'terlalu besar' })).status, 400);
+  assert.equal((await admin.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: '500', reason: '' })).status, 400);
+  const before = (await balance()).posted;
+  assert.equal((await admin.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: '500', reason: 'perkiraan dari log upstream' })).json.state, 'RESOLVED');
+  assert.equal((await admin.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: '500', reason: 'ulang' })).json.error.code, 'not_unresolved');
+  assert.equal((await balance()).posted, before - 500n * C); await clean();
 });

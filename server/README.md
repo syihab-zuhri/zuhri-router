@@ -69,7 +69,7 @@ Host dan port di atas adalah nilai umum SMTP Gmail dan belum diuji dari proyek i
 | `src/crypto.ts` | Token, Argon2id (bawaan Node), AES-GCM, TOTP |
 | `src/ratelimit.ts` | Pembatas laju di PostgreSQL |
 | `src/http/app.ts` | Rute HTTP |
-| `test/` | 116 test integrasi |
+| `test/` | 118 test integrasi |
 
 ## Nilai awal yang dipilih saat implementasi
 

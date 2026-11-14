@@ -4,6 +4,9 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { AppError, withTx, type Db } from './db/pool.ts';
+import { audit } from './audit.ts';
+import { tokenHash } from './crypto.ts';
+import { creditsToMicro } from './money.ts';
 import * as keys from './keys.ts';
 import * as ledger from './ledger.ts';
 import * as pricing from './pricing.ts';
@@ -11,7 +14,8 @@ import * as upstreams from './upstreams.ts';
 import { debitMicro, holdMicro, type Price, type Usage } from './money.ts';
 import { assertSafeUpstreamUrl, type Resolver } from './netguard.ts';
 
-export type GatewayDeps = { db: Db; key: Buffer; resolveHost: Resolver; firstByteTimeoutMs?: number; idleTimeoutMs?: number; maxAttempts?: number;
+export type GatewayDeps = { db: Db; key: Buffer; resolveHost: Resolver; firstByteTimeoutMs?: number; idleTimeoutMs?: number; maxTotalMs?: number; maxAttempts?: number;
+  /** Abuse limits (ABU-004), per process. */ requestsPerMinutePerKey?: number; concurrentPerTenant?: number; authFailuresPerMinutePerIp?: number;
   /** Test-only: skip the base URL guard so a loopback mock upstream can be used. Never set from configuration. */ unsafeAllowAnyUpstreamUrl?: boolean };
 type Surface = 'CHAT' | 'ANTHROPIC';
 export const GATEWAY_LIMITS = { bodyBytes: 8 * 1024 * 1024, defaultMaxOutput: 4096, maxOutputCap: 393_216, nonStreamBytes: 16 * 1024 * 1024 };
@@ -86,10 +90,22 @@ function routeFailed(id: string, status?: number) {
   if (status === 401 || status === 402) h.openUntil = Date.now() + 5 * 60_000; else if (h.fails >= 3) h.openUntil = Date.now() + 30_000;
   health.set(id, h);
 }
-export const resetRouteHealth = () => health.clear();
+// In-memory limiters (one process). A second gateway instance would need a shared store.
+const windows = new Map<string, { start: number; n: number }>();
+function overLimit(bucket: string, limit: number, add: boolean): number {
+  const now = Date.now(); let w = windows.get(bucket);
+  if (!w || now - w.start >= 60_000) { w = { start: now, n: 0 }; windows.set(bucket, w); }
+  if (w.n >= limit) return Math.max(1, Math.ceil((w.start + 60_000 - now) / 1000));
+  if (add) w.n++;
+  if (windows.size > 50_000) for (const [k, v] of windows) if (now - v.start >= 60_000) windows.delete(k);
+  return 0;
+}
+const active = new Map<string, number>();
+export const resetRouteHealth = () => { health.clear(); windows.clear(); active.clear(); };
 
 export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
-  const { db } = deps; const firstByteMs = deps.firstByteTimeoutMs ?? 60_000, idleMs = deps.idleTimeoutMs ?? 120_000, maxAttempts = deps.maxAttempts ?? 3;
+  const { db } = deps; const firstByteMs = deps.firstByteTimeoutMs ?? 60_000, idleMs = deps.idleTimeoutMs ?? 120_000, maxTotalMs = deps.maxTotalMs ?? 30 * 60_000, maxAttempts = deps.maxAttempts ?? 3;
+  const perKey = deps.requestsPerMinutePerKey ?? 120, perTenant = deps.concurrentPerTenant ?? 20, perIpFail = deps.authFailuresPerMinutePerIp ?? 30;
 
   const secretOf = (req: FastifyRequest) => { const a = req.headers.authorization; const x = req.headers['x-api-key']; return typeof a === 'string' && /^Bearer\s+/i.test(a) ? a.replace(/^Bearer\s+/i, '') : typeof x === 'string' ? x : ''; };
   const fail = (reply: FastifyReply, s: Surface, status: number, code: string, message: string, requestId?: string, retryAfter?: number) => {
@@ -112,6 +128,23 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
       await tx.query('update request set state=$2, debit=$3, estimated=$4, bound_exceeded=$5, usage_raw=$6, usage_norm=$7, outcome=$8, unbilled_input_tokens=$9, settled_at=now() where id=$1',
         [a.requestId, a.state, String(debit), a.estimated, r.boundExceeded, a.usageRaw === null || a.usageRaw === undefined ? null : JSON.stringify(a.usageRaw), billed ? JSON.stringify(billed) : null, a.outcome, capped?.unbilled ?? 0]);
     });
+  }
+
+  /** Cheap refusals first: nothing below touches the database or an upstream until these pass. */
+  async function guarded(s: Surface, req: FastifyRequest, reply: FastifyReply) {
+    const secret = secretOf(req);
+    let wait = overLimit('fail:' + req.ip, perIpFail, false);
+    if (wait) return fail(reply, s, 429, 'limit_exceeded', 'Too many failed requests from this address', undefined, wait);
+    let tenantId: string;
+    try { tenantId = (await keys.authenticate(db, secret)).tenantId; }
+    catch (e) { if (e instanceof AppError && (e.code === 'auth_invalid' || e.code === 'key_revoked')) overLimit('fail:' + req.ip, perIpFail, true); return failApp(reply, s, e); }
+    wait = overLimit('key:' + tokenHash(secret), perKey, true);
+    if (wait) return fail(reply, s, 429, 'limit_exceeded', 'Request rate limit reached for this API key', undefined, wait);
+    const running = active.get(tenantId) ?? 0;
+    if (running >= perTenant) return fail(reply, s, 429, 'limit_exceeded', 'Too many requests in progress', undefined, 2);
+    active.set(tenantId, running + 1);
+    try { return await handle(s, req, reply); }
+    finally { const n = (active.get(tenantId) ?? 1) - 1; if (n <= 0) active.delete(tenantId); else active.set(tenantId, n); }
   }
 
   async function handle(s: Surface, req: FastifyRequest, reply: FastifyReply) {
@@ -205,12 +238,13 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
       await db.query("update request set state='STREAMING' where id=$1", [requestId]);
       reply.hijack();
       reply.raw.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-request-id': requestId, 'x-accel-buffering': 'no' });
-      const obs = new StreamObserver(s); let broke = false;
+      const obs = new StreamObserver(s); let broke = false; const started = Date.now();
       try {
         obs.push(first!); reply.raw.write(first!);
         for (;;) {
           let idle: NodeJS.Timeout; const next = await Promise.race([reader!.read(), new Promise<never>((_, rej) => { idle = setTimeout(() => rej(new Error('idle')), idleMs); })]).finally(() => clearTimeout(idle!));
           if (next.done) break;
+          if (Date.now() - started > maxTotalMs) throw new Error('total duration exceeded');
           obs.push(next.value); if (!reply.raw.write(next.value)) await new Promise(ok => reply.raw.once('drain', ok));
         }
       } catch { broke = true; await reader!.cancel().catch(() => {}); }
@@ -229,8 +263,8 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
   }
 
   const opts = { bodyLimit: GATEWAY_LIMITS.bodyBytes };
-  app.post('/v1/chat/completions', opts, (req, reply) => handle('CHAT', req, reply));
-  app.post('/v1/messages', opts, (req, reply) => handle('ANTHROPIC', req, reply));
+  app.post('/v1/chat/completions', opts, (req, reply) => guarded('CHAT', req, reply));
+  app.post('/v1/messages', opts, (req, reply) => guarded('ANTHROPIC', req, reply));
 
   /** Models this key can call right now: published price, in key scope, and at least one usable route. */
   app.get('/v1/models', async (req, reply) => {
@@ -253,4 +287,48 @@ export async function listRequests(db: Db, tenantId: string, q: { before?: strin
   const before = typeof q.before === 'string' && !Number.isNaN(Date.parse(q.before)) ? q.before : null;
   const rows = (await db.query('select id, model_id, protocol, stream, state, hold, debit, estimated, usage_norm, unbilled_input_tokens, created_at from request where tenant_id=$1 and ($2::timestamptz is null or created_at < $2::timestamptz) order by created_at desc, id limit $3', [tenantId, before, limit])).rows;
   return { requests: rows.map(r => ({ id: r.id as string, model: r.model_id as string, protocol: r.protocol as string, stream: r.stream as boolean, state: r.state as string, final: r.debit !== null, heldMicro: String(r.hold), debitMicro: r.debit === null ? null : String(r.debit), estimated: r.estimated as boolean, usage: r.usage_norm, createdAt: (r.created_at as Date).toISOString() })), nextBefore: rows.length === limit ? (rows[rows.length - 1].created_at as Date).toISOString() : null };
+}
+
+/**
+ * Recovery for requests left open by a process that died (FR-015, FR-017). Only requests older than the longest
+ * possible stream are touched. Nothing sent to the client: the hold is released. Possibly sent: UNRESOLVED, hold kept,
+ * an admin decides. Safe to run repeatedly and from several processes.
+ */
+export async function recoverStuck(db: Db, olderThanSec = 45 * 60): Promise<{ released: number; unresolved: number }> {
+  const rows = (await db.query("select id, tenant_id, state from request where debit is null and state in ('ADMITTED','STREAMING') and created_at < now() - make_interval(secs => $1) order by created_at limit 200", [olderThanSec])).rows;
+  let released = 0, unresolved = 0;
+  for (const r of rows) {
+    await withTx(db, async tx => {
+      const cur = (await tx.query('select state, debit from request where id=$1 for update', [r.id])).rows[0];
+      if (!cur || cur.debit !== null || cur.state !== r.state) return;
+      if (r.state === 'ADMITTED') {
+        const s = await ledger.settleHold(tx, { tenantId: r.tenant_id, requestId: r.id, debit: 0n });
+        if (s.settled) { await tx.query("update request set state='FAILED', debit=0, outcome='recovered_before_first_byte', settled_at=now() where id=$1", [r.id]); released++; }
+      } else { await tx.query("update request set state='UNRESOLVED', outcome='process_lost_mid_stream' where id=$1", [r.id]); unresolved++; }
+      await audit(tx, { actorKind: 'SYSTEM', action: r.state === 'ADMITTED' ? 'request.recover_release' : 'request.mark_unresolved', targetType: 'request', targetId: r.id });
+    });
+  }
+  return { released, unresolved };
+}
+
+export async function listUnresolved(db: Db) {
+  const rows = (await db.query("select r.id, u.username, r.model_id, r.hold, r.max_output, r.created_at from request r join membership m on m.tenant_id=r.tenant_id join app_user u on u.id=m.user_id where r.state='UNRESOLVED' order by r.created_at limit 200")).rows;
+  return { requests: rows.map(r => ({ id: r.id as string, username: r.username as string, model: r.model_id as string, heldMicro: String(r.hold), maxOutput: r.max_output as number, createdAt: (r.created_at as Date).toISOString() })) };
+}
+
+/** Admin decision on an UNRESOLVED request: charge a number of token credits (0 releases the hold), exactly once, with a reason. */
+export async function resolveRequest(db: Db, id: string, b: Record<string, unknown>, actorUser: string) {
+  if (!/^req_[0-9a-f-]{36}$/.test(id)) throw new AppError('not_found', 'Not found', 404);
+  if (typeof b.reason !== 'string' || b.reason.trim().length < 3 || b.reason.length > 500) throw new AppError('invalid_request', 'A reason is required', 400);
+  let debit: bigint; try { debit = creditsToMicro(String(typeof b.debitTokens === 'string' ? b.debitTokens : 'x')); } catch { throw new AppError('invalid_request', 'debitTokens must be a whole number given as a string of digits', 400); }
+  return withTx(db, async tx => {
+    const r = (await tx.query('select tenant_id, state, hold from request where id=$1 for update', [id])).rows[0];
+    if (!r) throw new AppError('not_found', 'Not found', 404);
+    if (r.state !== 'UNRESOLVED') throw new AppError('not_unresolved', 'This request is not waiting for a decision', 409);
+    if (debit > BigInt(r.hold)) throw new AppError('invalid_request', 'The charge cannot exceed the amount held for this request', 400);
+    await ledger.settleHold(tx, { tenantId: r.tenant_id, requestId: id, debit, ref: { requestId: id, resolvedBy: actorUser } });
+    await tx.query("update request set state='RESOLVED', debit=$2, estimated=true, outcome='resolved_by_admin', settled_at=now() where id=$1", [id, String(debit)]);
+    await audit(tx, { actorUser, actorKind: 'ADMIN', action: 'request.resolve', targetType: 'request', targetId: id, summary: { debitMicro: String(debit), reason: (b.reason as string).trim() } });
+    return { id, state: 'RESOLVED', debitMicro: String(debit) };
+  });
 }
