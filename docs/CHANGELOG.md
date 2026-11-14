@@ -1,9 +1,19 @@
 # Changelog: Router AI Komersial
 
-Version: 0.31.0
+Version: 0.32.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.32.0: Bot Telegram aktif; rahasia disalin keluar VPS
+
+CR-030
+Source: founder menyediakan folder rahasia di luar proyek dan berkas token bot (2026-11-14).
+
+- Berkas login admin pertama dan berkas pengaturan VPS (kunci enkripsi, kata sandi database) disalin ke folder rahasia milik founder di luar repo, diverifikasi dengan checksum; berkas login admin di VPS dihapus sesudahnya. Isi tidak pernah ditampilkan.
+- Token dan chat ID bot dimasukkan ke pengaturan VPS (pengaturan lama dicadangkan di VPS), aplikasi dinyalakan ulang, `/readyz` sehat dari dalam dan lewat alamat publik.
+- Kiriman pertama gagal "chat not found" karena founder belum memulai chat dengan bot. Sesudah founder menekan Start, perintah `/status` dijawab bot dengan ringkasan server (E4: diamati founder di Telegram), dan satu pesan uji terkirim.
+- Catatan: total saldo pada `/status` ikut menghitung akun uji yang sudah ditutup (1.999.516 token). Perbaikan agar akun tertutup tidak dihitung belum dipasang.
 
 ## 0.31.0: Terbuka di https://zrouter.web.id
 
@@ -493,4 +503,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.31.0 -->
+<!-- END ROUTER-CHANGELOG v0.32.0 -->
