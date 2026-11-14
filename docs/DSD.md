@@ -1,11 +1,13 @@
 # Design System and Component Specification: Router AI Komersial
 
-Version: 0.2.0
+Version: 0.3.0
 Status: Draft; spesifikasi komponen, belum ada komponen yang dibangun atau diuji
 Owner keputusan: founder
 Updated: 2026-11-13, Asia/Jakarta
 Dependencies: DESIGN.md; UX.md; UI_REFERENCES.md
 Evidence: E1. Kolom verifikasi adalah spesifikasi, bukan hasil.
+
+> **Berlaku sejak 2026-11-14 (CR-027).** CMP-005 MoneyField dipakai untuk harga tampilan paket (Rupiah) saja. Jumlah token (kode redeem, tambah saldo, batas key, batas lebih-pakai) memakai field bilangan bulat token, dikirim sebagai string. Bila isi di bawah bertentangan dengan TOKEN_CREDIT.md, TOKEN_CREDIT.md yang berlaku.
 
 Sumber otoritatif untuk perilaku komponen. Setiap komponen menautkan UAR atau CUSTOM_GAP. API/props final mengikuti stack (ADR-004) dan, pada DIRECT_ADOPTION, mengikuti props yang dideklarasikan sumber; dokumen ini tidak mengarang props UIArc.
 
@@ -132,4 +134,4 @@ Verification: teks alternatif sesuai adegan; tata letak tanpa gambar; ukuran ber
 
 Semua tipe komponen pada layar SCR-001 sampai SCR-018 memiliki CMP dan UAR atau CUSTOM_GAP. Belum ada: props final, source UIArc yang diperiksa, katalog komponen, dan hasil uji. Komponen dinyatakan selesai hanya pada tahap implementasi dengan bukti verifikasi.
 
-<!-- END ROUTER-DSD v0.2.0 -->
+<!-- END ROUTER-DSD v0.3.0 -->

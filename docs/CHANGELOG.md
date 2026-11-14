@@ -1,9 +1,18 @@
 # Changelog: Router AI Komersial
 
-Version: 0.28.0
+Version: 0.29.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.29.0: Uji alur lengkap lewat container; penanda dokumen lama
+
+CR-027
+Source: founder menyetujui urutan pekerjaan tanpa menunggu agen web (2026-11-14).
+
+- `server/scripts/e2e-container.ts`: memeriksa deployment yang sedang berjalan lewat HTTP saja. Dijalankan terhadap image yang dibangun ulang dari kode terkini, pada database kosong: 29 dari 29 langkah lulus. Cakupan: bootstrap admin di dalam container, login dan faktor kedua, undangan dengan tautan manual, aktivasi, paket, kode redeem dan replay, API key, pendaftaran upstream nyata, harga x2, route tiga permukaan, satu request nyata per permukaan (semua SETTLED, tanpa estimasi), saldo sama dengan redeem dikurangi tagihan, pemakaian admin cocok, ledger, audit tanpa secret, dan web tersaji dengan CSP. Pemeriksa invariant di dalam container bersih.
+- Belum tercakup oleh uji ini: Caddy dan TLS, email nyata, bot Telegram di dalam container, interaksi browser.
+- Dokumen lama diberi penanda di bagian atas yang menyebut apa saja di dalamnya yang digantikan TOKEN_CREDIT.md dan keputusan sesudahnya: BILLING_REDEEM, PLANNING, ARCHITECTURE, UX, DSD, DISCOVERY, ADAPTERS. Isi lama tidak ditulis ulang; penanda menyatakan mana yang berlaku. CHK-40 tetap PENDING sampai FR-003 (margin) dirancang ulang untuk kredit token.
 
 ## 0.28.0: Uji dengan tool sungguhan
 
@@ -458,4 +467,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.28.0 -->
+<!-- END ROUTER-CHANGELOG v0.29.0 -->

@@ -1,12 +1,14 @@
 # Discovery: Router AI Komersial
 
-Version: 0.2.3
+Version: 0.3.0
 Status: Draft, belum disetujui sebagai blueprint
 Owner keputusan: founder
 Tanggal: 2026-11-13, Asia/Jakarta
 Kontrak: PLANNING_v7.0.md v7.0.0
 Scope: discovery dan perencanaan saja, tanpa implementasi/deployment
 Gate: A diperbarui dengan model usaha terkonfirmasi; Gate B belum ditetapkan
+
+> **Berlaku sejak 2026-11-14 (CR-027).** Dokumen tahap awal. Keputusan sesudahnya mengubah beberapa hal di sini: saldo adalah kredit token (TOKEN_CREDIT.md), upstream difinalkan founder (CR-014), dan tiga permukaan protokol sudah dibangun. Baca PROJECT_MANIFEST.md untuk keadaan terkini. Bila isi di bawah bertentangan dengan TOKEN_CREDIT.md, TOKEN_CREDIT.md yang berlaku.
 
 ## 1. Hasil intake
 
@@ -324,4 +326,4 @@ Dokumen ini tidak dinilai implementation-ready. FR/AC/task/test awal hanya menca
 [10] https://uiarc.dev/components/blocks/login-centered/markdown — UIArc Login centered
 [11] https://uiarc.dev/license — UIArc license
 
-<!-- END ROUTER-DISCOVERY v0.2.3 -->
+<!-- END ROUTER-DISCOVERY v0.3.0 -->

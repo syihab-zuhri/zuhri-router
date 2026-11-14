@@ -1,11 +1,13 @@
 # UX: Router AI Komersial
 
-Version: 0.4.0
+Version: 0.5.0
 Status: Draft, PROPOSED; spesifikasi alur dan layar, belum ada desain visual atau prototipe
 Owner keputusan: founder
 Updated: 2026-11-13, Asia/Jakarta
 Dependencies: PLANNING.md; SECURITY.md; ARCHITECTURE.md; UI_REFERENCES.md; BILLING_REDEEM.md section 5
 Evidence: E1.
+
+> **Berlaku sejak 2026-11-14 (CR-027).** Semua nominal pada layar dan teks adalah token, bukan Rupiah; Rupiah hanya muncul sebagai harga tampilan paket. Teks contoh yang menyebut {nominal} dibaca sebagai jumlah token. Bila isi di bawah bertentangan dengan TOKEN_CREDIT.md, TOKEN_CREDIT.md yang berlaku.
 
 Sumber otoritatif untuk information architecture, alur, inventaris layar, state dan copy. SCR-001 sampai SCR-003 didefinisikan di BILLING_REDEEM.md section 5 dan tidak diulang; dokumen ini menambah SCR-004 sampai SCR-018. Nilai visual ada di DESIGN.md dan perilaku komponen di DSD.md.
 
@@ -169,4 +171,4 @@ Maskot tidak pernah menjadi satu-satunya pembawa informasi: setiap ilustrasi mem
 - SCR-012 memuat satu bagian per tool target (Hermes, OpenCode, ZCode, Codex, Claude Code); bagian sebuah tool baru tampil setelah fixture-nya lulus, dan menyebut model mana yang dapat dipakai tool itu.
 - Kebijakan tampilan request belum final: OQ-006.
 
-<!-- END ROUTER-UX v0.4.0 -->
+<!-- END ROUTER-UX v0.5.0 -->

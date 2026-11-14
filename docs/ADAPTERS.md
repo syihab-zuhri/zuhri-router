@@ -1,11 +1,13 @@
 # Kontrak Adapter Upstream: Router AI Komersial
 
-Version: 0.2.0
+Version: 0.3.0
 Status: Draft; disusun dari dokumentasi, belum ada request yang dikirim ke upstream mana pun
 Owner keputusan: founder
 Updated: 2026-11-13, Asia/Jakarta
 Dependencies: ARCHITECTURE.md section 2, 3, 6 dan ADR-002; BILLING_REDEEM.md section 2
 Evidence: E2 untuk isi dokumentasi DeepSeek pada evidence/2026-11-13-upstream/. Perilaku runtime belum diamati.
+
+> **Berlaku sejak 2026-11-14 (CR-027).** Biaya upstream dalam dokumen ini (USD atau Rupiah) adalah biaya modal, bukan unit saldo pelanggan. Saldo pelanggan adalah kredit token (TOKEN_CREDIT.md). Kontrak di sini berasal dari dokumentasi; perilaku nyata yang sudah diamati tercatat di CHANGELOG CR-017 sampai CR-026 untuk router milik founder. Bila isi di bawah bertentangan dengan TOKEN_CREDIT.md, TOKEN_CREDIT.md yang berlaku.
 
 Sumber otoritatif untuk semantic per upstream: pemetaan usage ke kategori biaya, endpoint per protokol, error, batas dan hal yang belum diketahui. Satu section per upstream. DeepSeek dan Dahono Router memiliki dokumentasi terbaca; "API dari Codex" belum dapat ditulis (OQ-007).
 
@@ -139,4 +141,4 @@ Path dan header permukaan Anthropic; field usage dan cache; batas laju dan konku
 
 Belum dapat ditulis. Founder menyatakan sebagian berupa API berbayar dan sebagian dari langganan. Kontrak adapter hanya ditulis untuk penyedia berautentikasi API key berbayar, setelah nama dan dokumentasinya diberikan. Akses dari akun langganan atau login tidak diberi adapter (PLANNING.md RSK-016).
 
-<!-- END ROUTER-ADAPTERS v0.2.0 -->
+<!-- END ROUTER-ADAPTERS v0.3.0 -->

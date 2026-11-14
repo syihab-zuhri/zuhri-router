@@ -1,12 +1,14 @@
 # Planning: Router AI Komersial
 
-Version: 0.4.1
+Version: 0.5.0
 Status: Draft, basis blueprint; belum disetujui founder
 Owner keputusan: founder
 Updated: 2026-11-13, Asia/Jakarta
 Kontrak: ../PLANNING_v7.0.md v7.0.0
 Dependencies: DISCOVERY.md v0.2.0; BILLING_REDEEM.md v0.1.0
 Evidence: E1 (rencana). Tidak ada kode, test aplikasi, atau deployment.
+
+> **Berlaku sejak 2026-11-14 (CR-027).** Saldo adalah kredit token; "saldo Rupiah pada MVP" di section 1 dan ADR-005 pada section 6 digantikan TOKEN_CREDIT.md. Rupiah hanya harga tampilan paket. Voucher promo yang tercantum sebagai P1 sudah tersedia sebagai kode jenis PROMO (CR-014). Status implementasi terkini ada di TASKS.md, bukan di dokumen ini. Bila isi di bawah bertentangan dengan TOKEN_CREDIT.md, TOKEN_CREDIT.md yang berlaku.
 
 Dokumen ini sumber otoritatif untuk tujuan, scope rilis, FR/NFR dan AC di luar scope billing/redeem. FR-001 sampai FR-005 tetap kanonis di BILLING_REDEEM.md dan tidak didefinisikan ulang di sini.
 
@@ -220,4 +222,4 @@ Pertanyaan terbuka tambahan:
 
 Paket ini menaikkan dasar perencanaan ke arah Gate B untuk scope pilot. Gate C belum tercapai: OQ-007 belum lengkap, ADR-004 belum divalidasi spike, DESIGN/DSD belum ditulis, dan kontrak adapter per provider belum bisa ditulis sebelum upstream diketahui. Penilaian rinci ada di PROJECT_MANIFEST.md.
 
-<!-- END ROUTER-PLANNING v0.4.1 -->
+<!-- END ROUTER-PLANNING v0.5.0 -->

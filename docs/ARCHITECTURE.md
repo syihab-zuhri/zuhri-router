@@ -1,11 +1,13 @@
 # Architecture, Data dan Interface: Router AI Komersial
 
-Version: 0.6.0
+Version: 0.7.0
 Status: Draft; stack disetujui, API M1 lokal diimplementasikan; gateway dan UI belum
 Owner keputusan: founder
 Updated: 2026-11-14, Asia/Jakarta
 Dependencies: PLANNING.md; BILLING_REDEEM.md; SECURITY.md
 Evidence: E3 untuk test API M1 dan spike yang cakupannya tercatat di README masing-masing; kontrak fitur lain tetap rencana.
+
+> **Berlaku sejak 2026-11-14 (CR-027).** ADR-005 (saldo Rupiah, mikro-IDR) digantikan TOKEN_CREDIT.md: unit internal adalah mikro-kredit token. Kata "uang" pada section 3 dan 4 dibaca sebagai kredit token. Bound input untuk hold adalah jumlah byte request (CR-016) dan input yang ditagih dibatasi nilai itu (CR-018). Section 5 mendaftar operasi yang direncanakan; rute yang benar-benar ada tercatat di ../server/src/http/app.ts dan handoff/claude-log.md. Bila isi di bawah bertentangan dengan TOKEN_CREDIT.md, TOKEN_CREDIT.md yang berlaku.
 
 Sumber otoritatif untuk topologi, siklus hidup request, kontrak data, daftar operasi interface, register upstream dan ADR. Rumus harga dan aturan voucher tetap di BILLING_REDEEM.md. Izin tiap operasi dirujuk ke SECURITY.md section 2.
 
@@ -351,4 +353,4 @@ Kesetaraan model lintas upstream: dua route untuk satu model publik (misalnya mo
 
 Di luar P0: mengganti ke model lain saat model yang diminta gagal; routing berdasarkan isi prompt; pembobotan berdasarkan latensi terukur. Model alias yang secara terbuka dinyatakan dapat dilayani beberapa model (seperti alias otomatis) adalah kandidat P1 dan hanya dengan persetujuan eksplisit pelanggan lewat pemilihan alias itu.
 
-<!-- END ROUTER-ARCHITECTURE v0.6.0 -->
+<!-- END ROUTER-ARCHITECTURE v0.7.0 -->

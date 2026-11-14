@@ -1,11 +1,13 @@
 # Kontrak awal: Top-up Redeem dan Multiplier Model
 
-Version: 0.1.1
+Version: 0.2.0
 Status: Draft, specification saja; belum diimplementasikan
 Owner keputusan bisnis/admin: founder
 Updated: 2026-11-13, Asia/Jakarta
 Dependencies: DISCOVERY.md; PROJECT_MANIFEST.md; ../PLANNING_v7.0.md
 Evidence: E1 untuk spesifikasi; E2 untuk dokumentasi UIArc yang dikutip; bukan hasil test aplikasi
+
+> **Berlaku sejak 2026-11-14 (CR-027).** Unit saldo adalah kredit token, bukan Rupiah. Section 2.2 dan 2.3 (tarif Rupiah per kategori, contoh Rp68 menjadi Rp102, presisi mikro-IDR) tetap berlaku hanya sebagai aritmetika mesin harga; model tagihan produk ada di TOKEN_CREDIT.md. Nominal kode redeem pada FR-004 dan FR-005 adalah jumlah token. FR-003 (margin dalam Rupiah) belum dirancang ulang untuk kredit token dan belum diimplementasikan. Tidak ada status DRAFT pada kode (CR-014). Input yang ditagih dibatasi ukuran request (CR-018). Bila isi di bawah bertentangan dengan TOKEN_CREDIT.md, TOKEN_CREDIT.md yang berlaku.
 
 ## 1. Keputusan founder dan batas interpretasi
 
@@ -208,4 +210,4 @@ Rollout: synthetic fixture dan database test terisolasi dahulu; tidak issue kode
 - Tidak memerlukan gateway/payment callback untuk top-up manual P0. Otomasi gateway hanya future change request bila founder memintanya.
 - Referensi dan perhitungan contoh dapat diperiksa, tetapi correctness/concurrency/security dari software baru hanya dibuktikan setelah implementasi dan test nyata.
 
-<!-- END BILLING-REDEEM v0.1.1 -->
+<!-- END BILLING-REDEEM v0.2.0 -->

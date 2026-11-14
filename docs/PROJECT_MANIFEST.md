@@ -1,6 +1,6 @@
 # Project Manifest: Router AI Komersial
 
-Version: 0.28.0
+Version: 0.29.0
 Status: Draft
 Owner keputusan: founder
 Updated: 2026-11-14, Asia/Jakarta
@@ -46,20 +46,20 @@ Nilai non-null untuk profile/risk/surface/lifecycle/runtime/release/strategy mer
 | Artefak | Version/status | Domain otoritatif | Dependency |
 |---|---|---|---|
 | ../PLANNING_v7.0.md, ../STARTER_PROMPT_v7.0.md | v7.0.0, input milik user | Kontrak kerja | Jangan diubah |
-| DISCOVERY.md | v0.2.3 Draft | Brief, tailoring, arah bisnis, register ASM-001 sampai 004, RSK-001 sampai 007, OQ-001 sampai 004, UAR-001 sampai 006 | Input dan evidence |
-| BILLING_REDEEM.md | v0.1.1 Draft | Rumus harga/multiplier, metering, voucher, redeem; FR-001 sampai 005, AC/TASK/TEST-001 sampai 005; SCR-001 sampai 003; UAR-007 sampai 010 | DISCOVERY |
-| PLANNING.md | v0.4.1 Draft | Tujuan, scope rilis, applicability P0, FR-006 sampai 019, AC-006 sampai 019, NFR, milestone, ASM-005 sampai 008, RSK-008 sampai 016, OQ-005 sampai 008, ASM-009 | DISCOVERY, BILLING_REDEEM |
-| ARCHITECTURE.md | v0.6.0 Draft | Topologi, siklus hidup request, admission, kontrak data, operasi API-001 sampai 040, matriks protokol per tool, register upstream, ADR-001 sampai 005, operasi minimum | PLANNING, BILLING_REDEEM |
+| DISCOVERY.md | v0.3.0 Draft | Brief, tailoring, arah bisnis, register ASM-001 sampai 004, RSK-001 sampai 007, OQ-001 sampai 004, UAR-001 sampai 006 | Input dan evidence |
+| BILLING_REDEEM.md | v0.2.0 Draft | Rumus harga/multiplier, metering, voucher, redeem; FR-001 sampai 005, AC/TASK/TEST-001 sampai 005; SCR-001 sampai 003; UAR-007 sampai 010 | DISCOVERY |
+| PLANNING.md | v0.5.0 Draft | Tujuan, scope rilis, applicability P0, FR-006 sampai 019, AC-006 sampai 019, NFR, milestone, ASM-005 sampai 008, RSK-008 sampai 016, OQ-005 sampai 008, ASM-009 | DISCOVERY, BILLING_REDEEM |
+| ARCHITECTURE.md | v0.7.0 Draft | Topologi, siklus hidup request, admission, kontrak data, operasi API-001 sampai 040, matriks protokol per tool, register upstream, ADR-001 sampai 005, operasi minimum | PLANNING, BILLING_REDEEM |
 | SECURITY.md | v0.3.1 Draft | Peran dan izin, THR/CTL-001 sampai 018, ABU-001 sampai 008, kebijakan data, standar | PLANNING, ARCHITECTURE |
-| UX.md | v0.4.0 Draft | IA, SCR-004 sampai 018, FLOW-001 sampai 008, state, copy | PLANNING, SECURITY, UI_REFERENCES |
+| UX.md | v0.5.0 Draft | IA, SCR-004 sampai 018, FLOW-001 sampai 008, state, copy | PLANNING, SECURITY, UI_REFERENCES |
 | UI_REFERENCES.md | v0.3.0 Draft | Provenance UIArc: indeks UAR-001 sampai 010, definisi UAR-011 sampai 043, CUSTOM_GAP navigasi | UX, evidence |
 | TASKS.md | v0.17.0 Draft | Status eksekusi, TASK-006 sampai 028, TEST-006 sampai 020, traceability P0 | Semua di atas |
 | TOKEN_CREDIT.md | v0.3.0 Draft | Unit saldo kredit token dan cara tagih; mengalahkan dokumen lain soal unit | BILLING_REDEEM, ARCHITECTURE |
-| CHANGELOG.md | v0.28.0 Recorded | Riwayat perubahan dan keputusan | – |
-| PROJECT_MANIFEST.md | v0.28.0 Draft | Registry, kesiapan, resume pointer | – |
+| CHANGELOG.md | v0.29.0 Recorded | Riwayat perubahan dan keputusan | – |
+| PROJECT_MANIFEST.md | v0.29.0 Draft | Registry, kesiapan, resume pointer | – |
 | DESIGN.md | v0.2.0 Draft | Makna dan nilai awal token visual, strategi UIArc, kontras terhitung, lapisan brand anime editorial dan analisis gambar referensi | UX, UI_REFERENCES |
-| DSD.md | v0.2.0 Draft | Perilaku komponen CMP-001 sampai 037 | DESIGN, UX, UI_REFERENCES |
-| ADAPTERS.md | v0.2.0 Draft | Semantic per upstream: DeepSeek dan Dahono Router, dari dokumentasi | ARCHITECTURE, BILLING_REDEEM |
+| DSD.md | v0.3.0 Draft | Perilaku komponen CMP-001 sampai 037 | DESIGN, UX, UI_REFERENCES |
+| ADAPTERS.md | v0.3.0 Draft | Semantic per upstream: DeepSeek dan Dahono Router, dari dokumentasi | ARCHITECTURE, BILLING_REDEEM |
 | ../AGENTS.md | v0.3.0 Draft | Instruksi agen coding: urutan baca, invariant, aturan UI, Definition of Done | Semua dokumen |
 | ../server/ | M1 sebagian, kode produksi | Skema, ledger, akun, sesi, admin, audit, API; README.md dan test-result.txt | ARCHITECTURE, SECURITY, BILLING_REDEEM |
 | ../spike/ | Selesai, bukan produksi | Kode dan bukti spike TASK-006: README.md, test-result.txt, bench-result.json | ARCHITECTURE |
@@ -135,7 +135,7 @@ Pemeriksaan lintas dokumen (penilaian manual kecuali disebut deterministik):
 
 ## Resume pointer
 
-Terakhir selesai (2026-11-14): CR-026: Codex, Claude Code dan OpenCode terbukti berjalan lewat gateway lokal ke upstream nyata. Sebelumnya: CR-024: bot Telegram pemantau dan unggah backup ke Google Drive; 128 test lulus. Sebelumnya: CR-022: persiapan deploy (image dan compose di deploy/, diuji lokal); 124 test lulus. Deploy menunggu info server dan izin founder. Sebelumnya: CR-020: permukaan Responses; 119 test lulus. Berikutnya persiapan deploy (menunggu info server dari founder) dan margin guard. Sebelumnya: CR-019: batas laju gateway dan pemulihan request terputus; 118 test lulus. Berikutnya permukaan Responses, lalu persiapan deploy. Sebelumnya: CR-018: input yang ditagih dibatasi ukuran request; 116 test lulus. Sebelumnya: CR-017: uji asap upstream nyata lewat gateway lokal berhasil; temuan token input tambahan dari upstream pada non-stream menunggu keputusan founder. Sebelumnya: CR-016: inti gateway terhadap upstream tiruan (115 test lulus), repo di-push. Berikutnya: uji asap terhadap upstream nyata dengan izin founder, margin guard, permukaan Responses. Sebelumnya: CR-015: registry upstream di server (102 test lulus), web oleh Hermes di ../web/, Git lokal. Berikutnya inti gateway (TASK-012) terhadap upstream tiruan. Sebelumnya: CR-014: upstream Dahono dan DeepSeek difinalkan founder; paket token dan kode redeem di backend (95 test lulus). Berikutnya TASK-013 registry upstream, lalu inti gateway. Sebelumnya: CR-013 saldo kredit token (86 test lulus); baca TOKEN_CREDIT.md sebelum dokumen billing lain. Sebelumnya: pengirim email SMTP dan pencatatan CR-012 (domain zrouter.web.id, Gmail SMTP, promo sebagai OQ-009); 81 test lulus. Sebelumnya: backend TASK-001 harga dan multiplier; 78 test lulus; berikutnya TASK-013 registry upstream. Sebelumnya: sisa API M1 di ../server/ (suspend/restore, guard admission, adjustment, penutupan akun); 69 test lulus. Backend TASK-010 API key juga selesai; berikutnya TASK-001 harga dan multiplier sesuai ../HANDOFF.md. Job retensi masih menunggu keputusan founder; tidak ada upstream eligible atau UI.
+Terakhir selesai (2026-11-14): CR-027: alur lengkap lewat container 29/29; dokumen lama diberi penanda kredit token. Sebelumnya: CR-026: Codex, Claude Code dan OpenCode terbukti berjalan lewat gateway lokal ke upstream nyata. Sebelumnya: CR-024: bot Telegram pemantau dan unggah backup ke Google Drive; 128 test lulus. Sebelumnya: CR-022: persiapan deploy (image dan compose di deploy/, diuji lokal); 124 test lulus. Deploy menunggu info server dan izin founder. Sebelumnya: CR-020: permukaan Responses; 119 test lulus. Berikutnya persiapan deploy (menunggu info server dari founder) dan margin guard. Sebelumnya: CR-019: batas laju gateway dan pemulihan request terputus; 118 test lulus. Berikutnya permukaan Responses, lalu persiapan deploy. Sebelumnya: CR-018: input yang ditagih dibatasi ukuran request; 116 test lulus. Sebelumnya: CR-017: uji asap upstream nyata lewat gateway lokal berhasil; temuan token input tambahan dari upstream pada non-stream menunggu keputusan founder. Sebelumnya: CR-016: inti gateway terhadap upstream tiruan (115 test lulus), repo di-push. Berikutnya: uji asap terhadap upstream nyata dengan izin founder, margin guard, permukaan Responses. Sebelumnya: CR-015: registry upstream di server (102 test lulus), web oleh Hermes di ../web/, Git lokal. Berikutnya inti gateway (TASK-012) terhadap upstream tiruan. Sebelumnya: CR-014: upstream Dahono dan DeepSeek difinalkan founder; paket token dan kode redeem di backend (95 test lulus). Berikutnya TASK-013 registry upstream, lalu inti gateway. Sebelumnya: CR-013 saldo kredit token (86 test lulus); baca TOKEN_CREDIT.md sebelum dokumen billing lain. Sebelumnya: pengirim email SMTP dan pencatatan CR-012 (domain zrouter.web.id, Gmail SMTP, promo sebagai OQ-009); 81 test lulus. Sebelumnya: backend TASK-001 harga dan multiplier; 78 test lulus; berikutnya TASK-013 registry upstream. Sebelumnya: sisa API M1 di ../server/ (suspend/restore, guard admission, adjustment, penutupan akun); 69 test lulus. Backend TASK-010 API key juga selesai; berikutnya TASK-001 harga dan multiplier sesuai ../HANDOFF.md. Job retensi masih menunggu keputusan founder; tidak ada upstream eligible atau UI.
 
 Keputusan dan tindakan founder yang dibutuhkan, urut dampak:
 1. Hak menjual kembali: mendaftar program reseller Dahono atau meminta konfirmasi tertulis bahwa gateway sendiri diperbolehkan; DeepSeek Terms of Use perlu dibaca.
@@ -153,4 +153,4 @@ Baca untuk melanjutkan: ../HANDOFF.md, ../AGENTS.md, manifest ini, TASKS.md dan 
 
 Tidak ada layanan, credential, DNS, atau sumber upstream milik user yang disentuh. Tidak ada komitmen harga, kapasitas, jadwal, pembelian, atau rilis.
 
-<!-- END ROUTER-MANIFEST v0.28.0 -->
+<!-- END ROUTER-MANIFEST v0.29.0 -->
