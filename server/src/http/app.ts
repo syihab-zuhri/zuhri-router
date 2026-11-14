@@ -8,10 +8,11 @@ import * as keys from '../keys.ts';
 import * as pricing from '../pricing.ts';
 import * as vouchers from '../vouchers.ts';
 import * as upstreams from '../upstreams.ts';
+import { registerGateway, listRequests, type GatewayDeps } from '../gateway.ts';
 import { systemResolver, type Resolver } from '../netguard.ts';
 import { creditsToMicro } from '../money.ts';
 
-export type AppDeps = { db: Db; key: Buffer; mailer: identity.Mailer; secureCookies: boolean; logger?: boolean; resolveHost?: Resolver };
+export type AppDeps = { db: Db; key: Buffer; mailer: identity.Mailer; secureCookies: boolean; logger?: boolean; resolveHost?: Resolver; gateway?: Partial<GatewayDeps> };
 
 const CUSTOMER_COOKIE = 'sid', ADMIN_COOKIE = 'asid';
 const str = (v: unknown, max = 500): string => { if (typeof v !== 'string' || v.length > max) throw new AppError('invalid_request', 'Invalid request', 400); return v; };
@@ -39,6 +40,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   // State-changing requests must carry a custom header. Browsers cannot add it cross-site without a CORS preflight, and no CORS is enabled.
   app.addHook('preHandler', async req => {
+    if (req.url.startsWith('/v1/')) return; // API-key surface: no cookies are read there, so there is nothing for CSRF to ride on
     if (req.method !== 'GET' && req.method !== 'HEAD' && req.headers['x-router-csrf'] !== '1') throw new AppError('csrf', 'Missing request header', 403);
   });
   app.addHook('onSend', async (_req, reply) => { reply.header('cache-control', 'no-store'); reply.header('x-content-type-options', 'nosniff'); });
@@ -50,6 +52,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   };
   const adminSession = (req: FastifyRequest) => identity.authenticate(db, req.cookies[ADMIN_COOKIE], 'ADMIN', admin.ADMIN_LIMITS.idleHours);
   const body = (req: FastifyRequest) => (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+
+  registerGateway(app, { db, key, resolveHost, ...(deps.gateway ?? {}) });
 
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/readyz', async (_req, reply) => { try { await db.query('select 1'); return { ok: true }; } catch { return reply.code(503).send({ ok: false }); } });
@@ -130,6 +134,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const p = await customer(req); const b = await ledger.getBalance(db, p.tenantId);
     return { currency: b.currency, postedMicro: String(b.posted), heldMicro: String(b.held), availableMicro: String(b.available) };
   });
+  app.get('/api/requests', async req => { const p = await customer(req); return listRequests(db, p.tenantId, req.query as { before?: string; limit?: string }); });
   app.get('/api/ledger', async req => {
     const p = await customer(req); const q = req.query as { before?: string; limit?: string };
     const entries = await ledger.listEntries(db, p.tenantId, { before: q.before, limit: q.limit ? Number(q.limit) : undefined });

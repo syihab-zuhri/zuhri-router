@@ -20,11 +20,11 @@ export async function setup(): Promise<{ db: Db; app: FastifyInstance }> {
   await migrate(db);
   // Existing suites assert strict balance limits, so they run with no overrun allowance. test/overdraft.test.ts covers the allowance.
   await db.query("update system_setting set value=0 where name='overdraft_micro'");
-  const app = await buildApp({ db, key: KEY, mailer, secureCookies: false, resolveHost: fakeResolver });
+  const app = await buildApp({ db, key: KEY, mailer, secureCookies: false, resolveHost: fakeResolver, gateway: { unsafeAllowAnyUpstreamUrl: true, firstByteTimeoutMs: 800, idleTimeoutMs: 1500 } });
   return { db, app };
 }
 export async function wipe(db: Db) {
-  await db.query('truncate route, upstream, redemption, voucher, token_pack, price_version, public_model, api_key, retired_username, rate_limit, idempotency_record, hold, password_reset, session, invite, admin_recovery_code, admin_credential, membership, ledger_entry, ledger_account, audit_event, tenant, app_user cascade');
+  await db.query('truncate attempt, request, route, upstream, redemption, voucher, token_pack, price_version, public_model, api_key, retired_username, rate_limit, idempotency_record, hold, password_reset, session, invite, admin_recovery_code, admin_credential, membership, ledger_entry, ledger_account, audit_event, tenant, app_user cascade');
   mail.invites.length = 0; mail.resets.length = 0;
 }
 

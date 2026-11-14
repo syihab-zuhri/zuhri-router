@@ -1,0 +1,242 @@
+// TASK-012 / FR-011: inference gateway. Same-protocol pass-through with admission, fallback before the first byte,
+// and exactly-once settlement in token credits. See docs/ARCHITECTURE.md sections 2, 3, 10 and docs/TOKEN_CREDIT.md.
+// Not here yet: Responses surface, margin guard, per-route concurrency limits, persistent circuit state, recovery worker.
+import crypto from 'node:crypto';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { AppError, withTx, type Db } from './db/pool.ts';
+import * as keys from './keys.ts';
+import * as ledger from './ledger.ts';
+import * as pricing from './pricing.ts';
+import * as upstreams from './upstreams.ts';
+import { debitMicro, holdMicro, type Price, type Usage } from './money.ts';
+import { assertSafeUpstreamUrl, type Resolver } from './netguard.ts';
+
+export type GatewayDeps = { db: Db; key: Buffer; resolveHost: Resolver; firstByteTimeoutMs?: number; idleTimeoutMs?: number; maxAttempts?: number;
+  /** Test-only: skip the base URL guard so a loopback mock upstream can be used. Never set from configuration. */ unsafeAllowAnyUpstreamUrl?: boolean };
+type Surface = 'CHAT' | 'ANTHROPIC';
+export const GATEWAY_LIMITS = { bodyBytes: 8 * 1024 * 1024, defaultMaxOutput: 4096, maxOutputCap: 393_216, nonStreamBytes: 16 * 1024 * 1024 };
+
+const errBody = (s: Surface, code: string, message: string) => (s === 'ANTHROPIC' ? { type: 'error', error: { type: code, message } } : { error: { code, type: code, message } });
+// Product error codes (docs/ARCHITECTURE.md section 5.1). Internal codes are mapped so no upstream detail leaks.
+const PUBLIC: Record<string, [number, string]> = { auth_invalid: [401, 'auth_invalid'], key_revoked: [401, 'key_revoked'], tenant_suspended: [403, 'tenant_suspended'], model_not_available: [404, 'model_not_available'], insufficient_balance: [402, 'insufficient_balance'], limit_exceeded: [429, 'limit_exceeded'], invalid_request: [400, 'invalid_request'] };
+
+/** Usage normaliser v1. Returns null when the shape is inconsistent; that becomes an estimate, never a guess. */
+export function normalizeUsage(s: Surface, raw: any): Usage | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const n = (v: any) => (Number.isSafeInteger(v) && v >= 0 ? (v as number) : null);
+  if (s === 'CHAT') {
+    const total = n(raw.prompt_tokens), out = n(raw.completion_tokens);
+    const hit = n(raw.prompt_cache_hit_tokens ?? raw.prompt_tokens_details?.cached_tokens ?? 0);
+    if (total === null || out === null || hit === null || hit > total) return null;
+    if (raw.prompt_cache_miss_tokens !== undefined && n(raw.prompt_cache_miss_tokens) !== total - hit) return null; // inclusive total must equal hit + miss
+    return { input: total - hit, output: out, cacheRead: hit, cacheWrite: 0 };
+  }
+  const inp = n(raw.input_tokens), out = n(raw.output_tokens), hit = n(raw.cache_read_input_tokens ?? 0), write = n(raw.cache_creation_input_tokens ?? 0);
+  if (inp === null || out === null || hit === null || write === null) return null;
+  return { input: inp, output: out, cacheRead: hit, cacheWrite: write }; // Anthropic-style input_tokens already excludes cache
+}
+
+/** Reads SSE as it passes through, without changing a byte: collects usage, counts content, sees the end marker. */
+class StreamObserver {
+  private buf = ''; private dec = new TextDecoder();
+  usageRaw: any = null; contentChars = 0; done = false; s: Surface;
+  constructor(s: Surface) { this.s = s; }
+  push(chunk: Uint8Array) {
+    this.buf += this.dec.decode(chunk, { stream: true }).replace(/\r\n/g, '\n');
+    for (let i; (i = this.buf.indexOf('\n\n')) >= 0;) { this.event(this.buf.slice(0, i)); this.buf = this.buf.slice(i + 2); }
+    if (this.buf.length > 4_000_000) this.buf = ''; // malformed stream: stop buffering; usage will be missing and settle as an estimate
+  }
+  private event(block: string) {
+    const data = block.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).join('\n');
+    if (!data) return;
+    if (data === '[DONE]') { this.done = true; return; }
+    let j: any; try { j = JSON.parse(data); } catch { return; }
+    if (this.s === 'CHAT') {
+      if (j.usage) this.usageRaw = j.usage;
+      const d = j.choices?.[0]?.delta;
+      for (const t of [d?.content, d?.reasoning_content]) if (typeof t === 'string') this.contentChars += t.length;
+      for (const tc of d?.tool_calls ?? []) if (typeof tc?.function?.arguments === 'string') this.contentChars += tc.function.arguments.length;
+    } else {
+      if (j.type === 'message_start' && j.message?.usage) this.usageRaw = { ...j.message.usage };
+      if (j.type === 'message_delta' && j.usage) this.usageRaw = { ...(this.usageRaw ?? {}), ...j.usage };
+      if (j.type === 'content_block_delta') for (const t of [j.delta?.text, j.delta?.thinking, j.delta?.partial_json]) if (typeof t === 'string') this.contentChars += t.length;
+      if (j.type === 'message_stop') this.done = true;
+    }
+  }
+}
+
+// In-memory route health (one process). Opens after repeated failures; 401/402 from an upstream needs the admin, so it stays open longer.
+const health = new Map<string, { fails: number; openUntil: number }>();
+const routeOpen = (id: string) => (health.get(id)?.openUntil ?? 0) > Date.now();
+function routeFailed(id: string, status?: number) {
+  const h = health.get(id) ?? { fails: 0, openUntil: 0 }; h.fails++;
+  if (status === 401 || status === 402) h.openUntil = Date.now() + 5 * 60_000; else if (h.fails >= 3) h.openUntil = Date.now() + 30_000;
+  health.set(id, h);
+}
+export const resetRouteHealth = () => health.clear();
+
+export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
+  const { db } = deps; const firstByteMs = deps.firstByteTimeoutMs ?? 60_000, idleMs = deps.idleTimeoutMs ?? 120_000, maxAttempts = deps.maxAttempts ?? 3;
+
+  const secretOf = (req: FastifyRequest) => { const a = req.headers.authorization; const x = req.headers['x-api-key']; return typeof a === 'string' && /^Bearer\s+/i.test(a) ? a.replace(/^Bearer\s+/i, '') : typeof x === 'string' ? x : ''; };
+  const fail = (reply: FastifyReply, s: Surface, status: number, code: string, message: string, requestId?: string, retryAfter?: number) => {
+    if (requestId) reply.header('x-request-id', requestId); if (retryAfter) reply.header('retry-after', String(retryAfter));
+    return reply.code(status).send(errBody(s, code, message));
+  };
+  const failApp = (reply: FastifyReply, s: Surface, e: unknown, requestId?: string) => {
+    if (e instanceof AppError && PUBLIC[e.code]) return fail(reply, s, PUBLIC[e.code][0], PUBLIC[e.code][1], e.message, requestId);
+    if (e instanceof AppError && e.code === 'rate_limited') return fail(reply, s, 429, 'limit_exceeded', e.message, requestId, e.retryAfterSec);
+    app.log.error({ code: (e as any)?.code, name: (e as any)?.name }, 'gateway error');
+    return fail(reply, s, 503, 'internal_error', 'Service unavailable', requestId); // ledger or database trouble: refuse, never let a billable request through
+  };
+
+  async function settle(a: { requestId: string; tenantId: string; price: Price; usage: Usage | null; estimated: boolean; state: string; usageRaw: unknown; outcome: string }) {
+    const debit = a.usage ? debitMicro(a.usage, a.price) : 0n;
+    await withTx(db, async tx => {
+      const r = await ledger.settleHold(tx, { tenantId: a.tenantId, requestId: a.requestId, debit, ref: { requestId: a.requestId } });
+      if (!r.settled) return; // already settled: nothing to do
+      await tx.query('update request set state=$2, debit=$3, estimated=$4, bound_exceeded=$5, usage_raw=$6, usage_norm=$7, outcome=$8, settled_at=now() where id=$1',
+        [a.requestId, a.state, String(debit), a.estimated, r.boundExceeded, a.usageRaw === null || a.usageRaw === undefined ? null : JSON.stringify(a.usageRaw), a.usage ? JSON.stringify(a.usage) : null, a.outcome]);
+    });
+  }
+
+  async function handle(s: Surface, req: FastifyRequest, reply: FastifyReply) {
+    const secret = secretOf(req);
+    const json = req.body as Record<string, any> | null;
+    if (!json || typeof json !== 'object' || Array.isArray(json)) return fail(reply, s, 400, 'invalid_request', 'Request body must be a JSON object');
+    const model = json.model;
+    if (typeof model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/.test(model)) return fail(reply, s, 400, 'invalid_request', 'model is required');
+    const stream = json.stream === true;
+    const bodyText = JSON.stringify(json);
+    const asked = s === 'CHAT' ? json.max_completion_tokens ?? json.max_tokens : json.max_tokens;
+    if (asked !== undefined && asked !== null && (!Number.isInteger(asked) || asked < 1)) return fail(reply, s, 400, 'invalid_request', 'max_tokens must be a positive integer');
+    const requestId = 'req_' + crypto.randomUUID();
+    const maxIn = Buffer.byteLength(bodyText); // upper bound: a token is never shorter than one byte of the request
+
+    // ---- Admission: key, scope, price snapshot, hold. Everything billable is decided in one transaction. ----
+    let adm: { tenantId: string; price: Price; maxOut: number };
+    try {
+      const principal = await keys.authenticate(db, secret);
+      const snap = await pricing.snapshotForAdmission(db, model);
+      if (!snap) throw new AppError('model_not_available', 'This model is not available', 404);
+      // Overrun rule: when the requested output does not fit the balance plus allowance, the output is capped to what fits.
+      const bal = await ledger.getBalance(db, principal.tenantId); const budget = bal.available + await ledger.overdraftMicro(db);
+      let maxOut = Math.min(asked ?? GATEWAY_LIMITS.defaultMaxOutput, GATEWAY_LIMITS.maxOutputCap);
+      if (bal.available > 0n && holdMicro(maxIn, maxOut, snap.price) > budget) {
+        const inputOnly = holdMicro(maxIn, 0, snap.price), perOut = holdMicro(0, 1000, snap.price);
+        const fit = budget > inputOnly && perOut > 0n ? Number(((budget - inputOnly) * 1000n) / perOut) : 0;
+        if (fit < 1) throw new AppError('insufficient_balance', 'Insufficient balance', 402);
+        maxOut = Math.min(maxOut, fit);
+      }
+      const hold = holdMicro(maxIn, maxOut, snap.price);
+      const placed = await withTx(db, async tx => {
+        const h = await ledger.placeKeyHold(tx, { secret, requestId, amount: hold, model });
+        const fresh = await pricing.snapshotForAdmission(tx, model); // re-read inside the transaction: the snapshot stored is the one charged
+        if (!fresh || fresh.priceVersionId !== snap.priceVersionId) throw new AppError('model_not_available', 'Price changed, retry the request', 404);
+        await tx.query('insert into request(id, tenant_id, api_key_id, model_id, protocol, stream, state, price_version_id, price_snapshot, max_input, max_output, hold) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+          [requestId, h.tenantId, h.keyId, model, s, stream, 'ADMITTED', snap.priceVersionId, JSON.stringify({ seq: snap.price.version, inputRate: String(snap.price.inputRate), outputRate: String(snap.price.outputRate), cacheReadRate: String(snap.price.cacheReadRate), cacheWriteRate: String(snap.price.cacheWriteRate), multiplierE4: String(snap.price.multiplierE4) }), maxIn, maxOut, String(hold)]);
+        return h;
+      });
+      adm = { tenantId: placed.tenantId, price: snap.price, maxOut };
+    } catch (e) { return failApp(reply, s, e, requestId); }
+
+    const done = (usage: Usage | null, estimated: boolean, state: string, usageRaw: unknown, outcome: string) => settle({ requestId, tenantId: adm.tenantId, price: adm.price, usage, estimated, state, usageRaw, outcome });
+    const estimate = (chars: number): Usage => ({ input: Math.ceil(maxIn / 3), output: Math.ceil(chars / 2), cacheRead: 0, cacheWrite: 0 });
+
+    // ---- Routing: same protocol only, eligible upstreams, healthy routes, best priority first. ----
+    const candidates = (await upstreams.candidatesFor(db, deps.key, model, s)).filter(c => !routeOpen(c.routeId)).slice(0, maxAttempts);
+    const client = new AbortController(); let clientGone = false;
+    reply.raw.on('close', () => { if (!reply.raw.writableEnded) { clientGone = true; client.abort(); } });
+
+    let seq = 0;
+    for (const c of candidates) {
+      seq++;
+      const note = (outcome: string) => db.query('insert into attempt(request_id, seq, route_id, outcome) values($1,$2,$3,$4)', [requestId, seq, c.routeId, outcome]);
+      const fb = new AbortController(); const timer = setTimeout(() => fb.abort(), firstByteMs);
+      let up: Response, reader: ReadableStreamDefaultReader<Uint8Array> | null = null, first: Uint8Array | undefined;
+      try {
+        const base = deps.unsafeAllowAnyUpstreamUrl ? c.baseUrl : await assertSafeUpstreamUrl(c.baseUrl, deps.resolveHost); // re-checked at connect time: DNS answers can change
+        const out: Record<string, any> = { ...json, model: c.upstreamModel };
+        if (s === 'CHAT') { delete out.max_completion_tokens; out.max_tokens = adm.maxOut; if (stream) out.stream_options = { ...(json.stream_options ?? {}), include_usage: true }; } else out.max_tokens = adm.maxOut;
+        const headers: Record<string, string> = { 'content-type': 'application/json' };
+        if (s === 'CHAT') headers.authorization = `Bearer ${c.apiKey}`;
+        else { headers['x-api-key'] = c.apiKey; headers['anthropic-version'] = String(req.headers['anthropic-version'] ?? '2023-06-01'); if (req.headers['anthropic-beta']) headers['anthropic-beta'] = String(req.headers['anthropic-beta']); }
+        up = await fetch(base + (s === 'CHAT' ? '/chat/completions' : '/v1/messages'), { method: 'POST', headers, body: JSON.stringify(out), redirect: 'error', signal: AbortSignal.any([client.signal, fb.signal]) });
+        if (up.status === 400 || up.status === 422) { // the request itself is wrong: forward, never fall back, never charge
+          clearTimeout(timer); const text = (await up.text()).slice(0, 65_536); await note('rejected_' + up.status);
+          await done(null, false, 'FAILED', null, 'upstream_rejected');
+          return reply.code(up.status).header('x-request-id', requestId).header('content-type', 'application/json').send(text);
+        }
+        if (!up.ok || !up.body) { clearTimeout(timer); await up.body?.cancel().catch(() => {}); routeFailed(c.routeId, up.status); await note('upstream_' + up.status); continue; }
+        if (!stream) {
+          const buf = Buffer.from(await up.arrayBuffer()); clearTimeout(timer);
+          if (buf.length > GATEWAY_LIMITS.nonStreamBytes) { routeFailed(c.routeId); await note('response_too_large'); continue; }
+          let parsed: any = null; try { parsed = JSON.parse(buf.toString('utf8')); } catch { /* settled as an estimate below */ }
+          health.delete(c.routeId); await note('completed');
+          const usage = normalizeUsage(s, parsed?.usage);
+          if (usage) await done(usage, false, 'SETTLED', parsed.usage, 'completed'); else await done(estimate(buf.length), true, 'SETTLED_ESTIMATED', parsed?.usage ?? null, 'usage_missing');
+          return reply.code(200).header('x-request-id', requestId).header('content-type', 'application/json').send(buf);
+        }
+        reader = up.body.getReader(); const r = await reader.read(); clearTimeout(timer);
+        if (r.done) { routeFailed(c.routeId); await note('empty_stream'); continue; }
+        first = r.value;
+      } catch {
+        clearTimeout(timer);
+        if (clientGone) { await note('client_cancelled'); await done(null, false, 'CANCELLED', null, 'cancelled_before_first_byte'); return reply; }
+        routeFailed(c.routeId); await note('connect_or_first_byte_failed'); continue;
+      }
+
+      // First byte in hand: this route is committed. No fallback from here on.
+      health.delete(c.routeId);
+      await db.query("update request set state='STREAMING' where id=$1", [requestId]);
+      reply.hijack();
+      reply.raw.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-request-id': requestId, 'x-accel-buffering': 'no' });
+      const obs = new StreamObserver(s); let broke = false;
+      try {
+        obs.push(first!); reply.raw.write(first!);
+        for (;;) {
+          let idle: NodeJS.Timeout; const next = await Promise.race([reader!.read(), new Promise<never>((_, rej) => { idle = setTimeout(() => rej(new Error('idle')), idleMs); })]).finally(() => clearTimeout(idle!));
+          if (next.done) break;
+          obs.push(next.value); if (!reply.raw.write(next.value)) await new Promise(ok => reply.raw.once('drain', ok));
+        }
+      } catch { broke = true; await reader!.cancel().catch(() => {}); }
+      const state = clientGone ? 'CANCELLED' : obs.done && !broke ? 'COMPLETED' : 'FAILED';
+      await note(state.toLowerCase()); if (!reply.raw.writableEnded) reply.raw.end();
+      try {
+        const usage = obs.done ? normalizeUsage(s, obs.usageRaw) : null;
+        if (usage) await done(usage, false, 'SETTLED', obs.usageRaw, 'completed');
+        else if (obs.contentChars === 0 && !obs.usageRaw) await done(null, false, state === 'COMPLETED' ? 'SETTLED' : state, null, 'no_content'); // zero usage: no charge
+        else await done(estimate(obs.contentChars), true, 'SETTLED_ESTIMATED', obs.usageRaw, state === 'CANCELLED' ? 'cancelled_mid_stream' : 'usage_missing'); // content went out but usage did not arrive: not zero
+      } catch (e) { app.log.error({ requestId, code: (e as any)?.code }, 'settlement failed; hold stays open for reconciliation'); }
+      return reply;
+    }
+    await done(null, false, 'FAILED', null, candidates.length ? 'all_routes_failed' : 'no_route');
+    return fail(reply, s, 503, 'upstream_unavailable', 'No upstream is available for this model right now', requestId, 5);
+  }
+
+  const opts = { bodyLimit: GATEWAY_LIMITS.bodyBytes };
+  app.post('/v1/chat/completions', opts, (req, reply) => handle('CHAT', req, reply));
+  app.post('/v1/messages', opts, (req, reply) => handle('ANTHROPIC', req, reply));
+
+  /** Models this key can call right now: published price, in key scope, and at least one usable route. */
+  app.get('/v1/models', async (req, reply) => {
+    try {
+      const p = await keys.authenticate(db, secretOf(req));
+      const rows = (await db.query(
+        `select distinct m.id, extract(epoch from m.created_at)::bigint as created from public_model m
+         join price_version pv on pv.model_id=m.id and pv.status='PUBLISHED'
+         join route r on r.model_id=m.id and r.enabled and r.protocol in ('CHAT','ANTHROPIC')
+         join upstream u on u.id=r.upstream_id and u.status='ELIGIBLE' and u.key_enc is not null order by m.id`)).rows;
+      const data = rows.filter(r => p.allowedModels === null || p.allowedModels.includes(r.id)).map(r => ({ id: r.id as string, object: 'model', created: Number(r.created), owned_by: 'router' }));
+      return { object: 'list', data };
+    } catch (e) { return failApp(reply, 'CHAT', e); }
+  });
+}
+
+/** Tenant-scoped request history (FR-013): metadata only. */
+export async function listRequests(db: Db, tenantId: string, q: { before?: string; limit?: string }) {
+  const limit = Math.min(Math.max(Number.isInteger(Number(q.limit)) ? Number(q.limit) : 50, 1), 100);
+  const before = typeof q.before === 'string' && !Number.isNaN(Date.parse(q.before)) ? q.before : null;
+  const rows = (await db.query('select id, model_id, protocol, stream, state, hold, debit, estimated, usage_norm, created_at from request where tenant_id=$1 and ($2::timestamptz is null or created_at < $2::timestamptz) order by created_at desc, id limit $3', [tenantId, before, limit])).rows;
+  return { requests: rows.map(r => ({ id: r.id as string, model: r.model_id as string, protocol: r.protocol as string, stream: r.stream as boolean, state: r.state as string, final: r.debit !== null, heldMicro: String(r.hold), debitMicro: r.debit === null ? null : String(r.debit), estimated: r.estimated as boolean, usage: r.usage_norm, createdAt: (r.created_at as Date).toISOString() })), nextBefore: rows.length === limit ? (rows[rows.length - 1].created_at as Date).toISOString() : null };
+}

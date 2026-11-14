@@ -1,9 +1,29 @@
 # Changelog: Router AI Komersial
 
-Version: 0.17.0
+Version: 0.18.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.18.0: Inti gateway terhadap upstream tiruan
+
+CR-016
+Source: founder meminta lanjut; menyatakan repo boleh publik untuk sementara; menawarkan kredensial upstream berjangka untuk pengujian. Decision owner: founder.
+
+- Migrasi 008: `request` dan `attempt` (metadata saja; tidak ada isi prompt atau respons).
+- `src/gateway.ts`: `POST /v1/chat/completions`, `POST /v1/messages`, `GET /v1/models`, autentikasi API key lewat Authorization Bearer atau x-api-key. Admission dalam satu transaksi (key, scope, snapshot harga, hold); routing hanya ke route berprotokol sama pada upstream ELIGIBLE; fallback sampai 3 attempt hanya sebelum byte pertama; setelah itu tidak ada perpindahan. Settlement tepat sekali dalam kredit token; usage nol gratis; usage hilang setelah konten terkirim ditagih sebagai estimasi; klien memutus membatalkan upstream.
+- Aturan lebih-pakai: bila output yang diminta tidak muat dalam saldo ditambah batas lebih-pakai, batas output yang dikirim ke upstream diperkecil sampai muat; inilah bentuk "dihentikan paksa". Request berikutnya ditolak saat saldo tidak lagi di atas nol.
+- Batas input untuk hold memakai jumlah byte body (satu token tidak pernah lebih pendek dari satu byte), menggantikan estimasi lemah pada spike (RSK-009). Bila usage upstream tetap melebihi hold, selisih ditagih dan ditandai `bound_exceeded`.
+- Pada permukaan Chat, gateway menambahkan `stream_options.include_usage` ke request upstream agar usage selalu tersedia untuk penagihan; ini satu-satunya field yang ditambahkan selain penggantian nama model dan batas output. Dicatat sebagai penyimpangan kecil dari pass-through murni.
+- Alamat upstream diperiksa ulang saat koneksi; redirect tidak diikuti. Kesehatan route disimpan di memori proses: terbuka 30 detik setelah 3 kegagalan, 5 menit setelah 401/402.
+- `GET /api/requests` untuk riwayat request pelanggan (metadata).
+- Pemeriksaan CSRF dilewati untuk `/v1/` karena permukaan itu tidak membaca cookie.
+
+Belum dicakup: upstream nyata; permukaan Responses (Codex); hitung token Anthropic; margin guard; batas laju dan konkurensi per key/route; kesehatan route lintas proses dan alert; worker yang memulihkan hold bila proses mati di antara stream dan settlement (hold seperti itu saat ini tetap terbuka sampai ditangani manual); pengukuran overhead pada kode ini.
+
+Git: commit lokal ditulis ulang tanpa gambar referensi dan salinan dokumentasi pihak ketiga (`docs/evidence/`), lalu di-push ke repo publik atas konfirmasi founder. Berkas kredensial tetap dikecualikan.
+
+Verification: 13 test gateway baru terhadap upstream tiruan lokal; suite 115/115 lulus dua kali berturut-turut; typecheck exit 0. Tidak ada request ke upstream nyata, deploy, atau email nyata.
 
 ## 0.17.0: Registry upstream, Git, dan penggabungan pekerjaan web Hermes
 
@@ -308,4 +328,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.17.0 -->
+<!-- END ROUTER-CHANGELOG v0.18.0 -->

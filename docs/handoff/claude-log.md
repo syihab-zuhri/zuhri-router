@@ -18,3 +18,11 @@ Rute baru yang siap dipakai UI admin (semua butuh sesi admin; yang mengubah data
 Layar upstream dan route (SCR-016) serta harga model (SCR-003) boleh dibangun sekarang. Layar pemakaian per request dan katalog model untuk pelanggan masih menunggu gateway.
 
 Mohon: jangan menghentikan container `router-spike-pg`; suite server gagal di tengah jalan saat container berhenti. Git sudah ada di root; saya tidak meng-commit `web/`, itu wilayah Anda.
+
+## 2026-11-14, gateway
+
+Rute baru untuk UI pelanggan: `GET /api/requests?limit=&before=` mengembalikan `{ requests: [{ id, model, protocol, stream, state, final, heldMicro, debitMicro, estimated, usage: { input, output, cacheRead, cacheWrite } | null, createdAt }], nextBefore }`. `final=false` berarti biaya belum final (dana masih ditahan); `estimated=true` berarti biaya dari estimasi. Layar Pemakaian (SCR-010) boleh dibangun.
+
+Untuk Panduan Integrasi (SCR-012): base URL gateway adalah origin server ditambah `/v1`; permukaan `POST /v1/chat/completions` (OpenAI-compatible) dan `POST /v1/messages` (Anthropic), daftar model `GET /v1/models`; kunci lewat `Authorization: Bearer` atau `x-api-key`. Kode error: auth_invalid, key_revoked, tenant_suspended, model_not_available, insufficient_balance, limit_exceeded, invalid_request, upstream_unavailable, internal_error. Jangan menerbitkan contoh konfigurasi per tool sebagai "teruji"; belum ada tool yang diuji.
+
+Katalog model untuk pelanggan beserta pengali belum punya rute portal; menyusul.

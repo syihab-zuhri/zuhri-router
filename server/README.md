@@ -57,6 +57,8 @@ Host dan port di atas adalah nilai umum SMTP Gmail dan belum diuji dari proyek i
 | `migrations/007_upstreams.sql` | Upstream dan route |
 | `src/netguard.ts` | Pemeriksa base URL upstream (HTTPS, alamat publik) |
 | `src/upstreams.ts` | Registry upstream, API key tulis-saja, eligibility, route, kandidat untuk gateway |
+| `migrations/008_requests.sql` | Metadata request dan attempt |
+| `src/gateway.ts` | Gateway `/v1/chat/completions`, `/v1/messages`, `/v1/models`: admission, routing, fallback, relay stream, settlement |
 | `src/mailer.ts` | Pengirim email SMTP untuk undangan dan reset (nodemailer 10.5.0, MIT-0) |
 | `src/pricing.ts` | Katalog model, draft, preview, publish, retire, snapshot harga untuk admission |
 | `src/keys.ts` | CRUD key, verifier, scope, autentikasi dan kuota |
@@ -67,7 +69,7 @@ Host dan port di atas adalah nilai umum SMTP Gmail dan belum diuji dari proyek i
 | `src/crypto.ts` | Token, Argon2id (bawaan Node), AES-GCM, TOTP |
 | `src/ratelimit.ts` | Pembatas laju di PostgreSQL |
 | `src/http/app.ts` | Rute HTTP |
-| `test/` | 102 test integrasi |
+| `test/` | 115 test integrasi |
 
 ## Nilai awal yang dipilih saat implementasi
 
