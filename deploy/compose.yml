@@ -25,6 +25,8 @@ services:
       MAIL_FROM: ${MAIL_FROM:-}
       PUBLIC_BASE_URL: https://${DOMAIN:?set DOMAIN in .env}
       PRODUCT_NAME: ${PRODUCT_NAME:-ZRouter}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
     stop_grace_period: 60s        # let running streams finish
   caddy:
     image: caddy:2

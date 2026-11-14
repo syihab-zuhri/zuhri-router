@@ -13,6 +13,7 @@ import * as pricing from './pricing.ts';
 import * as upstreams from './upstreams.ts';
 import { debitMicro, holdMicro, type Price, type Usage } from './money.ts';
 import { assertSafeUpstreamUrl, type Resolver } from './netguard.ts';
+import { gatewayEvents } from './monitor.ts';
 
 export type GatewayDeps = { db: Db; key: Buffer; resolveHost: Resolver; firstByteTimeoutMs?: number; idleTimeoutMs?: number; maxTotalMs?: number; maxAttempts?: number;
   /** Abuse limits (ABU-004), per process. */ requestsPerMinutePerKey?: number; concurrentPerTenant?: number; authFailuresPerMinutePerIp?: number;
@@ -94,10 +95,12 @@ class StreamObserver {
 // In-memory route health (one process). Opens after repeated failures; 401/402 from an upstream needs the admin, so it stays open longer.
 const health = new Map<string, { fails: number; openUntil: number }>();
 const routeOpen = (id: string) => (health.get(id)?.openUntil ?? 0) > Date.now();
-function routeFailed(id: string, status?: number) {
+function routeFailed(id: string, upstreamName: string, status?: number) {
   const h = health.get(id) ?? { fails: 0, openUntil: 0 }; h.fails++;
+  const before = h.openUntil;
   if (status === 401 || status === 402) h.openUntil = Date.now() + 5 * 60_000; else if (h.fails >= 3) h.openUntil = Date.now() + 30_000;
   health.set(id, h);
+  if (h.openUntil > Date.now() && h.openUntil !== before) gatewayEvents.emit('route_open', { upstreamName, status, untilMs: h.openUntil });
 }
 // In-memory limiters (one process). A second gateway instance would need a shared store.
 const windows = new Map<string, { start: number; n: number }>();
@@ -227,10 +230,10 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
           await done(null, false, 'FAILED', null, 'upstream_rejected');
           return reply.code(up.status).header('x-request-id', requestId).header('content-type', 'application/json').send(text);
         }
-        if (!up.ok || !up.body) { clearTimeout(timer); await up.body?.cancel().catch(() => {}); routeFailed(c.routeId, up.status); await note('upstream_' + up.status); continue; }
+        if (!up.ok || !up.body) { clearTimeout(timer); await up.body?.cancel().catch(() => {}); routeFailed(c.routeId, c.upstreamName, up.status); await note('upstream_' + up.status); continue; }
         if (!stream) {
           const buf = Buffer.from(await up.arrayBuffer()); clearTimeout(timer);
-          if (buf.length > GATEWAY_LIMITS.nonStreamBytes) { routeFailed(c.routeId); await note('response_too_large'); continue; }
+          if (buf.length > GATEWAY_LIMITS.nonStreamBytes) { routeFailed(c.routeId, c.upstreamName); await note('response_too_large'); continue; }
           let parsed: any = null; try { parsed = JSON.parse(buf.toString('utf8')); } catch { /* settled as an estimate below */ }
           health.delete(c.routeId); await note('completed');
           const usage = normalizeUsage(s, parsed?.usage);
@@ -238,12 +241,12 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
           return reply.code(200).header('x-request-id', requestId).header('content-type', 'application/json').send(buf);
         }
         reader = up.body.getReader(); const r = await reader.read(); clearTimeout(timer);
-        if (r.done) { routeFailed(c.routeId); await note('empty_stream'); continue; }
+        if (r.done) { routeFailed(c.routeId, c.upstreamName); await note('empty_stream'); continue; }
         first = r.value;
       } catch {
         clearTimeout(timer);
         if (clientGone) { await note('client_cancelled'); await done(null, false, 'CANCELLED', null, 'cancelled_before_first_byte'); return reply; }
-        routeFailed(c.routeId); await note('connect_or_first_byte_failed'); continue;
+        routeFailed(c.routeId, c.upstreamName); await note('connect_or_first_byte_failed'); continue;
       }
 
       // First byte in hand: this route is committed. No fallback from here on.
@@ -272,6 +275,7 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
       return reply;
     }
     await done(null, false, 'FAILED', null, candidates.length ? 'all_routes_failed' : 'no_route');
+    if (candidates.length) gatewayEvents.emit('all_routes_failed', { model });
     return fail(reply, s, 503, 'upstream_unavailable', 'No upstream is available for this model right now', requestId, 5);
   }
 

@@ -1,9 +1,22 @@
 # Changelog: Router AI Komersial
 
-Version: 0.25.0
+Version: 0.26.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.26.0: Bot Telegram dan backup ke Google Drive
+
+CR-024
+Source: founder meminta backup memakai Google Drive dan bot Telegram untuk memantau server (2026-11-14). Decision owner: founder.
+
+- `src/monitor.ts`: bot Telegram hanya-baca untuk satu chat yang dikonfigurasi (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`). Peringatan dari audit log (kode redeem, tambah saldo, koreksi, admin masuk, upstream, harga, batas lebih-pakai, request terputus dan keputusannya), dari gateway (rute dijeda termasuk 401 dan 402 dari upstream, semua rute gagal untuk sebuah model), dan dari pemeriksaan berkala (saldo tidak cocok dengan ledger, request menunggu keputusan). Peringatan sejenis dibatasi sekali per jendela waktu. Perintah `/status` melaporkan request, tagihan, dana tertahan, pelanggan, saldo, kewajiban kode dan status upstream. Kegagalan Telegram tidak pernah mengganggu server.
+- Tidak ada perintah yang mengubah keadaan, dan pesan tidak memuat API key, kode redeem, token bot, atau isi percakapan; keduanya diuji.
+- Batas: bot berjalan di dalam proses server, jadi tidak dapat memberi tahu saat server itu sendiri mati; perlu pemeriksa uptime eksternal. Riwayat sebelum bot menyala tidak dikirim ulang.
+- `deploy/backup.sh`: unggah opsional ke remote rclone (`RCLONE_REMOTE=gdrive:...`) dan penghapusan berkas Drive berumur lebih dari 30 hari. Penyiapan remote memakai akun Google founder di server lewat `rclone config`.
+- Belum dijalankan terhadap layanan nyata: tidak ada pesan Telegram sungguhan dan tidak ada unggahan ke Drive; keduanya memerlukan token dan akun founder.
+
+Verification: 4 test baru terhadap API Telegram tiruan (satu test awalnya bergantung waktu dan gagal sekali; dibuat deterministik, lalu 6 kali berturut-turut lulus); suite server 128/128 dua kali berturut-turut; typecheck exit 0.
 
 ## 0.25.0: Backup dan pemulihan
 
@@ -413,4 +426,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.25.0 -->
+<!-- END ROUTER-CHANGELOG v0.26.0 -->
