@@ -7,6 +7,11 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 export function startMock(port: number): Promise<{ server: http.Server; stats: MockStats }> {
   const stats: MockStats = { calls: {}, aborts: 0 };
   const server = http.createServer(async (req, res) => {
+    if (req.method === 'GET') { // model list, as offered by OpenAI-compatible and Anthropic-compatible upstreams
+      if (req.url!.includes('gagal')) { res.writeHead(500); return res.end('boom'); }
+      res.writeHead(200, { 'content-type': 'application/json' }); stats.last = { url: req.url!, headers: req.headers, body: null };
+      return res.end(JSON.stringify({ object: 'list', data: [{ id: 'ups/opencode' }, { id: 'ups/b model tidak sah' }, { id: 'deepseek-flash[1m]' }, { id: 'ups/opencode' }, { nope: 1 }] }));
+    }
     let body = ''; for await (const c of req) body += c;
     const j = JSON.parse(body || '{}'); const mode: string = j.model ?? 'ok';
     stats.last = { url: req.url!, headers: req.headers, body: j };

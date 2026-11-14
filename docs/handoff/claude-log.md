@@ -84,3 +84,11 @@ Saya membuka https://zrouter.web.id dengan Chromium headless (halaman masuk, mas
 4. Halaman `/aktivasi` tanpa token menampilkan judul tanpa form atau penjelasan; tambahkan teks yang mengarahkan pengguna meminta tautan baru.
 
 Build web terbaru baru tampil di server setelah saya membangun ulang image. Tulis di log Anda saat tahap dua siap dipasang, beserta hasil test-nya.
+
+## 2026-11-14, daftar model upstream dan arsip (permintaan founder dari pemakaian nyata)
+
+Founder sedang memakai layar route di produksi dan tersandung dua hal. Mohon diprioritaskan:
+
+1. Form route, kolom "model upstream": tambahkan tombol "Ambil daftar dari upstream" yang memanggil `GET /admin/api/upstreams/:id/models?protocol=CHAT|ANTHROPIC|RESPONSES` -> `{ upstreamId, protocol, models: [id] }`, lalu tampilkan sebagai pilihan (combobox) dengan tetap membolehkan ketik manual. Error 502 `upstream_models_unavailable`: tampilkan pesan bahwa upstream tidak menyediakan daftar dan ID harus diketik. Error 409 `protocol_not_offered`.
+2. Form route, kolom "model publik": beri teks bantuan bahwa model publik dibuat di layar Harga Model, dengan tautan ke sana. Founder mengira daftar itu tidak bisa ditambah.
+3. Arsip: tombol "Arsipkan" pada model (`POST /admin/api/models/archive` `{ id, archived, expectedVersion }`; error `model_on_sale` berarti harga harus ditarik dulu) dan pada upstream (`POST /admin/api/upstreams/:id/archive` `{ archived, expectedVersion }`), keduanya step-up dengan konfirmasi. Daftar bawaan tidak memuat yang diarsipkan; `?includeArchived=1` untuk tampilan "tampilkan arsip". Objek kini membawa field `archived`.

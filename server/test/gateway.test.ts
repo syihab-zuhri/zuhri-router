@@ -286,3 +286,31 @@ test('admin sees usage per customer by day, model and key; it matches what the c
   await makeCustomer(app, admin, 'siti'); assert.deepEqual((await admin.get('/admin/api/customers/siti/usage')).json.byModel, []);
   assert.equal((await admin.get('/admin/api/customers/nobody/usage')).status, 404); assert.equal((await cust.get('/admin/api/customers/budi/usage')).status, 401);
 });
+
+test('model list from an upstream: ids only, cleaned; failures are explained; archived things disappear and are never routed to', async () => {
+  await model('m/a', '1', [['CHAT', 'ok', 1]]);
+  const ups = (await admin.get('/admin/api/upstreams')).json.upstreams; const up = ups[0];
+  const got = await admin.get(`/admin/api/upstreams/${up.id}/models?protocol=CHAT`);
+  assert.deepEqual(got.json.models, ['deepseek-flash[1m]', 'ups/opencode'], 'duplicates and malformed ids are dropped');
+  assert.equal(stats.last!.url, '/v1/models'); assert.equal(stats.last!.headers.authorization, `Bearer ${UPKEY}`);
+  await admin.get(`/admin/api/upstreams/${up.id}/models?protocol=ANTHROPIC`); assert.equal(stats.last!.url, '/anthropic/v1/models'); assert.equal(stats.last!.headers['x-api-key'], UPKEY);
+  await db.query("update upstream set base_url_chat=$1 where id=$2", [`http://127.0.0.1:${MOCK}/gagal`, up.id]);
+  const bad = await admin.get(`/admin/api/upstreams/${up.id}/models?protocol=CHAT`); assert.equal(bad.status, 502); assert.equal(bad.json.error.code, 'upstream_models_unavailable'); assert.ok(!JSON.stringify(bad.json).includes('boom'));
+  await db.query("update upstream set base_url_chat=$1 where id=$2", [`http://127.0.0.1:${MOCK}/v1`, up.id]);
+  assert.equal((await admin.get(`/admin/api/upstreams/${up.id}/models?protocol=XYZ`)).status, 400); assert.equal((await cust.get(`/admin/api/upstreams/${up.id}/models?protocol=CHAT`)).status, 401);
+  assert.ok(![got.json, bad.json].some(j => JSON.stringify(j).includes(UPKEY)));
+
+  const mv = (await admin.get('/admin/api/models?id=m%2Fa')).json;
+  assert.equal((await admin.post('/admin/api/models/archive', { id: 'm/a', archived: true, expectedVersion: mv.version })).json.error.code, 'model_on_sale', 'a model on sale cannot be archived by accident');
+  const fresh = (await admin.get('/admin/api/upstreams')).json.upstreams[0];
+  const arch = await admin.post(`/admin/api/upstreams/${up.id}/archive`, { archived: true, expectedVersion: fresh.version }); assert.deepEqual([arch.json.archived, arch.json.status], [true, 'BLOCKED']);
+  assert.deepEqual((await admin.get('/admin/api/upstreams')).json.upstreams, []); assert.equal((await admin.get('/admin/api/upstreams?includeArchived=1')).json.upstreams.length, 1);
+  assert.deepEqual((await admin.get('/admin/api/routes')).json.routes, []);
+  assert.equal((await call('/v1/chat/completions', 'm/a')).status, 503, 'nothing is routed to an archived upstream'); assert.deepEqual((await cust.get('/api/models')).json.models, []);
+  const r1 = await admin.post('/admin/api/models/price/retire', { id: 'm/a', expectedVersion: mv.version, reason: 'tidak dipakai' });
+  const done = await admin.post('/admin/api/models/archive', { id: 'm/a', archived: true, expectedVersion: r1.json.version }); assert.equal(done.json.archived, true);
+  assert.deepEqual((await admin.get('/admin/api/models')).json.models, []); assert.equal((await admin.get('/admin/api/models?includeArchived=1')).json.models.length, 1);
+  assert.equal((await admin.post('/admin/api/routes', { modelId: 'm/a', upstreamId: up.id, protocol: 'CHAT', upstreamModel: 'x' })).status, 404);
+  assert.equal((await cust.post('/admin/api/models/archive', { id: 'm/a', archived: false, expectedVersion: done.json.version })).status, 401);
+  const ev = (await admin.get('/admin/api/audit')).json.events.map((e: any) => e.action); assert.ok(ev.includes('upstream.archive') && ev.includes('model.archive'));
+});

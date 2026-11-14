@@ -65,11 +65,11 @@ async function lockModel(tx: Tx, id: string, expectedVersion?: string) {
   return m;
 }
 async function describe(db: Db | Tx, id: string) {
-  const m = (await db.query('select id, display_name, version from public_model where id=$1', [id])).rows[0];
+  const m = (await db.query('select id, display_name, version, archived from public_model where id=$1', [id])).rows[0];
   if (!m) throw new AppError('not_found', 'Not found', 404);
   const rows = (await db.query(`select ${PRICE_COLS} from price_version where model_id=$1 and status in ('DRAFT','PUBLISHED')`, [id])).rows;
   const published = rows.find(r => r.status === 'PUBLISHED'), draft = rows.find(r => r.status === 'DRAFT');
-  return { id: m.id as string, displayName: m.display_name as string, version: String(m.version), sellable: !!published, published: published ? priceView(published) : null, draft: draft ? priceView(draft) : null };
+  return { id: m.id as string, displayName: m.display_name as string, version: String(m.version), archived: m.archived as boolean, sellable: !!published, published: published ? priceView(published) : null, draft: draft ? priceView(draft) : null };
 }
 
 /** New models start with no price and are therefore not sellable. Nothing is inherited from another model. */
@@ -83,8 +83,8 @@ export async function createModel(db: Db, a: { id: string; displayName: string; 
   });
 }
 
-export async function listModels(db: Db) {
-  const ids = (await db.query('select id from public_model order by id')).rows.map(r => r.id as string);
+export async function listModels(db: Db, includeArchived = false) {
+  const ids = (await db.query('select id from public_model where ($1 or not archived) order by id', [includeArchived])).rows.map(r => r.id as string);
   return { models: await Promise.all(ids.map(id => describe(db, id))) };
 }
 export const getModel = (db: Db, id: string) => describe(db, id);
@@ -132,6 +132,21 @@ export async function retire(db: Db, a: { id: string; expectedVersion: string; r
   });
 }
 
+/**
+ * Archive or restore a model. A model that is still on sale must have its price retired first, so archiving can never
+ * silently stop a model customers are using. Archiving also disables the model's routes.
+ */
+export async function setModelArchived(db: Db, a: { id: string; archived: boolean; expectedVersion: string; actorUser: string }) {
+  return withTx(db, async tx => {
+    await lockModel(tx, a.id, a.expectedVersion);
+    if (a.archived && (await tx.query("select 1 from price_version where model_id=$1 and status='PUBLISHED'", [a.id])).rowCount) throw new AppError('model_on_sale', 'Retire the price before archiving this model', 409);
+    await tx.query('update public_model set archived=$2, version=version+1 where id=$1', [a.id, a.archived]);
+    if (a.archived) await tx.query('update route set enabled=false, version=version+1 where model_id=$1 and enabled', [a.id]);
+    await audit(tx, { actorUser: a.actorUser, actorKind: 'ADMIN', action: a.archived ? 'model.archive' : 'model.restore', targetType: 'public_model', targetId: a.id });
+    return describe(tx, a.id);
+  });
+}
+
 /** Example charge for a draft or published price, computed with the same function settlement uses. */
 export async function preview(db: Db, id: string, which: 'draft' | 'published', usage: Usage) {
   const r = (await db.query(`select ${PRICE_COLS} from price_version where model_id=$1 and status=$2`, [id, which === 'draft' ? 'DRAFT' : 'PUBLISHED'])).rows[0];
@@ -163,7 +178,7 @@ export async function catalogue(db: Db) {
   const rows = (await db.query(
     `select m.id, m.display_name, pv.input_rate, pv.output_rate, pv.cache_read_rate, pv.cache_write_rate, pv.multiplier_e4,
             array_agg(distinct r.protocol order by r.protocol) as protocols
-     from public_model m join price_version pv on pv.model_id=m.id and pv.status='PUBLISHED'
+     from public_model m join price_version pv on pv.model_id=m.id and pv.status='PUBLISHED' and not m.archived
      join route r on r.model_id=m.id and r.enabled join upstream u on u.id=r.upstream_id and u.status='ELIGIBLE' and u.key_enc is not null
      group by m.id, m.display_name, pv.input_rate, pv.output_rate, pv.cache_read_rate, pv.cache_write_rate, pv.multiplier_e4 order by m.id`)).rows;
   const per = (rate: unknown, e4: bigint) => scaled(BigInt(rate as string) * e4, 16); // micro per 1M tokens x multiplier(e4) -> credits per token

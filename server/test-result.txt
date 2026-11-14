@@ -1,62 +1,63 @@
-✔ password alone opens nothing: admin operations need the second factor (3406.810831ms)
-✔ an admin cannot sign in through the customer route and the public flow cannot create one (245.588446ms)
-✔ a TOTP code is accepted once; wrong codes are rate limited (130.223553ms)
-✔ recovery codes work once (124.904533ms)
-✔ top-up needs a recent second factor; without it nothing is written (188.249301ms)
-✔ top-up by username: replay credits once, unknown username and bad amounts write nothing, views agree (208.202612ms)
-✔ every admin action leaves exactly one audit event (173.158594ms)
-✔ customer list: paged by username, prefix filter, admin only, no closed accounts (372.5909ms)
-✔ when the invitation email cannot be sent the admin gets the activation link once; when it is sent, no link is returned (122.410019ms)
-✔ admin changes their own password: current password and step-up required, other sessions revoked (244.921278ms)
-✔ authenticator replacement: nothing changes until a code from the new secret is verified; then old codes stop working (188.681265ms)
-✔ chat stream: relayed unchanged, charged tokens x multiplier in token credits, upstream sees its own key and model (2549.930565ms)
-✔ anthropic stream and non-stream chat charge the same; anthropic headers are forwarded (333.533992ms)
-✔ usage normaliser refuses inconsistent shapes (176.953749ms)
-✔ fallback before the first byte: next route for the same model, one debit; attempts recorded (1064.953398ms)
-✔ all routes down: one structured error, nothing charged; request errors are forwarded without fallback (282.120444ms)
-✔ after the stream starts there is no fallback; missing usage is charged as an estimate, zero usage is free (355.592655ms)
-✔ client disconnect cancels the upstream call and settles exactly once (530.622814ms)
-✔ routing: wrong protocol, pending upstream, unpriced model and unknown model are never served (264.02551ms)
-✔ authentication and account state: bad, revoked and scoped keys, suspended tenant, empty balance (338.480859ms)
-✔ input cap: tokens an upstream adds on its own are not billed to the customer (210.533647ms)
-✔ overrun allowance: output is capped to what the balance plus allowance can pay, then new requests are refused (247.840188ms)
-✔ price changes do not touch a request already admitted (2112.799412ms)
-✔ nothing from the prompt, the customer key or the upstream key is stored; customers see only their own requests (316.198511ms)
-✔ parallel requests never hold more than the balance (1202.408535ms)
-✔ rate limits: per key, per tenant concurrency and failed-auth per address answer 429 with Retry-After and place no hold (1429.774464ms)
-✔ recovery: a request lost before the first byte is released; one lost mid-stream waits for the admin, who settles it once (439.610848ms)
-✔ responses surface (Codex): stream and non-stream are relayed and charged; stateless only; no cross-protocol routing (483.29ms)
-✔ customer catalogue lists only callable models with per-token credit cost and never upstream details (329.903956ms)
-✔ admin sees usage per customer by day, model and key; it matches what the customer sees; other customers are separate (500.344927ms)
-✔ activation happens exactly once and creates user, tenant, owner and ledger account together (2688.522675ms)
-✔ activation rejects expired invites, taken usernames, bad usernames and weak passwords without partial records (251.044788ms)
-✔ login works with username or email; unknown account and wrong password are indistinguishable (357.658923ms)
-✔ repeated failures are limited with Retry-After, without locking out the owner or other accounts (516.658151ms)
-✔ guessing one account from many networks is capped across all of them (1744.733426ms)
-✔ password reset: same response for any address, single-use token, old sessions revoked (303.922622ms)
-✔ reset requests for one address are capped quietly (235.110236ms)
-✔ logout and session revocation take effect immediately; idle and expired sessions are refused (289.084059ms)
-✔ state-changing requests without the CSRF header are refused (182.489628ms)
-✔ tenant boundary: a customer only ever sees their own data; foreign ids behave as not found (279.108666ms)
-✔ one-time tokens and passwords are never stored or audited in plaintext (169.913327ms)
-✔ authentication rejects prefixes, malformed, wrong, expired and revoked keys; scope and tenant status gate admission (2731.890643ms)
-✔ parallel admissions never reserve beyond lifetime key cap; settlement releases remainder and is exactly once after revoke (355.878668ms)
-✔ key accounting handles zero debit, over-bound debit, independent keys and insufficient tenant balance atomically (239.718429ms)
-✔ empty scope and zero lifetime cap deny dispatch, while coarse last-used does not change every request (207.211342ms)
-✔ key hold counter corruption is detected by the ledger invariant check (166.838274ms)
-✔ cross-tenant account and key links cannot be inserted into a hold (210.771027ms)
-✔ admission rechecks revoke committed after key preflight and before locks (174.421081ms)
-✔ admission rechecks expire committed after key preflight and before locks (149.19358ms)
-✔ admission rechecks close committed after key preflight and before locks (194.312491ms)
-✔ account closure revokes all keys yet admitted work still settles; stale principals cannot create keys (218.912637ms)
-✔ real HTTP key creation and secret headers never write raw keys to application logs (5452.826838ms)
-✔ key secret is revealed once, only a verifier is stored, and creation retry never reveals it again (2427.319702ms)
-✔ owner can replace limits with a version check and revoke; admin sees only masked keys and revokes with step-up (204.457785ms)
-✔ foreign key IDs are indistinguishable from absent IDs and anonymous/admin cannot mint customer keys (280.99317ms)
-✔ validation rejects malformed scope, money, expiry and create keys without persisting or leaking input (176.528085ms)
-✔ expired keys cannot be renewed to bypass the active-key quota (249.302034ms)
-✔ parallel duplicate creation reveals one secret and parallel revoke writes one audit event (192.710361ms)
-✔ stale admin principal cannot revoke after its session is revoked (163.179945ms)
+✔ password alone opens nothing: admin operations need the second factor (3384.916676ms)
+✔ an admin cannot sign in through the customer route and the public flow cannot create one (259.50464ms)
+✔ a TOTP code is accepted once; wrong codes are rate limited (122.052228ms)
+✔ recovery codes work once (125.94723ms)
+✔ top-up needs a recent second factor; without it nothing is written (183.872942ms)
+✔ top-up by username: replay credits once, unknown username and bad amounts write nothing, views agree (196.9996ms)
+✔ every admin action leaves exactly one audit event (177.706153ms)
+✔ customer list: paged by username, prefix filter, admin only, no closed accounts (362.816847ms)
+✔ when the invitation email cannot be sent the admin gets the activation link once; when it is sent, no link is returned (113.546287ms)
+✔ admin changes their own password: current password and step-up required, other sessions revoked (244.90077ms)
+✔ authenticator replacement: nothing changes until a code from the new secret is verified; then old codes stop working (188.841565ms)
+✔ chat stream: relayed unchanged, charged tokens x multiplier in token credits, upstream sees its own key and model (2485.966016ms)
+✔ anthropic stream and non-stream chat charge the same; anthropic headers are forwarded (315.891212ms)
+✔ usage normaliser refuses inconsistent shapes (164.324905ms)
+✔ fallback before the first byte: next route for the same model, one debit; attempts recorded (1058.478926ms)
+✔ all routes down: one structured error, nothing charged; request errors are forwarded without fallback (288.335412ms)
+✔ after the stream starts there is no fallback; missing usage is charged as an estimate, zero usage is free (354.399484ms)
+✔ client disconnect cancels the upstream call and settles exactly once (530.21079ms)
+✔ routing: wrong protocol, pending upstream, unpriced model and unknown model are never served (312.525257ms)
+✔ authentication and account state: bad, revoked and scoped keys, suspended tenant, empty balance (338.547776ms)
+✔ input cap: tokens an upstream adds on its own are not billed to the customer (228.328885ms)
+✔ overrun allowance: output is capped to what the balance plus allowance can pay, then new requests are refused (209.040533ms)
+✔ price changes do not touch a request already admitted (2088.201338ms)
+✔ nothing from the prompt, the customer key or the upstream key is stored; customers see only their own requests (295.968633ms)
+✔ parallel requests never hold more than the balance (1165.691293ms)
+✔ rate limits: per key, per tenant concurrency and failed-auth per address answer 429 with Retry-After and place no hold (1400.381563ms)
+✔ recovery: a request lost before the first byte is released; one lost mid-stream waits for the admin, who settles it once (300.513758ms)
+✔ responses surface (Codex): stream and non-stream are relayed and charged; stateless only; no cross-protocol routing (327.214874ms)
+✔ customer catalogue lists only callable models with per-token credit cost and never upstream details (275.339103ms)
+✔ admin sees usage per customer by day, model and key; it matches what the customer sees; other customers are separate (383.356949ms)
+✔ model list from an upstream: ids only, cleaned; failures are explained; archived things disappear and are never routed to (257.23734ms)
+✔ activation happens exactly once and creates user, tenant, owner and ledger account together (3131.896486ms)
+✔ activation rejects expired invites, taken usernames, bad usernames and weak passwords without partial records (247.561133ms)
+✔ login works with username or email; unknown account and wrong password are indistinguishable (268.143893ms)
+✔ repeated failures are limited with Retry-After, without locking out the owner or other accounts (364.232493ms)
+✔ guessing one account from many networks is capped across all of them (1413.599186ms)
+✔ password reset: same response for any address, single-use token, old sessions revoked (255.493774ms)
+✔ reset requests for one address are capped quietly (157.460423ms)
+✔ logout and session revocation take effect immediately; idle and expired sessions are refused (192.801084ms)
+✔ state-changing requests without the CSRF header are refused (141.402099ms)
+✔ tenant boundary: a customer only ever sees their own data; foreign ids behave as not found (217.344328ms)
+✔ one-time tokens and passwords are never stored or audited in plaintext (152.141858ms)
+✔ authentication rejects prefixes, malformed, wrong, expired and revoked keys; scope and tenant status gate admission (3176.495334ms)
+✔ parallel admissions never reserve beyond lifetime key cap; settlement releases remainder and is exactly once after revoke (360.974398ms)
+✔ key accounting handles zero debit, over-bound debit, independent keys and insufficient tenant balance atomically (275.295623ms)
+✔ empty scope and zero lifetime cap deny dispatch, while coarse last-used does not change every request (224.5982ms)
+✔ key hold counter corruption is detected by the ledger invariant check (175.636209ms)
+✔ cross-tenant account and key links cannot be inserted into a hold (262.622608ms)
+✔ admission rechecks revoke committed after key preflight and before locks (195.218895ms)
+✔ admission rechecks expire committed after key preflight and before locks (166.779864ms)
+✔ admission rechecks close committed after key preflight and before locks (196.874965ms)
+✔ account closure revokes all keys yet admitted work still settles; stale principals cannot create keys (206.101766ms)
+✔ real HTTP key creation and secret headers never write raw keys to application logs (6715.011024ms)
+✔ key secret is revealed once, only a verifier is stored, and creation retry never reveals it again (3112.171622ms)
+✔ owner can replace limits with a version check and revoke; admin sees only masked keys and revokes with step-up (251.926021ms)
+✔ foreign key IDs are indistinguishable from absent IDs and anonymous/admin cannot mint customer keys (330.475756ms)
+✔ validation rejects malformed scope, money, expiry and create keys without persisting or leaking input (187.064984ms)
+✔ expired keys cannot be renewed to bypass the active-key quota (238.963907ms)
+✔ parallel duplicate creation reveals one secret and parallel revoke writes one audit event (297.123528ms)
+✔ stale admin principal cannot revoke after its session is revoked (191.510819ms)
 error: fixture key audit unavailable
     at /mnt/d/router.dev.zuhri/server/node_modules/pg/lib/client.js:694:17
     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
@@ -130,26 +131,26 @@ error: fixture key audit unavailable
   line: '3925',
   routine: 'exec_stmt_raise'
 }
-✔ audit storage failure rolls back key creation, limit updates and revocation (181.570152ms)
-✔ parallel creation enforces active-key quota and list pagination is stable and tenant-scoped (270.676744ms)
-✔ money: one rounding after summing, hold rounds up, amounts parse strictly (2682.300417ms)
-✔ top-up is idempotent: replay returns the same result, a changed payload conflicts (42.600782ms)
-✔ concurrent identical top-ups credit exactly once (64.487259ms)
-✔ holds: parallel admission never reserves more than the balance (111.495576ms)
-✔ settlement: once per request, zero usage leaves no entry, bound violations are reported (83.038823ms)
-✔ a hold cannot be settled through another tenant (44.110632ms)
-✔ adjustments are new entries with a reason; ledger and audit rows cannot be changed or deleted (46.163164ms)
-✔ invariant check detects a tampered balance (36.120145ms)
-✔ adjustment is an audited correction, preserves the grant, supports replay and conflicts on changed payload (2709.335345ms)
-✔ parallel identical adjustments post once and distinct corrections serialize without lost balance updates (248.976399ms)
-✔ adjustment denies anonymous, customer, partial admin, stale step-up and missing CSRF without posting (196.645633ms)
-✔ invalid or overflowing integer amounts, reason, key and unknown customer leave no financial records (210.272306ms)
-✔ owner closure pseudonymizes current identity, revokes sessions/reset tokens and preserves ledger and audit (2999.782132ms)
-✔ closure rejects anonymous/admin sessions, missing CSRF, wrong confirmation and stale version (151.700156ms)
-✔ wrong closure password is rate limited without closing the owner or another account (364.937486ms)
-✔ parallel wrong closure passwords cannot exceed the per-account failure cap (319.265419ms)
-✔ parallel closure writes exactly one audit event, cannot target a different tenant, and cannot be restored (242.373154ms)
-✔ suspended owner can close and database guards prevent reopening or changing retired usernames (178.892583ms)
+✔ audit storage failure rolls back key creation, limit updates and revocation (222.677568ms)
+✔ parallel creation enforces active-key quota and list pagination is stable and tenant-scoped (275.741922ms)
+✔ money: one rounding after summing, hold rounds up, amounts parse strictly (2167.981715ms)
+✔ top-up is idempotent: replay returns the same result, a changed payload conflicts (39.355032ms)
+✔ concurrent identical top-ups credit exactly once (63.506103ms)
+✔ holds: parallel admission never reserves more than the balance (109.152072ms)
+✔ settlement: once per request, zero usage leaves no entry, bound violations are reported (77.161657ms)
+✔ a hold cannot be settled through another tenant (38.39419ms)
+✔ adjustments are new entries with a reason; ledger and audit rows cannot be changed or deleted (46.543957ms)
+✔ invariant check detects a tampered balance (34.551358ms)
+✔ adjustment is an audited correction, preserves the grant, supports replay and conflicts on changed payload (2720.197609ms)
+✔ parallel identical adjustments post once and distinct corrections serialize without lost balance updates (244.290538ms)
+✔ adjustment denies anonymous, customer, partial admin, stale step-up and missing CSRF without posting (197.205734ms)
+✔ invalid or overflowing integer amounts, reason, key and unknown customer leave no financial records (183.395028ms)
+✔ owner closure pseudonymizes current identity, revokes sessions/reset tokens and preserves ledger and audit (3004.205837ms)
+✔ closure rejects anonymous/admin sessions, missing CSRF, wrong confirmation and stale version (165.149187ms)
+✔ wrong closure password is rate limited without closing the owner or another account (404.315111ms)
+✔ parallel wrong closure passwords cannot exceed the per-account failure cap (313.641016ms)
+✔ parallel closure writes exactly one audit event, cannot target a different tenant, and cannot be restored (257.126157ms)
+✔ suspended owner can close and database guards prevent reopening or changing retired usernames (198.349516ms)
 error: fixture audit failure
     at /mnt/d/router.dev.zuhri/server/node_modules/pg/lib/client.js:694:17
     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
@@ -176,55 +177,55 @@ error: fixture audit failure
   line: '3925',
   routine: 'exec_stmt_raise'
 }
-✔ audit failure rolls back closure identity, tenant, sessions and username reservation together (194.310269ms)
-✔ activation and closure serialize email before username and invitation locks (196.003215ms)
-✔ closed usernames cannot be reused by a later invitation, while a new username can activate (207.140359ms)
-✔ closure wins against login that read identity before it was closed (181.429752ms)
-✔ closure wins against reset-request that read identity before it was closed (164.423407ms)
-✔ closure wins against reset-complete that read identity before it was closed (184.500214ms)
-✔ closure wins against password-change that read identity before it was closed (200.621183ms)
-✔ suspend blocks admission but preserves portal access and lets admitted requests settle once (2337.281849ms)
-✔ committed suspension is checked after a queued admission acquires its lock (158.019591ms)
-✔ restore uses a version check, admits again, and never changes another tenant (232.149494ms)
-✔ parallel status changes write exactly one audit event; stale and no-op versions conflict (167.219882ms)
-✔ suspend and restore deny anonymous, customer, password-only admin, stale step-up and missing CSRF (166.368048ms)
-✔ status validation rejects invalid versions, unknown customer and empty reason without mutation (169.157506ms)
-✔ invite and reset emails carry the one-time link in the URL fragment (38.731441ms)
-✔ delivery failure rejects, so the caller can report that the email was not sent (10002.241707ms)
-✔ configuration from the environment is strict (1.468114ms)
-✔ admin actions reach the chat once each, with amounts in tokens and never a code or key (2708.187488ms)
-✔ upstream trouble is alerted once per window, with a clear reason for 402 (208.785592ms)
-✔ /status answers only in the configured chat and reports balances, requests and ledger consistency (164.299335ms)
-✔ a ledger mismatch and waiting requests raise alerts; a dead Telegram never breaks the server (157.684996ms)
-✔ the migration default allowance is 500,000 token credits and balances are labelled TOKEN (2812.272247ms)
-✔ a model priced with only a multiplier charges tokens x multiplier, decimals included (181.905614ms)
-✔ a request may reach into the allowance but not past it, and needs a positive balance to start (216.771537ms)
-✔ parallel requests cannot stack the allowance (230.861169ms)
-✔ the allowance is changed only by an admin with a fresh second factor, and is audited (194.82248ms)
-✔ a new model has no price and is not sellable; nothing is inherited (2747.813508ms)
-✔ draft, preview and publish: effective rates and the example charge match the documented fixture (121.673185ms)
-✔ invalid factors and rates are rejected on the server and nothing is stored (139.302625ms)
-✔ requests admitted before a price change keep the old snapshot; new requests get the new version (118.008157ms)
-✔ version conflicts fail without side effects, including concurrent publishes (123.30482ms)
-✔ published prices are immutable in the database; only a draft can be removed (107.345113ms)
-✔ retire stops sales and is audited with a reason (117.933833ms)
-✔ customers, anonymous callers and admins without the second factor cannot read or change pricing (213.023895ms)
-✔ publishing and retiring need a recent second factor; drafts and reads do not (109.578156ms)
-✔ the app shell is served for client-side routes with protective headers; assets are cached; API paths stay JSON (2199.369278ms)
-✔ nothing outside the folder or of an unlisted type can be fetched (2.275306ms)
-✔ HSTS is sent on secure deployments and API answers are never cached (2.521191ms)
-✔ with one trusted proxy the client address comes from X-Forwarded-For, and a client cannot push a fake hop past it (238.541433ms)
-✔ address guard: private, loopback, link-local, metadata and mapped addresses are not public (2689.659681ms)
-✔ unsafe base URLs are rejected and nothing is stored (141.389514ms)
-✔ the upstream API key is write-only: sealed at rest and absent from every response, list and audit record (103.315096ms)
-✔ changing a base URL requires the API key again; version conflicts change nothing (104.309079ms)
-✔ candidates: same protocol only, eligible upstreams only, priority order, disabled routes skipped (167.467977ms)
-✔ only an admin with a fresh second factor can change upstreams, routes or eligibility; status changes are audited (175.008947ms)
-✔ packs: admin sets tokens and display price; customers see only active packs; price changes do not touch balances (2545.329429ms)
-✔ redeem credits the token amount once and returns a receipt; the owner replay gets the same receipt (198.280021ms)
-✔ two tenants racing for one code: exactly one is credited and the loser learns nothing (314.74496ms)
-✔ wrong, revoked, expired and bound-to-another codes all look the same and credit nothing (1871.243878ms)
-✔ invalid attempts are limited per account with Retry-After and never consume a code (202.783782ms)
+✔ audit failure rolls back closure identity, tenant, sessions and username reservation together (206.267439ms)
+✔ activation and closure serialize email before username and invitation locks (194.918098ms)
+✔ closed usernames cannot be reused by a later invitation, while a new username can activate (214.460157ms)
+✔ closure wins against login that read identity before it was closed (206.92011ms)
+✔ closure wins against reset-request that read identity before it was closed (174.804306ms)
+✔ closure wins against reset-complete that read identity before it was closed (191.936346ms)
+✔ closure wins against password-change that read identity before it was closed (221.646787ms)
+✔ suspend blocks admission but preserves portal access and lets admitted requests settle once (2972.51464ms)
+✔ committed suspension is checked after a queued admission acquires its lock (172.409878ms)
+✔ restore uses a version check, admits again, and never changes another tenant (248.471177ms)
+✔ parallel status changes write exactly one audit event; stale and no-op versions conflict (172.566868ms)
+✔ suspend and restore deny anonymous, customer, password-only admin, stale step-up and missing CSRF (189.047174ms)
+✔ status validation rejects invalid versions, unknown customer and empty reason without mutation (167.19948ms)
+✔ invite and reset emails carry the one-time link in the URL fragment (38.59176ms)
+✔ delivery failure rejects, so the caller can report that the email was not sent (10001.283227ms)
+✔ configuration from the environment is strict (1.503919ms)
+✔ admin actions reach the chat once each, with amounts in tokens and never a code or key (2521.908375ms)
+✔ upstream trouble is alerted once per window, with a clear reason for 402 (207.772639ms)
+✔ /status answers only in the configured chat and reports balances, requests and ledger consistency (167.033945ms)
+✔ a ledger mismatch and waiting requests raise alerts; a dead Telegram never breaks the server (167.197136ms)
+✔ the migration default allowance is 500,000 token credits and balances are labelled TOKEN (2654.143692ms)
+✔ a model priced with only a multiplier charges tokens x multiplier, decimals included (154.312101ms)
+✔ a request may reach into the allowance but not past it, and needs a positive balance to start (189.69446ms)
+✔ parallel requests cannot stack the allowance (219.283321ms)
+✔ the allowance is changed only by an admin with a fresh second factor, and is audited (172.857739ms)
+✔ a new model has no price and is not sellable; nothing is inherited (2651.454448ms)
+✔ draft, preview and publish: effective rates and the example charge match the documented fixture (138.730906ms)
+✔ invalid factors and rates are rejected on the server and nothing is stored (157.10996ms)
+✔ requests admitted before a price change keep the old snapshot; new requests get the new version (123.053122ms)
+✔ version conflicts fail without side effects, including concurrent publishes (140.249777ms)
+✔ published prices are immutable in the database; only a draft can be removed (112.905242ms)
+✔ retire stops sales and is audited with a reason (125.088683ms)
+✔ customers, anonymous callers and admins without the second factor cannot read or change pricing (201.599669ms)
+✔ publishing and retiring need a recent second factor; drafts and reads do not (114.961358ms)
+✔ the app shell is served for client-side routes with protective headers; assets are cached; API paths stay JSON (2827.268727ms)
+✔ nothing outside the folder or of an unlisted type can be fetched (2.371853ms)
+✔ HSTS is sent on secure deployments and API answers are never cached (1.996784ms)
+✔ with one trusted proxy the client address comes from X-Forwarded-For, and a client cannot push a fake hop past it (228.620496ms)
+✔ address guard: private, loopback, link-local, metadata and mapped addresses are not public (2279.312868ms)
+✔ unsafe base URLs are rejected and nothing is stored (140.490359ms)
+✔ the upstream API key is write-only: sealed at rest and absent from every response, list and audit record (104.167636ms)
+✔ changing a base URL requires the API key again; version conflicts change nothing (106.270395ms)
+✔ candidates: same protocol only, eligible upstreams only, priority order, disabled routes skipped (180.127005ms)
+✔ only an admin with a fresh second factor can change upstreams, routes or eligibility; status changes are audited (192.204587ms)
+✔ packs: admin sets tokens and display price; customers see only active packs; price changes do not touch balances (2305.991801ms)
+✔ redeem credits the token amount once and returns a receipt; the owner replay gets the same receipt (171.340844ms)
+✔ two tenants racing for one code: exactly one is credited and the loser learns nothing (306.028125ms)
+✔ wrong, revoked, expired and bound-to-another codes all look the same and credit nothing (1888.885494ms)
+✔ invalid attempts are limited per account with Retry-After and never consume a code (177.403084ms)
 error: duplicate key value violates unique constraint "voucher_issued_by_issue_key_hash_key"
     at /mnt/d/router.dev.zuhri/server/node_modules/pg/lib/client.js:694:17
     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
@@ -234,7 +235,7 @@ error: duplicate key value violates unique constraint "voucher_issued_by_issue_k
   length: 358,
   severity: 'ERROR',
   code: '23505',
-  detail: 'Key (issued_by, issue_key_hash)=(06b84bcb-4ae9-4b4f-aa6d-5e6be8469aee, f1045dd130809435efe9264cc530a4b69804f869cfa7191305b05d7dd5d30ff4) already exists.',
+  detail: 'Key (issued_by, issue_key_hash)=(254aceeb-d646-48e4-b29e-0979a764b3de, f1045dd130809435efe9264cc530a4b69804f869cfa7191305b05d7dd5d30ff4) already exists.',
   hint: undefined,
   position: undefined,
   internalPosition: undefined,
@@ -258,7 +259,7 @@ error: duplicate key value violates unique constraint "voucher_issued_by_issue_k
   length: 358,
   severity: 'ERROR',
   code: '23505',
-  detail: 'Key (issued_by, issue_key_hash)=(06b84bcb-4ae9-4b4f-aa6d-5e6be8469aee, f1045dd130809435efe9264cc530a4b69804f869cfa7191305b05d7dd5d30ff4) already exists.',
+  detail: 'Key (issued_by, issue_key_hash)=(254aceeb-d646-48e4-b29e-0979a764b3de, f1045dd130809435efe9264cc530a4b69804f869cfa7191305b05d7dd5d30ff4) already exists.',
   hint: undefined,
   position: undefined,
   internalPosition: undefined,
@@ -282,7 +283,7 @@ error: duplicate key value violates unique constraint "voucher_issued_by_issue_k
   length: 358,
   severity: 'ERROR',
   code: '23505',
-  detail: 'Key (issued_by, issue_key_hash)=(06b84bcb-4ae9-4b4f-aa6d-5e6be8469aee, f1045dd130809435efe9264cc530a4b69804f869cfa7191305b05d7dd5d30ff4) already exists.',
+  detail: 'Key (issued_by, issue_key_hash)=(254aceeb-d646-48e4-b29e-0979a764b3de, f1045dd130809435efe9264cc530a4b69804f869cfa7191305b05d7dd5d30ff4) already exists.',
   hint: undefined,
   position: undefined,
   internalPosition: undefined,
@@ -306,7 +307,7 @@ error: duplicate key value violates unique constraint "voucher_issued_by_issue_k
   length: 358,
   severity: 'ERROR',
   code: '23505',
-  detail: 'Key (issued_by, issue_key_hash)=(06b84bcb-4ae9-4b4f-aa6d-5e6be8469aee, f1045dd130809435efe9264cc530a4b69804f869cfa7191305b05d7dd5d30ff4) already exists.',
+  detail: 'Key (issued_by, issue_key_hash)=(254aceeb-d646-48e4-b29e-0979a764b3de, f1045dd130809435efe9264cc530a4b69804f869cfa7191305b05d7dd5d30ff4) already exists.',
   hint: undefined,
   position: undefined,
   internalPosition: undefined,
@@ -321,15 +322,15 @@ error: duplicate key value violates unique constraint "voucher_issued_by_issue_k
   line: '666',
   routine: '_bt_check_unique'
 }
-✔ issuing: replay never re-reveals the code or creates a second one; duplicate sale references are refused (152.336842ms)
-✔ revoke versus redeem has a single outcome; redeemed codes cannot be revoked; rows are immutable (253.134685ms)
-✔ codes are never stored, listed or audited; issuing needs a fresh second factor; customers cannot issue (189.335594ms)
-✔ a top-up after overrun covers the negative balance first (181.585998ms)
-ℹ tests 132
+✔ issuing: replay never re-reveals the code or creates a second one; duplicate sale references are refused (136.943735ms)
+✔ revoke versus redeem has a single outcome; redeemed codes cannot be revoked; rows are immutable (228.527742ms)
+✔ codes are never stored, listed or audited; issuing needs a fresh second factor; customers cannot issue (172.213895ms)
+✔ a top-up after overrun covers the negative balance first (170.008835ms)
+ℹ tests 133
 ℹ suites 0
-ℹ pass 132
+ℹ pass 133
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 121948.353456
+ℹ duration_ms 123329.077681

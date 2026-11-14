@@ -1,9 +1,20 @@
 # Changelog: Router AI Komersial
 
-Version: 0.34.0
+Version: 0.35.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.35.0: Daftar model dari upstream; arsip model dan upstream
+
+CR-033
+Source: pertanyaan founder saat mengisi route di server produksi (2026-11-14): dari mana ID model tiap upstream diambil, dan mengapa daftar model publik memuat sisa uji yang tidak dapat disingkirkan.
+
+- `GET /admin/api/upstreams/:id/models?protocol=`: server menanyakan daftar model ke upstream memakai key tersimpan (`/models`, atau `/v1/models` pada permukaan Anthropic), dengan pemeriksa alamat yang sama, tanpa mengikuti redirect, batas waktu 15 detik. Hanya ID yang berbentuk sah yang dikembalikan, tanpa duplikat; isi jawaban upstream lainnya tidak diteruskan. Bila upstream tidak menyediakan daftar: 502 `upstream_models_unavailable`, dan ID tetap dapat diketik manual.
+- Arsip (migrasi 013): `POST /admin/api/models/archive` dan `POST /admin/api/upstreams/:id/archive`, dengan step-up dan audit. Model yang harganya masih terbit tidak dapat diarsipkan sebelum harganya ditarik. Mengarsipkan mematikan route terkait; upstream yang diarsipkan menjadi BLOCKED dan tetap BLOCKED saat dipulihkan. Daftar admin menyembunyikan yang diarsipkan kecuali `includeArchived=1`; gateway dan katalog pelanggan tidak pernah memakainya. Riwayat request, ledger dan audit tidak berubah.
+- Catatan operasi: uji alur pada CR-029 meninggalkan satu model dan satu upstream uji di server produksi; arsip dibuat antara lain untuk menyingkirkannya dari daftar pilihan.
+
+Verification: 1 test baru; suite server 133/133; typecheck exit 0.
 
 ## 0.34.0: Backup ke Google Drive
 
@@ -528,4 +539,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.34.0 -->
+<!-- END ROUTER-CHANGELOG v0.35.0 -->

@@ -245,7 +245,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.get('/admin/api/models', async req => {
     admin.requireAdmin(await adminSession(req));
     const id = (req.query as { id?: string }).id;
-    return id === undefined ? pricing.listModels(db) : pricing.getModel(db, pricing.modelId(id));
+    return id === undefined ? pricing.listModels(db, (req.query as { includeArchived?: string }).includeArchived === '1') : pricing.getModel(db, pricing.modelId(id));
   });
   app.post('/admin/api/models', async (req, reply) => {
     const p = admin.requireAdmin(await adminSession(req)); const b = body(req);
@@ -282,7 +282,14 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   // ---- Upstreams and routes (API-035, FR-012). Everything that changes where requests and keys go needs step-up. ----
-  app.get('/admin/api/upstreams', async req => { admin.requireAdmin(await adminSession(req)); return upstreams.list(db); });
+  app.get('/admin/api/upstreams', async req => { admin.requireAdmin(await adminSession(req)); return upstreams.list(db, (req.query as { includeArchived?: string }).includeArchived === '1'); });
+  app.get('/admin/api/upstreams/:id/models', async req => { admin.requireAdmin(await adminSession(req)); return upstreams.fetchModelIds(db, key, resolveHost, (req.params as { id: string }).id, (req.query as { protocol?: string }).protocol, deps.gateway?.unsafeAllowAnyUpstreamUrl === true); });
+  app.post('/admin/api/upstreams/:id/archive', async req => { const p = admin.requireAdmin(await adminSession(req), { stepUp: true }); return upstreams.setArchived(db, (req.params as { id: string }).id, body(req), p.userId); });
+  app.post('/admin/api/models/archive', async req => {
+    const p = admin.requireAdmin(await adminSession(req), { stepUp: true }); const b = body(req);
+    if (typeof b.archived !== 'boolean') throw new AppError('invalid_request', 'Invalid request', 400);
+    return pricing.setModelArchived(db, { id: pricing.modelId(b.id), archived: b.archived, expectedVersion: pricing.versionOf(b.expectedVersion), actorUser: p.userId });
+  });
   app.post('/admin/api/upstreams', async (req, reply) => { const p = admin.requireAdmin(await adminSession(req), { stepUp: true }); return reply.code(201).send(await upstreams.create(db, key, resolveHost, body(req), p.userId)); });
   app.post('/admin/api/upstreams/:id', async req => { const p = admin.requireAdmin(await adminSession(req), { stepUp: true }); return upstreams.update(db, key, resolveHost, (req.params as { id: string }).id, body(req), p.userId); });
   app.post('/admin/api/upstreams/:id/status', async req => { const p = admin.requireAdmin(await adminSession(req), { stepUp: true }); return upstreams.setStatus(db, (req.params as { id: string }).id, body(req), p.userId); });
