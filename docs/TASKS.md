@@ -1,6 +1,6 @@
 # Tasks, Test Specification dan Traceability: Router AI Komersial
 
-Version: 0.16.0
+Version: 0.17.0
 Status: Draft; backend TASK-010 selesai untuk API key/admission lokal, UI/gateway belum
 Owner keputusan: founder
 Updated: 2026-11-14, Asia/Jakarta
@@ -45,7 +45,7 @@ Definition of Done umum: AC terkait terpenuhi; test pada spesifikasi dijalankan 
 | TASK-016 | Antrean unresolved, penyelesaian kasus, laporan kewajiban voucher dan selisih | FR-015 / AC-015 | API-036, API-037; SCR-014, SCR-017 | TASK-002; OQ-006 diputuskan | PLANNED |
 | TASK-017 | Audit event append-only dan layar audit | FR-016 / AC-016 | API-038; SCR-018; CTL-013 | TASK-009 | SEBAGIAN: pencatatan dan API baca audit; layar belum |
 | TASK-018 | Health/readiness, kill switch, batas global, alert, backup dan uji restore, runbook | FR-017 / AC-017 | API-039; ARCHITECTURE.md section 8; SCR-014 | Host dipilih; kanal alert dipilih | PLANNED |
-| TASK-019 | Panduan integrasi dan referensi error | FR-018 / AC-018 | SCR-012; ARCHITECTURE.md section 5.1 | Tool target per ADR-002; permukaan terkait (TASK-012, 025, 026) lolos fixture untuk tool itu | PLANNED |
+| TASK-019 | Panduan integrasi dan referensi error | FR-018 / AC-018 | SCR-012; ARCHITECTURE.md section 5.1 | Tool target per ADR-002; permukaan terkait (TASK-012, 025, 026) lolos fixture untuk tool itu | SEBAGIAN 2026-11-14: Codex 0.165.0, Claude Code 2.1.325 dan OpenCode 2.3.0 terbukti berjalan lewat gateway lokal ke satu upstream nyata (CHANGELOG CR-026; konfigurasi di ../server/README.md). Hermes dan ZCode belum diuji. Halaman panduan (SCR-012) dikerjakan Hermes |
 | TASK-020 | Pemilihan dan vetting pustaka untuk stack ADR-004 serta sumber registry yang akan dipakai, termasuk lisensi dependency UIArc bila DIRECT_ADOPTION | CTL-016; CHK-21 | SECURITY.md section 3; UI_REFERENCES.md section 1 | ADR-004 | SEBAGIAN: pustaka server dipilih dan dipasang (fastify 5.12.8, @fastify/cookie 11.1.5, pg 8.23.1; npm audit 0 kerentanan pada 2026-11-13); pustaka UI dan sumber UIArc belum |
 | TASK-021 | Penegakan metadata-only, job retensi, penutupan akun | FR-019 / AC-019 | SECURITY.md section 5 | Nilai retensi diputuskan founder untuk job retensi; penutupan akun M1 diizinkan pada handoff | SEBAGIAN: API penutupan akun, pseudonimisasi dan pencabutan akses lulus; durasi/job retensi, kebijakan bukti audit dan pemeriksaan body gateway belum |
 | TASK-022 | DESIGN.md (token, tipografi, warna semantic dari arah Navy/Blue/Gold) dan DSD.md (spesifikasi komponen dengan UAR), termasuk tiga tipe komponen pending | NFR-006; CHK-25, 26, 33, 35 | UX.md; UI_REFERENCES.md | Konfirmasi arah brand dan bahasa antarmuka; pemetaan token setelah ADR-004 atau ditulis netral-stack | DRAFT DITULIS: DESIGN.md dan DSD.md v0.1.0; menunggu konfirmasi brand dan pemetaan token UIArc |
@@ -107,4 +107,4 @@ Journey end-to-end yang wajib sebelum penilaian Gate D pilot: FLOW-001, FLOW-002
 
 Cakupan: 19 dari 19 FR P0 memiliki AC, task dan test specification. Cakupan ini menyatakan keterhubungan dokumen, bukan kesiapan rilis. Fondasi lokal diizinkan founder (CR-008, CR-009); fitur upstream nyata dan UI tetap mengikuti syarat siap masing-masing. TASK-010 dan TASK-001 backend selesai; berikutnya TASK-013 registry upstream sesuai ../HANDOFF.md. Gateway dan UI tetap belum dinyatakan selesai.
 
-<!-- END ROUTER-TASKS v0.16.0 -->
+<!-- END ROUTER-TASKS v0.17.0 -->

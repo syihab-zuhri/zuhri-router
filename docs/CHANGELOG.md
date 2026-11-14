@@ -1,9 +1,31 @@
 # Changelog: Router AI Komersial
 
-Version: 0.27.0
+Version: 0.28.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.28.0: Uji dengan tool sungguhan
+
+CR-026
+Source: founder menyetujui uji tool memakai key upstream yang sama (2026-11-14).
+
+Susunan: gateway lokal (`server/scripts/tool-lab.ts`) dengan satu model publik yang dipetakan ke router milik founder pada tiga permukaan; tiap tool dijalankan dengan folder konfigurasi terpisah sehingga konfigurasi dan login milik founder tidak tersentuh. Folder sementara itu dihapus sesudahnya.
+
+| Tool | Versi | Permukaan | Hasil |
+|---|---|---|---|
+| Codex CLI | 0.165.0 | `/v1/responses` | Menjawab; tugas bertahap (baca berkas, tulis berkas) selesai dengan isi yang benar. 4 request, semua SETTLED |
+| Claude Code | 2.1.325 | `/v1/messages` | Menjawab; tugas dengan tool Read mengembalikan isi yang benar. 3 request, semua SETTLED |
+| OpenCode | 2.3.0 | `/v1/chat/completions` | Menjawab. 2 request, semua SETTLED |
+
+- Sembilan request, tidak ada yang ditagih sebagai estimasi, tidak ada pelanggaran hold, tidak ada dana tertahan sesudahnya, invariant ledger bersih. Jumlah token yang dilaporkan Codex untuk dirinya sendiri (11.591 dan 36.047) sama persis dengan yang ditagih gateway.
+- Kekhawatiran pada CR-020 tidak terjadi: Codex berjalan dalam mode stateless tanpa mengirim `previous_response_id`.
+- Satu request tool memakai sekitar 12.000 sampai 16.000 token input hanya untuk instruksi bawaan tool; total uji sekitar 107.000 token di upstream.
+- Upstream ini tidak melaporkan token cache, jadi tidak ada keringanan cache yang diteruskan.
+- Peringatan dari tool, bukan kegagalan: Codex dan Claude Code tidak mengenali nama model kustom dan memakai asumsi bawaan untuk ukuran konteks.
+- Belum diuji: Hermes (sedang dipakai sebagai agen pada proyek ini, tidak dikonfigurasi ulang) dan ZCode (tidak terpasang); sesi panjang, gambar, pembatalan dari dalam tool, dan gateway di balik HTTPS.
+
+Batas bukti: E3 untuk versi tool, satu upstream dan satu waktu di atas. Versi tool berubah cepat.
 
 ## 0.27.0: Pemakaian per pelanggan dan tautan aktivasi manual
 
@@ -436,4 +458,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.27.0 -->
+<!-- END ROUTER-CHANGELOG v0.28.0 -->

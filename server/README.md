@@ -43,6 +43,37 @@ Tanpa email: `MAILER=none`. Dengan email nyata (butuh izin founder):
 
 Host dan port di atas adalah nilai umum SMTP Gmail dan belum diuji dari proyek ini. Halaman `/aktivasi` dan `/atur-ulang` yang dituju tautan belum ada sampai UI dibangun.
 
+## Konfigurasi tool yang sudah terbukti
+
+Diuji 2026-11-14 terhadap gateway lokal (`scripts/tool-lab.ts`). Ganti `<origin>` dengan alamat gateway dan `<model>` dengan ID model publik.
+
+Codex CLI 0.165.0, `config.toml`:
+
+    model = "<model>"
+    model_provider = "zr"
+    [model_providers.zr]
+    name = "ZRouter"
+    base_url = "<origin>/v1"
+    env_key = "ZR_API_KEY"
+    wire_api = "responses"
+
+Claude Code 2.1.325, variabel lingkungan:
+
+    ANTHROPIC_BASE_URL=<origin>
+    ANTHROPIC_AUTH_TOKEN=<api key>
+    ANTHROPIC_MODEL=<model>
+    ANTHROPIC_DEFAULT_HAIKU_MODEL=<model>
+    ANTHROPIC_DEFAULT_SONNET_MODEL=<model>
+    ANTHROPIC_DEFAULT_OPUS_MODEL=<model>
+    CLAUDE_CODE_SUBAGENT_MODEL=<model>
+
+OpenCode 2.3.0, `opencode.jsonc`, lalu `opencode run --model zr/<model>`:
+
+    { "providers": { "zr": { "name": "ZRouter", "env": ["ZR_API_KEY"], "package": "@opencode/ai/providers/openai-compatible",
+        "settings": { "baseURL": "<origin>/v1" }, "models": { "<model>": {} } } } }
+
+Codex dan Claude Code memberi peringatan bahwa model kustom tidak dikenali dan memakai ukuran konteks bawaan; itu bukan kegagalan.
+
 ## Struktur
 
 | Berkas | Isi |

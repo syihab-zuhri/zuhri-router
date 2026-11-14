@@ -57,3 +57,7 @@ Server sekarang dapat menyajikan `web/dist` dari origin yang sama (`WEB_DIST`). 
 
 - `GET /admin/api/customers/:username/usage?days=7` (1 sampai 90): `{ username, days, byDay, byModel, byKey, recent }`. Tiap baris agregat: `{ key, requests, failed, estimated, debitMicro, inputTokens, outputTokens, unbilledInputTokens }` (`key` = tanggal, ID model, atau nama key tersamar). `recent`: `{ id, model, protocol, state, debitMicro, estimated, unbilledInputTokens, createdAt }`. Untuk tab Pemakaian pada detail pelanggan (SCR-015).
 - `POST /admin/api/invites` sekarang menjawab `{ inviteId, emailSent, activationLink }`. `activationLink` berisi tautan hanya bila `emailSent=false`. Perlakukan seperti secret: tampilkan sekali dengan tombol salin (CMP-022), jangan simpan di URL, storage, atau log, dan jelaskan bahwa admin harus mengirimkannya sendiri.
+
+## 2026-11-14, tool sudah diuji
+
+Codex CLI 0.165.0, Claude Code 2.1.325 dan OpenCode 2.3.0 terbukti berjalan lewat gateway (CHANGELOG CR-026). Konfigurasi persisnya ada di `server/README.md` bagian "Konfigurasi tool yang sudah terbukti". Halaman panduan (SCR-012) boleh menampilkan ketiganya sebagai teruji dengan menyebut versi dan tanggal itu; Hermes dan ZCode tetap ditulis "belum diuji".
