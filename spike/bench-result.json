@@ -1,0 +1,48 @@
+{
+  "node": "v24.21.0",
+  "n": 400,
+  "note": "Single machine, loopback, mock upstream that answers immediately, PostgreSQL in local Docker. Not a capacity test.",
+  "runs": [
+    {
+      "target": "direct",
+      "concurrency": 1,
+      "ttfb_ms_p50": 0.92,
+      "ttfb_ms_p95": 1.58,
+      "total_ms_p50": 0.94,
+      "total_ms_p95": 1.6,
+      "req_per_s": 974.49
+    },
+    {
+      "target": "gateway",
+      "concurrency": 1,
+      "ttfb_ms_p50": 9.17,
+      "ttfb_ms_p95": 11.69,
+      "total_ms_p50": 10,
+      "total_ms_p95": 12.75,
+      "req_per_s": 98.04
+    },
+    {
+      "target": "direct",
+      "concurrency": 20,
+      "ttfb_ms_p50": 5.94,
+      "ttfb_ms_p95": 20.65,
+      "total_ms_p50": 5.94,
+      "total_ms_p95": 20.66,
+      "req_per_s": 2501.58
+    },
+    {
+      "target": "gateway",
+      "concurrency": 20,
+      "ttfb_ms_p50": 73.24,
+      "ttfb_ms_p95": 423.42,
+      "total_ms_p50": 75.49,
+      "total_ms_p95": 424.46,
+      "req_per_s": 150.21
+    }
+  ],
+  "after": {
+    "held": "0",
+    "unsettled_requests": "0",
+    "debits": "860"
+  }
+}

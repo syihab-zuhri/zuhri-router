@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "recipe": {
+    "name": "Router API M1 local verification",
+    "kind": "node",
+    "bootstrap": [],
+    "build": ["npm --prefix server run typecheck"],
+    "test": ["npm --prefix server run test"],
+    "start": "node server/scripts/verify-local.ts",
+    "port": 55480,
+    "readinessPath": "/readyz",
+    "evidence": [
+      "Server package.json defines typecheck and test",
+      "No transpilation build: Node executes erasable TypeScript directly",
+      "Start executes the real server entrypoint with an isolated local test database, ephemeral encryption key and MAILER=none",
+      "Loopback only; no upstream or real email"
+    ]
+  }
+}

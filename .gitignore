@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.*
+# Credential files must never be committed
+codex-*.json
+*credential*.json
+*.pem
+*.key
+# Third-party material kept locally only: reference image and snapshots of other sites' documentation
+Portrait Version.jpg
+docs/evidence/

@@ -1,0 +1,26 @@
+{
+  "name": "router-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "migrate": "node src/db/migrate.ts",
+    "test": "node --test --test-concurrency=1 --test-timeout=30000 test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "start": "node src/main.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.1.5",
+    "fastify": "5.12.8",
+    "nodemailer": "10.5.0",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2"
+  }
+}

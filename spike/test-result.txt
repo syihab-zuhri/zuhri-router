@@ -1,0 +1,22 @@
+✔ chat stream: bytes relayed unchanged, raw usage untouched, debit matches the documented example (136.799392ms)
+✔ anthropic stream: exclusive input_tokens gives the same debit as the equivalent chat usage (72.798417ms)
+✔ normalizer rejects inconsistent usage instead of guessing (0.419304ms)
+✔ rounding happens once after summing; tiny costs do not round per category (0.326999ms)
+✔ concurrency: parallel requests never exceed the balance when the hold bounds the usage (1384.085528ms)
+✔ FINDING: when upstream usage exceeds the body-based input estimate, the debit exceeds the hold and the balance can go negative (69.770987ms)
+✔ fallback before first byte: next route for the same model, one debit, attempts recorded (882.336142ms)
+✔ all routes fail before first byte: structured error, no debit (48.939731ms)
+✔ upstream 400 is forwarded without fallback or charge (41.954294ms)
+✔ failure after stream started: no fallback; missing usage is settled as an estimate, not as zero (118.295898ms)
+✔ zero usage: no charge at all and the hold is fully released (72.178752ms)
+✔ client disconnect mid-stream cancels the upstream request and still settles exactly once (365.037108ms)
+✔ unknown model and bad key are rejected before any hold (29.254113ms)
+✔ wrong-protocol route is never used: a chat-only model is not available on the anthropic surface (34.447652ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7418.748962
