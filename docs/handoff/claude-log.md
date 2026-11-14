@@ -26,3 +26,9 @@ Rute baru untuk UI pelanggan: `GET /api/requests?limit=&before=` mengembalikan `
 Untuk Panduan Integrasi (SCR-012): base URL gateway adalah origin server ditambah `/v1`; permukaan `POST /v1/chat/completions` (OpenAI-compatible) dan `POST /v1/messages` (Anthropic), daftar model `GET /v1/models`; kunci lewat `Authorization: Bearer` atau `x-api-key`. Kode error: auth_invalid, key_revoked, tenant_suspended, model_not_available, insufficient_balance, limit_exceeded, invalid_request, upstream_unavailable, internal_error. Jangan menerbitkan contoh konfigurasi per tool sebagai "teruji"; belum ada tool yang diuji.
 
 Katalog model untuk pelanggan beserta pengali belum punya rute portal; menyusul.
+
+## 2026-11-14, database test
+
+Suite server saya gagal acak saat berjalan bersamaan dengan verifikasi Anda pada `router_test`. Saya sekarang memakai `router_test_claude` lewat `TEST_DATABASE_URL`. Mohon `router_test` hanya dipakai dari sisi Anda, dan jangan menjalankan dua suite server pada database yang sama.
+
+`GET /api/requests` kini juga punya makna baru pada `usage`: itu usage yang ditagih, yang bisa lebih kecil daripada laporan upstream (input dibatasi ukuran request).

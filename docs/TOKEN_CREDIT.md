@@ -1,6 +1,6 @@
 # Model Saldo Kredit Token
 
-Version: 0.2.0
+Version: 0.3.0
 Status: Draft; arah CONFIRMED founder (CR-013), rincian PROPOSED
 Owner keputusan: founder
 Updated: 2026-11-14, Asia/Jakarta
@@ -35,6 +35,7 @@ Diagram founder 2026-11-14, dibaca dari berkas mxGraph yang ditempelkan:
 | Lebih-pakai | Saldo boleh turun sampai minus 500.000 kredit. Request baru butuh saldo tersedia di atas nol; hold-nya boleh menjangkau batas itu. Nilai dapat diubah admin dengan step-up dan diaudit | Angka CONFIRMED; aturan admission PROPOSED, diimplementasikan |
 | Henti paksa di tengah stream | Gateway memutus stream saat pemakaian berjalan melewati saldo ditambah batas lebih-pakai | Belum diimplementasikan (TASK-012) |
 | Batas belanja API key | Dalam kredit token | Mengikuti unit |
+| Batas tagihan input | Input yang ditagih tidak melebihi ukuran request pelanggan dalam byte; kelebihan dari upstream dicatat tidak ditagih | CONFIRMED (CR-018), diimplementasikan |
 
 ## 3. Akibat yang perlu diketahui founder
 
@@ -47,4 +48,4 @@ Diagram founder 2026-11-14, dibaca dari berkas mxGraph yang ditempelkan:
 
 ADR-005 (saldo Rupiah, mikro-IDR) dan OQ-004 ditutup ulang dengan keputusan ini. OQ-009 (bentuk promo) terjawab sebagian oleh butir terakhir section 3 dan menunggu konfirmasi founder. Contoh Rp68 menjadi Rp102 di BILLING_REDEEM.md section 2.3 tetap sah sebagai uji aritmetika mesin harga, bukan sebagai model tagihan produk.
 
-<!-- END ROUTER-TOKEN-CREDIT v0.2.0 -->
+<!-- END ROUTER-TOKEN-CREDIT v0.3.0 -->

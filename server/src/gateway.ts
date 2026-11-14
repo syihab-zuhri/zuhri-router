@@ -36,6 +36,19 @@ export function normalizeUsage(s: Surface, raw: any): Usage | null {
   return { input: inp, output: out, cacheRead: hit, cacheWrite: write }; // Anthropic-style input_tokens already excludes cache
 }
 
+/**
+ * Founder decision (CR-018): a customer is never billed for more input than the request could contain.
+ * maxInput is the request size in bytes, which no tokenizer exceeds. Anything an upstream reports above it was added
+ * by the upstream itself; it is cut from plain input first, then cache write, then cache read, and reported as unbilled.
+ */
+export function capInput(u: Usage, maxInput: number): { billed: Usage; unbilled: number } {
+  let over = u.input + u.cacheRead + u.cacheWrite - maxInput;
+  if (over <= 0) return { billed: u, unbilled: 0 };
+  const unbilled = over; const b = { ...u };
+  for (const k of ['input', 'cacheWrite', 'cacheRead'] as const) { const cut = Math.min(b[k], over); b[k] -= cut; over -= cut; }
+  return { billed: b, unbilled };
+}
+
 /** Reads SSE as it passes through, without changing a byte: collects usage, counts content, sees the end marker. */
 class StreamObserver {
   private buf = ''; private dec = new TextDecoder();
@@ -90,13 +103,14 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
     return fail(reply, s, 503, 'internal_error', 'Service unavailable', requestId); // ledger or database trouble: refuse, never let a billable request through
   };
 
-  async function settle(a: { requestId: string; tenantId: string; price: Price; usage: Usage | null; estimated: boolean; state: string; usageRaw: unknown; outcome: string }) {
-    const debit = a.usage ? debitMicro(a.usage, a.price) : 0n;
+  async function settle(a: { requestId: string; tenantId: string; price: Price; usage: Usage | null; estimated: boolean; state: string; usageRaw: unknown; outcome: string; maxIn: number }) {
+    const capped = a.usage ? capInput(a.usage, a.maxIn) : null; const billed = capped?.billed ?? null;
+    const debit = billed ? debitMicro(billed, a.price) : 0n;
     await withTx(db, async tx => {
       const r = await ledger.settleHold(tx, { tenantId: a.tenantId, requestId: a.requestId, debit, ref: { requestId: a.requestId } });
       if (!r.settled) return; // already settled: nothing to do
-      await tx.query('update request set state=$2, debit=$3, estimated=$4, bound_exceeded=$5, usage_raw=$6, usage_norm=$7, outcome=$8, settled_at=now() where id=$1',
-        [a.requestId, a.state, String(debit), a.estimated, r.boundExceeded, a.usageRaw === null || a.usageRaw === undefined ? null : JSON.stringify(a.usageRaw), a.usage ? JSON.stringify(a.usage) : null, a.outcome]);
+      await tx.query('update request set state=$2, debit=$3, estimated=$4, bound_exceeded=$5, usage_raw=$6, usage_norm=$7, outcome=$8, unbilled_input_tokens=$9, settled_at=now() where id=$1',
+        [a.requestId, a.state, String(debit), a.estimated, r.boundExceeded, a.usageRaw === null || a.usageRaw === undefined ? null : JSON.stringify(a.usageRaw), billed ? JSON.stringify(billed) : null, a.outcome, capped?.unbilled ?? 0]);
     });
   }
 
@@ -140,7 +154,7 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
       adm = { tenantId: placed.tenantId, price: snap.price, maxOut };
     } catch (e) { return failApp(reply, s, e, requestId); }
 
-    const done = (usage: Usage | null, estimated: boolean, state: string, usageRaw: unknown, outcome: string) => settle({ requestId, tenantId: adm.tenantId, price: adm.price, usage, estimated, state, usageRaw, outcome });
+    const done = (usage: Usage | null, estimated: boolean, state: string, usageRaw: unknown, outcome: string) => settle({ requestId, tenantId: adm.tenantId, price: adm.price, usage, estimated, state, usageRaw, outcome, maxIn });
     const estimate = (chars: number): Usage => ({ input: Math.ceil(maxIn / 3), output: Math.ceil(chars / 2), cacheRead: 0, cacheWrite: 0 });
 
     // ---- Routing: same protocol only, eligible upstreams, healthy routes, best priority first. ----
@@ -237,6 +251,6 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
 export async function listRequests(db: Db, tenantId: string, q: { before?: string; limit?: string }) {
   const limit = Math.min(Math.max(Number.isInteger(Number(q.limit)) ? Number(q.limit) : 50, 1), 100);
   const before = typeof q.before === 'string' && !Number.isNaN(Date.parse(q.before)) ? q.before : null;
-  const rows = (await db.query('select id, model_id, protocol, stream, state, hold, debit, estimated, usage_norm, created_at from request where tenant_id=$1 and ($2::timestamptz is null or created_at < $2::timestamptz) order by created_at desc, id limit $3', [tenantId, before, limit])).rows;
+  const rows = (await db.query('select id, model_id, protocol, stream, state, hold, debit, estimated, usage_norm, unbilled_input_tokens, created_at from request where tenant_id=$1 and ($2::timestamptz is null or created_at < $2::timestamptz) order by created_at desc, id limit $3', [tenantId, before, limit])).rows;
   return { requests: rows.map(r => ({ id: r.id as string, model: r.model_id as string, protocol: r.protocol as string, stream: r.stream as boolean, state: r.state as string, final: r.debit !== null, heldMicro: String(r.hold), debitMicro: r.debit === null ? null : String(r.debit), estimated: r.estimated as boolean, usage: r.usage_norm, createdAt: (r.created_at as Date).toISOString() })), nextBefore: rows.length === limit ? (rows[rows.length - 1].created_at as Date).toISOString() : null };
 }

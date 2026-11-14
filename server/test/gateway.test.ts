@@ -34,7 +34,10 @@ async function model(id: string, multiplier: string, routes: ['CHAT' | 'ANTHROPI
     await db.query('insert into route(model_id, upstream_id, protocol, upstream_model, priority) values($1,$2,$3,$4,$5)', [id, up.id, protocol, mode, priority]);
   }
 }
-const call = (path: string, m: string, extra: object = {}, init: RequestInit = {}, headers: Record<string, string> = {}) => fetch(base + path, { method: 'POST', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json', ...headers }, body: JSON.stringify({ model: m, stream: true, max_tokens: 2000, messages: [{ role: 'user', content: 'halo PENANDA-PROMPT-RAHASIA' }], ...extra }), ...init });
+// The mock reports 10,000 input tokens. Requests carry a 12,000-byte prompt so that usage is plausible for the request size;
+// the input cap (CR-018) has its own test with a small prompt.
+const PAD = ' ' + 'kata '.repeat(2400);
+const call = (path: string, m: string, extra: object = {}, init: RequestInit = {}, headers: Record<string, string> = {}) => fetch(base + path, { method: 'POST', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json', ...headers }, body: JSON.stringify({ model: m, stream: true, max_tokens: 2000, messages: [{ role: 'user', content: 'halo PENANDA-PROMPT-RAHASIA' + PAD }], ...extra }), ...init });
 const row = async (id: string) => (await db.query('select * from request where id=$1', [id])).rows[0];
 async function settled(id: string) { for (let i = 0; i < 100; i++) { const r = await row(id); if (r?.debit !== null && r?.debit !== undefined) return r; await new Promise(r => setTimeout(r, 30)); } throw new Error('not settled ' + id); }
 const balance = () => ledger.getBalance(db, tenantId);
@@ -59,7 +62,7 @@ test('anthropic stream and non-stream chat charge the same; anthropic headers ar
   const a = await call('/v1/messages', 'ds/flash', {}, {}, { 'anthropic-version': '2023-06-01', 'anthropic-beta': 'extended-cache-ttl-2025-04-11,uji' }); const text = await a.text();
   assert.match(text, /event: ping/); assert.match(text, /event: message_stop/);
   assert.equal(stats.last!.headers['x-api-key'], UPKEY); assert.equal(stats.last!.headers['anthropic-beta'], 'extended-cache-ttl-2025-04-11,uji'); assert.equal(stats.last!.url, '/anthropic/v1/messages');
-  const viaXApiKey = await fetch(base + '/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'content-type': 'application/json' }, body: JSON.stringify({ model: 'ds/flash', max_tokens: 100, messages: [] }) });
+  const viaXApiKey = await fetch(base + '/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'content-type': 'application/json' }, body: JSON.stringify({ model: 'ds/flash', max_tokens: 100, messages: [{ role: 'user', content: PAD }] }) });
   assert.equal(viaXApiKey.status, 200); const body = await viaXApiKey.json(); assert.equal(body.usage.input_tokens, 2000);
   const n = await call('/v1/chat/completions', 'ds/flash', { stream: false }); assert.equal((await n.json()).usage.prompt_tokens, 10000);
   const omitted = await fetch(base + '/v1/chat/completions', { method: 'POST', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: 'ds/flash', messages: [] }) }); await omitted.json();
@@ -139,17 +142,29 @@ test('authentication and account state: bad, revoked and scoped keys, suspended 
   assert.equal((await db.query("select count(*) n from hold where status='ACTIVE'")).rows[0].n, '0');
 });
 
+test('input cap: tokens an upstream adds on its own are not billed to the customer', async () => {
+  await model('m/pad', '2', [['CHAT', 'ok', 1]]);
+  const body = JSON.stringify({ model: 'm/pad', max_tokens: 2000, stream: false, messages: [{ role: 'user', content: 'ok' }] });
+  const res = await fetch(base + '/v1/chat/completions', { method: 'POST', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }, body });
+  assert.equal((await res.json()).usage.prompt_tokens, 10000, 'the customer still sees the raw usage');
+  const r = await settled(res.headers.get('x-request-id')!); const sent = r.max_input;
+  assert.ok(sent < 200, `request size ${sent}`);
+  assert.deepEqual(r.usage_norm, { input: 0, output: 1000, cacheRead: sent, cacheWrite: 0 }, 'plain input is cut first, then cache read down to the request size');
+  assert.equal(r.unbilled_input_tokens, 10000 - sent); assert.equal(BigInt(r.debit), BigInt(sent + 1000) * 2n * C); assert.equal(r.bound_exceeded, false);
+  assert.equal(r.usage_raw.prompt_tokens, 10000, 'the upstream figure is kept for reconciliation'); await clean();
+});
+
 test('overrun allowance: output is capped to what the balance plus allowance can pay, then new requests are refused', async () => {
-  await db.query("update system_setting set value=$1 where name='overdraft_micro'", [String(5_000n * C)]);
+  await db.query("update system_setting set value=$1 where name='overdraft_micro'", [String(500n * C)]);
   try {
     await model('m/x', '1', [['CHAT', 'ok', 1]]);
-    await admin.post('/admin/api/adjustments', { username: 'budi', amountMicro: String(-999_000n * C), reason: 'sisakan seribu', idempotencyKey: 'adjust-gw-0001' }); // 1,000 credits left
-    const res = await call('/v1/chat/completions', 'm/x', { max_tokens: 100000, stream: false }); assert.equal(res.status, 200);
-    const sent = stats.last!.body.max_tokens; assert.ok(sent < 6000 && sent > 0, `output cap sent upstream was ${sent}`);
+    await admin.post('/admin/api/adjustments', { username: 'budi', amountMicro: String(-999_200n * C), reason: 'sisakan delapan ratus', idempotencyKey: 'adjust-gw-0001' }); // 800 credits left, 500 allowance
+    const small = (extra: object) => fetch(base + '/v1/chat/completions', { method: 'POST', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: 'm/x', messages: [{ role: 'user', content: 'ok' }], ...extra }) });
+    const res = await small({ max_tokens: 100000, stream: false }); assert.equal(res.status, 200);
+    const sent = stats.last!.body.max_tokens; assert.ok(sent > 1000 && sent < 1300, `output cap sent upstream was ${sent}`);
     const r = await settled(res.headers.get('x-request-id')!); assert.equal(r.max_output, sent);
-    assert.equal((await balance()).posted, (1_000n - 11_000n) * C, 'the mock used 11,000 tokens: the balance is negative');
-    assert.equal(r.bound_exceeded, true, 'usage above the hold is recorded as a bound violation');
-    const next = await call('/v1/chat/completions', 'm/x'); assert.equal(next.status, 402);
+    assert.equal((await balance()).posted, (800n - 1000n - BigInt(r.max_input)) * C, 'the mock produced 1,000 output tokens: the balance went below zero, within the allowance');
+    assert.equal((await small({})).status, 402, 'no new request once the balance is not above zero');
   } finally { await db.query("update system_setting set value=0 where name='overdraft_micro'"); }
 });
 
@@ -177,9 +192,9 @@ test('nothing from the prompt, the customer key or the upstream key is stored; c
 
 test('parallel requests never hold more than the balance', async () => {
   await model('m/slow', '1', [['CHAT', 'slow', 1]]);
-  await admin.post('/admin/api/adjustments', { username: 'budi', amountMicro: String(-990_000n * C), reason: 'sisakan sepuluh ribu', idempotencyKey: 'adjust-gw-0002' }); // 10,000 credits; each hold is about 2,100
+  await admin.post('/admin/api/adjustments', { username: 'budi', amountMicro: String(-950_000n * C), reason: 'sisakan lima puluh ribu', idempotencyKey: 'adjust-gw-0002' }); // 50,000 credits; each hold is about 14,100
   const rs = await Promise.all(Array.from({ length: 12 }, () => call('/v1/chat/completions', 'm/slow').then(async r => { await r.text(); return r; })));
-  const ok = rs.filter(r => r.status === 200).length; assert.ok(ok >= 1 && ok <= 4, `admitted ${ok}`); assert.ok(rs.every(r => r.status === 200 || r.status === 402));
+  const ok = rs.filter(r => r.status === 200).length; assert.ok(ok >= 1 && ok <= 3, `admitted ${ok}`); assert.ok(rs.every(r => r.status === 200 || r.status === 402));
   for (const r of rs.filter(r => r.status === 200)) await settled(r.headers.get('x-request-id')!);
   await clean();
 });

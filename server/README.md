@@ -16,7 +16,7 @@ Butuh Node 24 ke atas dan PostgreSQL. Untuk lokal:
     npm run typecheck
     npm test
 
-Kata sandi di atas hanya untuk container lokal yang terikat ke 127.0.0.1; jangan dipakai di tempat lain. Test menghapus dan membuat ulang skema `public` pada database test.
+Kata sandi di atas hanya untuk container lokal yang terikat ke 127.0.0.1; jangan dipakai di tempat lain. Test menghapus dan membuat ulang skema `public` pada database test. Bila ada agen atau proses lain yang juga menjalankan test, pakai database sendiri lewat `TEST_DATABASE_URL`; dua suite pada database yang sama saling menghapus dan gagal acak.
 
 Menjalankan server (lokal):
 
@@ -69,7 +69,7 @@ Host dan port di atas adalah nilai umum SMTP Gmail dan belum diuji dari proyek i
 | `src/crypto.ts` | Token, Argon2id (bawaan Node), AES-GCM, TOTP |
 | `src/ratelimit.ts` | Pembatas laju di PostgreSQL |
 | `src/http/app.ts` | Rute HTTP |
-| `test/` | 115 test integrasi |
+| `test/` | 116 test integrasi |
 
 ## Nilai awal yang dipilih saat implementasi
 

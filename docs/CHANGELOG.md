@@ -1,9 +1,22 @@
 # Changelog: Router AI Komersial
 
-Version: 0.19.0
+Version: 0.20.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.20.0: Batas tagihan input
+
+CR-018
+Source: founder menerima usulan pada CR-017 (2026-11-14) dan menyatakan upstream yang diuji adalah router miliknya sendiri, supaya key dapat dicabut tanpa masuk ke platform lain. Decision owner: founder.
+
+- Aturan baru: pelanggan tidak pernah ditagih input melebihi ukuran request yang ia kirim (dalam byte, batas yang sama dengan hold). Kelebihan yang dilaporkan upstream dipotong dari input biasa, lalu cache write, lalu cache read, dicatat pada `request.unbilled_input_tokens` (migrasi 009) dan ditanggung usaha. Usage mentah upstream tetap disimpan untuk rekonsiliasi; usage yang dilihat pelanggan pada respons tetap angka asli upstream.
+- Batas ini longgar: satu byte dihitung paling banyak satu token, padahal umumnya satu token beberapa byte. Jadi sebagian token tambahan upstream masih dapat tertagih sampai sebesar ukuran request. Batas yang lebih ketat memerlukan penghitung token lokal.
+- Uji nyata diulang: request non-stream yang sebelumnya ditagih 4.060 kredit kini 102; 3.958 token tercatat tidak ditagih; tidak ada lagi pelanggaran hold.
+- Upstream yang diuji dicatat sebagai router milik founder; RSK-016 tetap sebagai risiko yang diterima founder dan tidak dibahas ulang.
+- Temuan proses: suite server gagal acak (1 lalu 18 test) saat berjalan bersamaan dengan verifikasi agen lain yang memakai database `router_test` yang sama; pada database terpisah `router_test_claude` lulus 116/116 dua kali. Agen menjalankan test dengan `TEST_DATABASE_URL` masing-masing.
+
+Verification: 1 test baru untuk batas input, test lebih-pakai disesuaikan; suite 116/116 dua kali berturut-turut pada database terpisah; typecheck exit 0; uji asap nyata sekitar 6 request kecil.
 
 ## 0.19.0: Uji asap terhadap upstream nyata
 
@@ -341,4 +354,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.19.0 -->
+<!-- END ROUTER-CHANGELOG v0.20.0 -->
