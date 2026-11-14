@@ -1,0 +1,35 @@
+# Deployment behind a Cloudflare Tunnel (or any local reverse proxy): nothing is published to the internet by this file.
+# The app listens on 127.0.0.1 of the host only; point the tunnel at http://127.0.0.1:${APP_PORT}.
+# Uses a prebuilt image (docker load) so the server does not need the source tree or a build.
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zrouter
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: zrouter
+    volumes: [ "pgdata:/var/lib/postgresql" ]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U zrouter"], interval: 10s, timeout: 5s, retries: 10 }
+  app:
+    image: ${APP_IMAGE:-zrouter:local}
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    ports: [ "127.0.0.1:${APP_PORT:-18080}:8080" ]
+    environment:
+      DATABASE_URL: postgres://zrouter:${POSTGRES_PASSWORD}@db:5432/zrouter
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?set APP_SECRET_KEY in .env}
+      TRUST_PROXY: "${TRUST_PROXY:-1}"   # the tunnel daemon is the one proxy in front
+      MAILER: ${MAILER:-none}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      PUBLIC_BASE_URL: https://${DOMAIN:?set DOMAIN in .env}
+      PRODUCT_NAME: ${PRODUCT_NAME:-ZRouter}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      INSECURE_COOKIES: ${INSECURE_COOKIES:-}
+    stop_grace_period: 60s
+volumes: { pgdata: {} }

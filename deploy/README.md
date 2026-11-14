@@ -4,6 +4,11 @@ Status: ditulis 2026-11-14. Image dan compose diuji secara lokal (lihat docs/CHA
 
 Susunan: Caddy (TLS otomatis) → aplikasi (API, gateway, dan web dari satu origin) → PostgreSQL. Satu instance aplikasi saja: batas laju dan kesehatan rute disimpan di memori proses.
 
+## Dua susunan
+
+- `compose.yml`: Caddy mengurus HTTPS; butuh port 80 dan 443 serta DNS langsung ke server.
+- `compose.tunnel.yml`: aplikasi hanya pada `127.0.0.1:${APP_PORT}`; dibuka lewat Cloudflare Tunnel atau proxy lokal. Image dimuat dengan `docker save | ssh ... docker load`, tidak dibangun di server. Susunan inilah yang terpasang di VPS founder (CHANGELOG CR-028).
+
 ## Syarat
 
 - Server Linux dengan Docker dan plugin compose; port 80 dan 443 terbuka.

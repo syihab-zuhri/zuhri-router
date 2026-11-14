@@ -1,9 +1,22 @@
 # Changelog: Router AI Komersial
 
-Version: 0.29.0
+Version: 0.30.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-14, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.30.0: Terpasang di VPS, belum dibuka ke publik
+
+CR-028
+Source: founder menunjuk kunci SSH yang sudah ada di mesinnya dan meminta lanjut memasang (2026-11-14). Lingkup yang disetujui: memasang dan menyalakan pada port dalam saja; membuka ke publik menunggu izin tersendiri.
+
+- VPS diperiksa lebih dulu secara baca-saja: Ubuntu 24.04, 2 CPU, 3,7 GB RAM, Docker terpasang, layanan founder yang sudah ada (cliproxyapi, 9router-go, tiga tunnel Cloudflare) hanya mendengarkan di dalam mesin; port 80 dan 443 tidak dipakai.
+- Diubah di VPS: paket `docker-compose-v2` dipasang; image `zrouter:local` dimuat; folder `~/zrouter` (hak akses 700) berisi `deploy/compose.tunnel.yml`, `deploy/.env` (600; kata sandi database dan kunci enkripsi dibuat di VPS dan tidak pernah ditampilkan) dan `ADMIN_LOGIN_PERTAMA.txt` (600). Layanan lain tidak disentuh; keduanya diperiksa tetap aktif sesudahnya.
+- `deploy/compose.tunnel.yml`: varian tanpa Caddy; aplikasi hanya pada `127.0.0.1:18080`, cocok dengan pola tunnel Cloudflare yang sudah dipakai founder. Image dimuat, tidak dibangun di server.
+- Uji di VPS: tumpukan sementara pada port lain dan database terpisah dijalankan, uji alur lengkap lewat terowongan SSH lulus 29/29 dengan request nyata dari VPS ke upstream, lalu tumpukan sementara dihapus beserta datanya.
+- Tumpukan sungguhan menyala: `/readyz` 200, web tersaji, database kosong dan konsisten, satu akun admin dibuat. Tidak ada port publik baru (hanya 22 seperti sebelumnya).
+- Belum dilakukan: tunnel Cloudflare dan DNS untuk zrouter.web.id (memerlukan akun Cloudflare founder), email, bot Telegram, backup terjadwal. Docker pada VPS dijalankan lewat sudo; user `ubuntu` tidak dimasukkan ke grup docker.
+- Admin belum dapat mengganti kata sandinya sendiri lewat aplikasi; rute itu belum ada.
 
 ## 0.29.0: Uji alur lengkap lewat container; penanda dokumen lama
 
@@ -467,4 +480,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.29.0 -->
+<!-- END ROUTER-CHANGELOG v0.30.0 -->
