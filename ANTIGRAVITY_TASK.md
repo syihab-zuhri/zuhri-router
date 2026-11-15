@@ -117,3 +117,46 @@ Boleh: `web/scripts/a11y-audit.mjs` (baru), berkas milik Anda dari tugas pertama
 ## Laporan
 
 Di `docs/handoff/antigravity-log.md`, bagian baru bertanggal: tabel temuan dengan kolom layar, lebar, masalah, kriteria WCAG, cara mengulang, berkas, pemilik (Hermes/Antigravity), usulan perbaikan. Urutkan dari yang paling menghalangi pengguna. Lalu hasil test seperti tugas pertama (typecheck, unit, seluruh Playwright, `account-local-verify.mjs`, `a11y-audit.mjs`), dengan membedakan "ditulis", "dijalankan" dan "lulus". Commit ke cabang `antigravity/akun`, jangan push.
+
+---
+
+# Tugas tiga (2026-11-15 malam)
+
+Tugas dua diterima, digabung ke `main` dan audit Anda sekarang lulus dengan 0 temuan (dua temuan pada layar Hermes sudah diperbaiki). Tugas ini sengaja lebih besar: empat bagian yang tidak saling bergantung. Kerjakan berurutan, commit per bagian, dan laporkan sekali di akhir. Bila satu bagian terhalang, catat di log lalu lanjut ke bagian berikutnya; jangan berhenti menunggu.
+
+## Mulai
+
+    cd /mnt/d/router.dev.zuhri-antigravity && source .antigravity-env.sh
+    git checkout antigravity/akun && git pull --ff-only origin main
+
+## A. Bukti terhadap server nyata untuk aksi admin pelanggan
+
+Layar `/admin/pelanggan` kini punya undang pelanggan, tangguhkan/pulihkan dan koreksi saldo (Hermes), tetapi hanya diuji dengan mock. Tulis `web/scripts/admin-customers-local-verify.mjs` (pola `account-local-verify.mjs`: server Fastify nyata, schema privat acak, port dari environment) yang membuktikan lewat browser:
+
+1. Admin mengundang email baru; tautan aktivasi tampil; membuka tautan itu, memilih username dan password, lalu pelanggan baru bisa masuk. Tautan yang sama dipakai kedua kali ditolak. Mengundang email yang sama lagi menampilkan pesan konflik.
+2. Admin menangguhkan pelanggan (dengan step-up): request API memakai key pelanggan itu ditolak; setelah dipulihkan diterima lagi. Cukup sampai tahap admission; tidak boleh ada request ke upstream nyata.
+3. Koreksi saldo +2,5 dan -1 kredit: saldo di layar dan entri ledger berubah persis sebesar itu dalam mikro-kredit; mengirim ulang dengan kunci idempotency yang sama tidak menggandakan entri.
+4. Token undangan dan kode step-up tidak muncul di URL, storage, atau log konsol.
+
+## B. Test perilaku `returnTo`
+
+Test yang ada di `portal.spec.ts` hanya memeriksa teks sumber. Tulis `web/test/e2e/return-to.spec.ts` (berkas baru milik Anda) yang membuktikan perilakunya: untuk setiap rute portal dan admin, sesi berakhir di rute itu lalu masuk kembali mendarat di rute yang sama; `returnTo` berisi alamat luar (`//evil.example`, `https://...`), rute tak dikenal, rute admin pada login pelanggan dan sebaliknya, atau fragment, mendarat di halaman bawaan.
+
+## C. Perluas audit ke state dan dialog baru
+
+Tambahkan ke `a11y-audit.mjs`: form undangan dan kotak hasil undangan, dialog tangguhkan/pulihkan, dialog koreksi saldo, keadaan error tiap layar (server menjawab 500 pada pembacaan utama), dan keadaan kosong. Aturan sama: temuan pada layar Hermes dilaporkan, tidak diperbaiki.
+
+## D. Dua laporan pemeriksaan (tanpa mengubah berkas orang lain)
+
+1. **Token desain**: daftar setiap nilai di `web/src/styles.css` dan atribut `style` di `web/src/*.tsx` yang bukan dari `tokens.css` (warna, ukuran, jarak, radius, durasi), dengan baris dan token pengganti yang diusulkan. Catatan: `.refund-policy` dan `.activation-link` dipakai di komponen tetapi belum punya aturan CSS.
+2. **Teks antarmuka**: baca seluruh `web/src/messages.ts` dan laporkan salah ketik, istilah yang tidak konsisten (misalnya "kredit token" vs "token", "key" vs "kunci"), kalimat yang tidak jelas bagi pelanggan awam, dan teks yang bertentangan dengan `docs/UX.md` atau `docs/TOKEN_CREDIT.md`. Beri usulan kalimat pengganti.
+
+Tulis keduanya sebagai tabel di log Anda.
+
+## Batas berkas
+
+Boleh membuat: tiga berkas di atas. Boleh mengubah: berkas milik Anda dari tugas sebelumnya, blok `am`, log Anda. Tidak boleh: berkas lain. Aturan test dan larangan dari tugas pertama tetap berlaku.
+
+## Laporan
+
+Bagian baru bertanggal di `docs/handoff/antigravity-log.md`, per bagian A sampai D, dengan "ditulis", "dijalankan", "lulus". Jalankan juga seluruh rangkaian (typecheck, unit, Playwright, `account-local-verify.mjs`, `a11y-audit.mjs`). Commit ke `antigravity/akun`, jangan push.

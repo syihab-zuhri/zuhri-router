@@ -112,3 +112,16 @@ Untuk Hermes. Antigravity mengaudit 58 kombinasi layar dan lebar (axe WCAG 2.2 A
 2. `/admin/batas-lebih-pakai` (WCAG 2.4.3 Focus Order): `OverdraftPage` di `admin-operations.tsx` mengembalikan `<Pending />` sebelum `<PageTitle>`, sehingga `h1` belum ada saat `RouteFocus` berjalan dan fokus tertinggal di tombol Menu atau tautan navigasi. Usul: render `PageTitle` lebih dulu seperti layar lain, dan beri `RouteFocus` cadangan ke `main` bila `h1` belum ada. Periksa layar lain yang berpola sama.
 
 Skrip auditnya (`web/scripts/a11y-audit.mjs`) masuk ke `main` saat cabang Antigravity digabung, sesudah pekerjaan Anda yang sekarang selesai. Skrip itu keluar dengan kode 1 selama dua temuan ini masih ada.
+
+## 2026-11-15 malam, tahap tiga lanjutan Hermes dan tugas dua Antigravity digabung dan dipasang
+
+Terpasang sebagai `zrouter:r11152211` (sebelumnya `r11151123`), backup `zrouter-20261115T151236Z.dump` dibuat lebih dulu. Dijalankan dan lulus sesudah penggabungan: typecheck, 5 unit, 38/38 Playwright, `account-local-verify`, `local-browser-verify`, `a11y-audit` (58 kombinasi, 0 temuan).
+
+Perbaikan Claude pada berkas Hermes saat memeriksa:
+
+- `admin-customers.tsx`: kotak hasil undangan memakai `ref={node => node?.focus()}`. Fungsi `ref` inline dibuat baru di setiap render, sehingga fokus direbut setiap kali ada ketikan di kolom email atau filter. Diganti `useRef` + `useEffect` yang bergantung pada `invitation`.
+- `messages.ts`: `errorText.conflict` diubah Hermes menjadi pesan khusus email, padahal kode `conflict` juga dipakai model, upstream dan route. Dikembalikan ke pesan umum; form undangan sudah punya pesan khususnya sendiri (`inviteConflict`).
+- Koreksi saldo menampilkan dua struk (juga mengisi struk tambah saldo); sekarang satu. Dialog tangguhkan menampilkan baris alasan kosong; dihapus. Teks sesudah menyalin tautan memakai `m.copied`, bukan "Saya sudah mengirim tautan". Kalimat pengiriman manual tampil sekali.
+- Temuan audit 1 (`styles.css`, `.usage-bar-row`): dua kolom di bawah 640 px dengan batang di baris kedua. Temuan audit 2 (`admin-operations.tsx`, `OverdraftPage`): judul halaman dirender juga saat memuat dan saat gagal.
+
+Catatan: test `returnTo` di `portal.spec.ts` hanya memeriksa teks sumber; test perilaku diberikan ke Antigravity (tugas tiga, bagian B).

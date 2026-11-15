@@ -125,3 +125,17 @@ Kerjakan berurutan:
 Berkas bersama (`app.tsx`, `messages.ts`, `styles.css`) kini juga memuat bagian milik Antigravity: edit sebagian saja, jangan menulis ulang seluruh berkas, dan jangan mengubah `account-*.tsx`, `qr.ts`, atau blok `am`. Antigravity sedang mengerjakan audit aksesibilitas di foldernya sendiri dan akan melaporkan temuan pada layar Anda lewat Claude; jangan menunggu laporan itu.
 
 Selesai berarti sama seperti sebelumnya: typecheck, unit, seluruh test browser, `test:local`, `test:browser` lulus, lalu catat di `docs/handoff/hermes-log.md` bagian baru bertanggal dan sebutkan bahwa build siap dipasang.
+
+## Tahap empat (2026-11-15 malam)
+
+Tahap tiga lanjutan diterima, digabung dan terpasang di https://zrouter.web.id. Perbaikan yang Claude lakukan saat memeriksa ada di `docs/handoff/claude-log.md` bagian "2026-11-15 malam"; baca dulu, terutama soal `ref` yang mengambil fokus pada setiap render. Dua temuan audit aksesibilitas sudah diperbaiki Claude; tidak perlu dikerjakan lagi.
+
+Mulai dengan `git pull --ff-only origin main` tidak diperlukan: folder ini sudah berisi semuanya. Kerjakan berurutan:
+
+1. **Detail pelanggan sebagai tab (SCR-015)**. Halaman detail sekarang panjang (ringkasan, tambah saldo, koreksi, pemakaian, ledger). Susun menjadi tab sesuai `docs/UX.md` SCR-015: Ringkasan (saldo, status, tangguhkan/pulihkan), Saldo (tambah saldo, koreksi), Pemakaian, Transaksi. Tab memakai pola ARIA tabs dengan navigasi panah; tab aktif disimpan di query string agar tahan muat ulang. Test yang ada tetap lulus.
+2. **Beranda untuk pengguna baru (SCR-007)**. State first-use: daftar langkah (isi saldo, buat API key, baca panduan) dengan tanda selesai dari data yang sudah ada (`/api/balance`, `/api/keys`); hilang setelah ketiganya selesai. Tanpa endpoint baru.
+3. **Halaman tidak ditemukan**. Rute `*` saat ini seadanya: beri judul, penjelasan dan tautan kembali, untuk pelanggan dan admin, dengan `h1` yang menerima fokus.
+4. **Aturan CSS yang hilang**: `.refund-policy` dan `.activation-link` dipakai tetapi belum ada di `styles.css`. Kalimat kebijakan harus terbaca jelas (bukan teks redup); tautan aktivasi tidak boleh melebar di 360 px.
+5. Untuk setiap butir: test Playwright termasuk keyboard dan 360 px, lalu seluruh rangkaian test seperti biasa, dan catat di `docs/handoff/hermes-log.md`.
+
+Tetap jangan menyentuh `account-*.tsx`, `qr.ts`, blok `am`, `web/scripts/a11y-audit.mjs`, `web/test/e2e/return-to.spec.ts` dan `web/scripts/admin-customers-local-verify.mjs` (milik Antigravity).
