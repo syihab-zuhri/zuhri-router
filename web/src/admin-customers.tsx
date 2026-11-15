@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { newIdempotencyKey, post } from './api.ts';
+import { ApiError, newIdempotencyKey, post } from './api.ts';
 import { creditsToMicro, formatCredits, formatDate } from './credits.ts';
-import { useAdminAction, useResource } from './hooks.tsx';
+import { useAction, useAdminAction, useResource } from './hooks.tsx';
 import { kindText, m } from './messages.ts';
 import { Alert, Badge, Button, DataList, Empty, ErrorBox, Field, Modal, PageTitle, Pending, Receipt } from './ui.tsx';
 import type { ReceiptData } from './ui.tsx';
@@ -13,6 +13,8 @@ type Customer = {
   entries: { id: string; kind: string; amount: string; createdAt: string }[];
 };
 type Topup = { username: string; amountTokens: string; saleRef: string; idempotencyKey: string };
+type InviteResult = { inviteId: string; emailSent: boolean; activationLink: string | null };
+type ActionConfirmation = { action: 'suspend' | 'restore' | 'adjustment'; username: string; expectedVersion?: string; amountMicro?: string; idempotencyKey?: string; reason: string };
 type UsageAggregate = { key: string; requests: number; failed: number; estimated: number; debitMicro: string; inputTokens: string; outputTokens: string; unbilledInputTokens: string };
 type CustomerUsage = { username: string; days: number; byDay: UsageAggregate[]; byModel: UsageAggregate[]; byKey: UsageAggregate[]; recent: { id: string; model: string; protocol: string; state: string; debitMicro: string | null; estimated: boolean; unbilledInputTokens: string; createdAt: string }[] };
 
@@ -41,6 +43,12 @@ export function CustomersPage() {
   const result = useResource<{ customers: { username: string; tenantStatus: string; createdAt: string; postedMicro: string; heldMicro: string }[]; nextAfter: string | null }>(path);
   const [username, setUsername] = useState('');
   const [selected, setSelected] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [invitation, setInvitation] = useState<InviteResult | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const inviteAction = useAction(true);
+  const inviteReceiptRef = useRef<HTMLElement>(null);
+  useEffect(() => { if (invitation) inviteReceiptRef.current?.focus(); }, [invitation]);
   const applyFilter = () => {
     const nextPrefix = username.trim();
     setSelected('');
@@ -48,7 +56,34 @@ export function CustomersPage() {
   };
   return <>
     <PageTitle subtitle={m.customerHelp}>{m.customers}</PageTitle>
-    <section className="panel stack">
+    <form className="panel stack form-width" onSubmit={event => {
+      event.preventDefault(); inviteAction.setError(null); setInvitation(null); setInviteCopied(false);
+      void inviteAction.run(async () => {
+        const next = await post<InviteResult>('/admin/api/invites', { email: inviteEmail.trim() });
+        if (!next.emailSent && !next.activationLink) { inviteAction.setError(new Error('invite_link_missing')); return; }
+        setInvitation(next); setInviteEmail('');
+      });
+    }}>
+      <h2>{m.inviteCustomer}</h2>
+      <Field label={m.email} type="email" autoComplete="email" value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} maxLength={254} required />
+      {inviteAction.error && (inviteAction.error instanceof ApiError && inviteAction.error.code === 'conflict' ? <Alert danger>{m.inviteConflict}</Alert> : inviteAction.error.message === 'invite_link_missing' ? <Alert danger>{m.inviteLinkMissing}</Alert> : inviteAction.error.message === 'copy_failed' ? null : <ErrorBox error={inviteAction.error} />)}
+      {inviteAction.busy && <Alert>{m.saving}</Alert>}
+      <Button busy={inviteAction.busy}>{m.inviteCustomer}</Button>
+    </form>
+    {invitation && <section className="receipt" role="status" tabIndex={-1} ref={inviteReceiptRef}>
+      <h2>{m.inviteCreated}</h2>
+      {invitation.emailSent && <p>{m.inviteSentByEmail}</p>}
+      {!invitation.emailSent && invitation.activationLink && <div className="stack">
+        <Alert>{m.inviteManualDelivery}</Alert>
+        <p className="mono activation-link" aria-label={m.activationLink}>{invitation.activationLink}</p>
+        <div className="actions"><Button className="secondary" onClick={async () => {
+          try { await navigator.clipboard.writeText(invitation.activationLink!); setInviteCopied(true); }
+          catch { inviteAction.setError(new Error('copy_failed')); }
+        }}>{m.copyActivationLink}</Button>{inviteCopied && <span role="status">{m.copied}</span>}</div>
+        {inviteAction.error?.message === 'copy_failed' && <Alert danger>{m.copyFailed}</Alert>}
+      </div>}
+    </section>}
+    <section className="panel stack" aria-label={m.customerList}>
       <h2>{m.customerList}</h2>
       <Field label={m.customerPrefix} value={username} onChange={event => setUsername(event.target.value)} maxLength={24} autoComplete="off" />
       <div className="actions"><Button type="button" onClick={applyFilter}>{m.search}</Button><Button className="secondary" type="button" disabled={result.isFetching} onClick={() => void result.refetch()}>{m.refresh}</Button></div>
@@ -69,9 +104,17 @@ export function CustomersPage() {
 function CustomerDetail({ username }: { username: string }) {
   const customer = useResource<Customer>(`/admin/api/customers/${encodeURIComponent(username)}`);
   const action = useAdminAction();
+  const statusAction = useAdminAction();
+  const adjustmentAction = useAdminAction();
   const [amount, setAmount] = useState(''); const [saleRef, setSaleRef] = useState('');
   const [confirmation, setConfirmation] = useState<Topup | null>(null);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+  const [financialConfirmation, setFinancialConfirmation] = useState<ActionConfirmation | null>(null);
+  const [confirmationReason, setConfirmationReason] = useState('');
+  const [adjustmentTokens, setAdjustmentTokens] = useState('');
+  const [adjustmentReason, setAdjustmentReason] = useState('');
+  const [adjustmentReceipt, setAdjustmentReceipt] = useState<ReceiptData | null>(null);
+  const [adjustmentConfirmed, setAdjustmentConfirmed] = useState(false);
   if (customer.isPending) return <Pending />;
   if (customer.error) return <ErrorBox error={customer.error} retry={() => { void customer.refetch(); }} />;
   const value = customer.data;
@@ -82,6 +125,7 @@ function CustomerDetail({ username }: { username: string }) {
         {([[m.available, value.availableMicro], [m.posted, value.postedMicro], [m.held, value.heldMicro]] as const).map(([label, micro]) => <div className="metric" key={label}><dt>{label}</dt><dd className="number">{formatCredits(micro)} {m.credits}</dd></div>)}
       </dl>
       {value.tenantStatus === 'SUSPENDED' && <Alert danger>{m.suspended}</Alert>}
+      <div className="actions"><Button className={value.tenantStatus === 'SUSPENDED' ? 'secondary' : 'danger-button'} onClick={() => { setConfirmationReason(''); setFinancialConfirmation({ action: value.tenantStatus === 'SUSPENDED' ? 'restore' : 'suspend', username: value.username, expectedVersion: value.version, reason: '' }); statusAction.setError(null); }}>{value.tenantStatus === 'SUSPENDED' ? m.restoreCustomer : m.suspendCustomer}</Button></div>
     </section>
     <form className="panel stack" onSubmit={e => {
       e.preventDefault(); action.setError(null); setReceipt(null);
@@ -94,6 +138,49 @@ function CustomerDetail({ username }: { username: string }) {
     </form>
     {receipt && <Receipt value={receipt} />}
     {!confirmation && action.error && <ErrorBox error={action.error} />}
+    <form className="panel stack" onSubmit={event => {
+      event.preventDefault(); adjustmentAction.setError(null); setAdjustmentReceipt(null);
+      const signedTokens = adjustmentTokens.trim();
+      if (!/^-?(0|[1-9][0-9]{0,11})([.,][0-9]{1,6})?$/.test(signedTokens)) { adjustmentAction.setError(new ApiError('invalid_request', 400)); return; }
+      const magnitudeMicro = creditsToMicro(signedTokens.replace(/^-/, ''));
+      if (BigInt(magnitudeMicro) === 0n) { adjustmentAction.setError(new ApiError('invalid_request', 400)); return; }
+      const amountMicro = signedTokens.startsWith('-') ? `-${magnitudeMicro}` : magnitudeMicro;
+      setAdjustmentConfirmed(true);
+      setFinancialConfirmation({ action: 'adjustment', username: value.username, amountMicro, idempotencyKey: newIdempotencyKey(), reason: adjustmentReason.trim() });
+      setConfirmationReason(adjustmentReason.trim());
+    }}>
+      <h2>{m.adjustCustomerBalance}</h2>
+      <p>{m.adjustmentHelp}</p>
+      <Field label={m.signedTokenAmount} help={m.signedTokenHelp} inputMode="text" value={adjustmentTokens} onChange={event => setAdjustmentTokens(event.target.value)} pattern="-?(0|[1-9][0-9]{0,11})([.,][0-9]{1,6})?" maxLength={20} required />
+      <Field label={m.reason} value={adjustmentReason} onChange={event => { setAdjustmentReason(event.target.value); setConfirmationReason(event.target.value); }} minLength={3} maxLength={500} required />
+      <Button type="submit" busy={adjustmentAction.busy}>{m.adjustCustomerBalance}</Button>
+    </form>
+    {adjustmentReceipt && <Receipt value={adjustmentReceipt} />}
+    {financialConfirmation && adjustmentConfirmed && financialConfirmation.action === 'adjustment' && <Modal title={m.adjustmentConfirm} busy={adjustmentAction.busy} onClose={() => setFinancialConfirmation(null)}>
+      <p>{m.financialConfirm}</p>
+      <dl><dt>{m.username}</dt><dd>{financialConfirmation.username}</dd><dt>{m.signedTokenAmount}</dt><dd>{formatCredits(financialConfirmation.amountMicro ?? '0')} {m.credits}</dd><dt>{m.reason}</dt><dd>{financialConfirmation.reason}</dd></dl>
+      <div className="actions"><Button className="secondary" autoFocus disabled={adjustmentAction.busy} onClick={() => setFinancialConfirmation(null)}>{m.cancel}</Button><Button busy={adjustmentAction.busy} onClick={() => void adjustmentAction.run(async () => {
+        const result = await post<ReceiptData>('/admin/api/adjustments', { username: financialConfirmation.username, amountMicro: financialConfirmation.amountMicro!, reason: financialConfirmation.reason, idempotencyKey: financialConfirmation.idempotencyKey! });
+        setFinancialConfirmation(null); setAdjustmentConfirmed(false); setAdjustmentTokens(''); setConfirmationReason(''); setAdjustmentReceipt(result); await customer.refetch();
+      })}>{m.confirmAdjustment}</Button></div>
+      {adjustmentAction.error && <ErrorBox error={adjustmentAction.error} />}{adjustmentAction.busy && <Alert>{m.saving}</Alert>}
+    </Modal>}
+    {financialConfirmation && (financialConfirmation.action === 'suspend' || financialConfirmation.action === 'restore') && <Modal title={financialConfirmation.action === 'suspend' ? m.suspendCustomer : m.restoreCustomer} busy={statusAction.busy} onClose={() => setFinancialConfirmation(null)}>
+      <p>{financialConfirmation.action === 'suspend' ? m.suspendImpact : m.restoreImpact}</p>
+      <dl><dt>{m.username}</dt><dd>{financialConfirmation.username}</dd><dt>{m.version}</dt><dd>{financialConfirmation.expectedVersion}</dd></dl>
+      <div className="stack">
+        <Field label={m.reason} value={confirmationReason} onChange={event => setConfirmationReason(event.target.value)} minLength={3} maxLength={500} required />
+        {statusAction.error && <ErrorBox error={statusAction.error} />}{statusAction.busy && <Alert>{m.saving}</Alert>}
+        <div className="actions"><Button type="button" className="secondary" autoFocus disabled={statusAction.busy} onClick={() => setFinancialConfirmation(null)}>{m.cancel}</Button><Button type="button" className={financialConfirmation.action === 'suspend' ? 'danger-button' : ''} busy={statusAction.busy} onClick={() => {
+          if (confirmationReason.trim().length < 3) { statusAction.setError(new ApiError('invalid_request', 400)); return; }
+          const pending = financialConfirmation;
+          void statusAction.run(async () => {
+            await post(`/admin/api/customers/${encodeURIComponent(pending.username)}/${pending.action}`, { expectedVersion: pending.expectedVersion, reason: confirmationReason.trim() });
+            setFinancialConfirmation(null); setConfirmationReason(''); await customer.refetch();
+          });
+        }}>{financialConfirmation.action === 'suspend' ? m.suspendCustomer : m.restoreCustomer}</Button></div>
+      </div>
+    </Modal>}
     <CustomerUsagePanel username={value.username} />
     <section className="panel stack"><h2>{m.ledger}</h2>
       {value.entries.length === 0 ? <Empty /> : <DataList caption={m.ledger}>{value.entries.map(entry => <article className="data-row" key={entry.id}>
@@ -113,6 +200,6 @@ function CustomerDetail({ username }: { username: string }) {
         });
       }}>{m.topup}</Button></div>
     </Modal>}
-    {action.dialog}
+    {action.dialog}{statusAction.dialog}{adjustmentAction.dialog}
   </div>;
 }

@@ -38,9 +38,10 @@ export function OverdraftPage() {
   const [tokens, setTokens] = useState('');
   const [confirm, setConfirm] = useState(false);
   const close = () => { setConfirm(false); action.setError(null); };
-  if (setting.isPending) return <Pending />;
-  if (setting.isError) return <ErrorBox error={setting.error} retry={() => { void setting.refetch(); }} />;
-  return <><PageTitle subtitle={m.overdraftSubtitle}>{m.overdraft}</PageTitle><section className="panel stack"><h2>{m.currentOverdraft}</h2><p className="number">{formatCredits(setting.data.overdraftMicro)} {m.credits}</p><form className="stack" onSubmit={event => { event.preventDefault(); setConfirm(true); action.setError(null); }}>
+  const title = <PageTitle subtitle={m.overdraftSubtitle}>{m.overdraft}</PageTitle>;
+  if (setting.isPending) return <>{title}<Pending /></>;
+  if (setting.isError) return <>{title}<ErrorBox error={setting.error} retry={() => { void setting.refetch(); }} /></>;
+  return <>{title}<section className="panel stack"><h2>{m.currentOverdraft}</h2><p className="number">{formatCredits(setting.data.overdraftMicro)} {m.credits}</p><form className="stack" onSubmit={event => { event.preventDefault(); setConfirm(true); action.setError(null); }}>
     <Field label={m.overdraftTokens} help={m.overdraftHelp} value={tokens} onChange={event => setTokens(event.target.value)} inputMode="numeric" pattern="0|[1-9][0-9]{0,11}" maxLength={12} required />
     <Button>{m.save}</Button>
   </form></section>

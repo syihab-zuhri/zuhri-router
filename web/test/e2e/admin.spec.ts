@@ -14,6 +14,7 @@ async function mount(page: Page, module: string, name: string) {
   const routerUrl = hooks.match(/from "([^"]*react-router[^\"]*)"/)?.[1];
   if (!queryUrl || !routerUrl) throw new Error('Vite dependency paths unavailable');
   await page.goto('/__admin-test');
+  await page.evaluate(() => { history.replaceState({ usr: {} }, '', '/'); });
   await page.addScriptTag({ type: 'module', content: `
     import React from '/node_modules/.vite/deps/react.js';
     import ReactDOM from '/node_modules/.vite/deps/react-dom_client.js';
@@ -121,6 +122,83 @@ test('terbit kode memerlukan konfirmasi dan secret hilang setelah panel ditutup'
   await expect(page.getByText(secret, { exact: true })).toHaveCount(0);
   await expect(page.getByText(voucher.maskedCode, { exact: true })).toBeVisible();
 });
+
+test('undangan tanpa email mengungkapkan tautan server hanya setelah sukses dan dapat disalin', async ({ page }) => {
+  const writes: Record<string, unknown>[] = [];
+  const activationLink = 'https://zrouter.example/aktivasi#token=once-only-test';
+  await page.route('**/admin/api/customers?*', route => route.fulfill({ json: { customers: [], nextAfter: null } }));
+  await page.route('**/admin/api/invites', route => {
+    writes.push(route.request().postDataJSON());
+    expect(route.request().headers()['x-router-csrf']).toBe('1');
+    return route.fulfill({ status: 201, json: { inviteId: 'invite-test', emailSent: false, activationLink } });
+  });
+  await mount(page, 'admin-customers', 'CustomersPage');
+  await page.getByLabel(m.email, { exact: true }).fill('new-customer@example.test');
+  await page.getByRole('button', { name: m.inviteCustomer, exact: true }).click();
+  await expect(page.getByText(activationLink, { exact: true })).toBeVisible();
+  await expect(page.getByText(m.inviteManualDelivery, { exact: true }).first()).toBeVisible();
+  expect(writes).toEqual([{ email: 'new-customer@example.test' }]);
+  expect(page.url()).not.toContain('once-only-test');
+  expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0);
+});
+
+const detailCustomer = { username: 'pelanggan', tenantStatus: 'ACTIVE', version: '4', currency: 'TOKEN', postedMicro: '250000000', heldMicro: '0', availableMicro: '250000000', entries: [] };
+
+test('suspend dan koreksi saldo meminta konfirmasi, step-up, dan mengirim nilai integer mikro-kredit', async ({ page }) => {
+  const writes: { path: string; body: Record<string, unknown> }[] = [];
+  await page.route('**/admin/api/customers?*', route => route.fulfill({ json: { customers: [{ username: 'pelanggan', tenantStatus: 'ACTIVE', createdAt: '2026-11-15T00:00:00.000Z', postedMicro: detailCustomer.postedMicro, heldMicro: detailCustomer.heldMicro }], nextAfter: null } }));
+  await page.route('**/admin/api/customers/pelanggan/usage?*', route => route.fulfill({ json: { username: 'pelanggan', days: 7, byDay: [], byModel: [], byKey: [], recent: [] } }));
+  await page.route('**/admin/api/customers/pelanggan', route => route.fulfill({ json: detailCustomer }));
+  let statusRequests = 0;
+  let adjustmentRequests = 0;
+  await page.route('**/admin/api/customers/pelanggan/suspend', route => {
+    statusRequests += 1;
+    writes.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
+    expect(route.request().headers()['x-router-csrf']).toBe('1');
+    if (statusRequests === 1) return route.fulfill({ status: 403, json: { error: { code: 'step_up_required' } } });
+    return route.fulfill({ status: 200, json: { tenantStatus: 'SUSPENDED', version: '5' } });
+  });
+  await page.route('**/admin/api/adjustments', route => {
+    adjustmentRequests += 1;
+    writes.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
+    expect(route.request().headers()['x-router-csrf']).toBe('1');
+    if (adjustmentRequests === 1) return route.fulfill({ status: 403, json: { error: { code: 'step_up_required' } } });
+    return route.fulfill({ status: 201, json: { amountMicro: '-2500000', postedAfterMicro: '247500000', entryId: 'adjustment-test', replayed: false } });
+  });
+  await page.route('**/admin/api/second-factor', route => route.fulfill({ json: { ok: true } }));
+  await mount(page, 'admin-customers', 'CustomersPage');
+  await page.getByRole('button', { name: m.customerDetails, exact: true }).click();
+  const customerDetail = page.getByRole('region', { name: m.details });
+  await customerDetail.getByRole('button', { name: m.suspendCustomer, exact: true }).click();
+  const suspendDialog = page.getByRole('dialog', { name: m.suspendCustomer });
+  await suspendDialog.getByLabel(m.reason, { exact: true }).fill('Peninjauan operator');
+  await suspendDialog.getByRole('button', { name: m.suspendCustomer, exact: true }).click();
+  const stepUpStatus = page.getByRole('dialog', { name: m.stepUp });
+  await expect(stepUpStatus).toBeVisible();
+  await stepUpStatus.getByLabel(m.code).fill('123456');
+  await stepUpStatus.getByRole('button', { name: m.verify }).click();
+  await expect(stepUpStatus).not.toBeVisible();
+  expect(writes[0]).toMatchObject({ path: '/admin/api/customers/pelanggan/suspend', body: { expectedVersion: '4', reason: 'Peninjauan operator' } });
+  const adjustmentForm = page.getByRole('heading', { name: m.adjustCustomerBalance, exact: true }).locator('xpath=..');
+  await adjustmentForm.getByLabel(m.signedTokenAmount, { exact: true }).fill('-2,5');
+  await adjustmentForm.getByLabel(m.reason, { exact: true }).fill('Koreksi uji');
+  await adjustmentForm.getByRole('button', { name: m.adjustCustomerBalance, exact: true }).click();
+  const adjustmentDialog = page.getByRole('dialog', { name: m.adjustmentConfirm });
+  await expect(adjustmentDialog).toBeVisible();
+  await expect(adjustmentDialog).toContainText('-2,5');
+  await expect(adjustmentDialog).toContainText('Koreksi uji');
+  await adjustmentDialog.getByRole('button', { name: m.confirmAdjustment, exact: true }).click();
+  const stepUpAdjustment = page.getByRole('dialog', { name: m.stepUp });
+  await expect(stepUpAdjustment).toBeVisible();
+  await stepUpAdjustment.getByLabel(m.code).fill('123456');
+  await stepUpAdjustment.getByRole('button', { name: m.verify }).click();
+  await expect(adjustmentDialog).not.toBeVisible();
+  expect(writes[2].path).toBe('/admin/api/adjustments');
+  expect(writes[2].body).toMatchObject({ username: 'pelanggan', amountMicro: '-2500000', reason: 'Koreksi uji' });
+  expect(writes[2].body.idempotencyKey).toEqual(expect.any(String));
+  expect(writes[2].body).toEqual(writes[3].body);
+});
+
 
 const price = { id: 'price-1', seq: 1, status: 'DRAFT', currency: 'TOKEN', inputRateMicro: '1000000000000', outputRateMicro: '1000000000000', cacheReadRateMicro: '1000000000000', cacheWriteRateMicro: '1000000000000', multiplier: '1', rateAsOf: null, publishedAt: null, retiredAt: null };
 const model = { id: 'uji/model', displayName: 'Model uji', version: '2', sellable: false, draft: price, published: null };
