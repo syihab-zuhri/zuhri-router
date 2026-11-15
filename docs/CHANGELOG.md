@@ -1,9 +1,22 @@
 # Changelog: Router AI Komersial
 
-Version: 0.35.0
+Version: 0.36.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
-Updated: 2026-11-14, Asia/Jakarta
+Updated: 2026-11-15, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.36.0: Agen ketiga; layar akun; tombol arsip di web; pemasangan
+
+CR-034
+Source: founder menambah agen Antigravity (2026-11-15) dan meminta hasilnya diperiksa.
+
+- Pembagian kerja tiga agen: Antigravity bekerja di salinan terpisah `D:\router.dev.zuhri-antigravity` (cabang `antigravity/akun`, port dan database uji sendiri) agar tidak menimpa Hermes; Claude memeriksa dan menggabungkan. Tugas di `ANTIGRAVITY_TASK.md`; `HERMES_TASK.md` tahap tiga dibagi (Hermes nomor 1, 2, 5).
+- `web/` masuk Git (sebelumnya hanya di disk). Hasil build, test dan evidence tetap di luar Git.
+- Antigravity menulis `/akun` (ganti password, sesi, tutup akun) dan `/admin/akun` (ganti password, ganti autentikator dengan kunci manual dan kode QR yang dibuat di browser). Temuan pemeriksaan: kode QR tidak terbaca untuk versi 7 ke atas, padahal tautan autentikator selalu versi 7 atau 8 (pembaca independen jsQR: 2 dari 303 terbaca). Diperbaiki Claude dengan unit test yang gagal pada kode lama; sesudahnya 303/303 terbaca.
+- Hermes menyelesaikan daftar model upstream dan tombol arsip.
+- Hasil gabungan: typecheck, 5 unit test, 33/33 test browser, `test:local`, `test:browser`, verifikasi akun terhadap server nyata, semuanya lulus.
+- Dipasang di VPS sebagai `zrouter:r11151123` setelah backup (`zrouter-20261115T042530Z.dump`, terunggah ke Drive). Server tidak berubah; hanya web. Image sebelumnya `zrouter:r11141615` tetap ada untuk kembali.
+- Belum: undang pelanggan dari web, tangguhkan/koreksi saldo, judul ZRouter dan ikon (Hermes, tahap tiga). Pertanyaan terbuka dari Antigravity: nasib sisa saldo positif saat pelanggan menutup akun belum diputuskan founder.
 
 ## 0.35.0: Daftar model dari upstream; arsip model dan upstream
 
@@ -539,4 +552,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.35.0 -->
+<!-- END ROUTER-CHANGELOG v0.36.0 -->
