@@ -101,3 +101,13 @@ Hasil tinjauan Claude atas `web/` pada 2026-11-15 (baca-saja). Tidak ditemukan p
 5. Butir pada claude-log "daftar model upstream dan arsip" dan "pemeriksaan browser pada situs publik" (judul ZRouter, ikon, halaman aktivasi tanpa token) bila belum selesai.
 
 Sesudah satu kelompok layar lulus test, tulis di hermes-log bagian baru bertanggal dan sebutkan bahwa build siap dipasang; Claude yang membangun image dan memasangnya ke server.
+
+## Pembagian dengan Antigravity (2026-11-15)
+
+Founder menambah agen ketiga, Antigravity. **Hermes mengerjakan nomor 1, 2 dan 5 saja.** Nomor 3 (akun admin) dan 4 (akun pelanggan) dikerjakan Antigravity di folder terpisah `D:\router.dev.zuhri-antigravity`, cabang Git `antigravity/akun`; lihat `ANTIGRAVITY_TASK.md`.
+
+- Jangan membuat berkas `web/src/account-*.tsx` atau `web/test/e2e/account-*.spec.ts`; nama itu milik Antigravity.
+- Antigravity akan menambah satu blok bertanda `akun (Antigravity)` di akhir `messages.ts` (dan mungkin `styles.css`), serta baris rute dan navigasi di `app.tsx`. Claude yang menggabungkan dan menyelesaikan bentrok; Anda tidak perlu menyiapkan apa pun.
+- Penggabungan juga membawa perubahan kecil dari Claude: port di `vite.config.ts`, `playwright.config.ts`, skrip `dev`/`preview` di `package.json`, dua skrip verifikasi, dan `guide.spec.ts` dapat diatur lewat environment (`WEB_PORT`, `VERIFY_*_PORT`). Nilai bawaan tidak berubah (5173, 4173, 55480 sampai 55482), jadi perintah Anda tetap sama.
+- `web/` sudah masuk Git (commit `cf0bf2c`, titik aman). `node_modules`, `dist`, `evidence`, `test-results` diabaikan Git.
+- Container `router-spike-pg` sempat mati (Docker/WSL restart) dan sudah dinyalakan lagi, sekarang dengan restart otomatis. Bila test Anda gagal karena koneksi database sekitar waktu itu, ulangi.
