@@ -130,6 +130,7 @@ test('akun pelanggan: ubah password, kelola sesi, dan uji negatif penutupan akun
   await expect(closeDialog).toContainText(am.closeConsequenceKeys);
   await expect(closeDialog).toContainText(am.closeConsequenceAccess);
   await expect(closeDialog).toContainText(am.closeConsequenceBalance);
+  await expect(closeDialog).toContainText('Sisa saldo token hangus dan tidak dapat dikembalikan atau diuangkan. Riwayat transaksi tetap tersimpan.');
   await expect(closeDialog.getByLabel(am.confirmUsername)).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(closeDialog).toHaveCount(0);

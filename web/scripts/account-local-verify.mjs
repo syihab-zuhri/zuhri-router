@@ -202,6 +202,7 @@ try {
   await custPage1.getByRole('button', { name: 'Tutup akun', exact: true }).click();
   const closeDialog = custPage1.getByRole('dialog', { name: 'Tutup akun permanen?' });
   await expectVisible(closeDialog, 'Dialog konfirmasi tutup akun tidak tampil');
+  await expectVisible(closeDialog.getByText('Sisa saldo token hangus dan tidak dapat dikembalikan atau diuangkan. Riwayat transaksi tetap tersimpan.'), 'Teks CR-035 konsekuensi saldo tutup akun tidak tampil');
   await closeDialog.getByLabel('Konfirmasi username').fill(customerUsername);
   await closeDialog.getByLabel('Password saat ini').fill(customerPass2);
   await closeDialog.getByRole('button', { name: 'Tutup akun permanen', exact: true }).click();

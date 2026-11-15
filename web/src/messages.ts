@@ -79,7 +79,7 @@ export const am = {
   closeConsequenceTitle: 'Akibat penutupan akun:',
   closeConsequenceKeys: 'Seluruh API key aktif langsung dicabut dan berhenti bekerja; request yang sedang berjalan tetap diselesaikan.',
   closeConsequenceAccess: 'Semua sesi dan tautan reset dicabut. Anda tidak dapat masuk lagi, dan username lama tidak dapat dipakai ulang.',
-  closeConsequenceBalance: 'Catatan saldo, hold, dan riwayat transaksi historis tetap dipertahankan; tidak ada refund otomatis.',
+  closeConsequenceBalance: 'Sisa saldo token hangus dan tidak dapat dikembalikan atau diuangkan. Riwayat transaksi tetap tersimpan.',
   closeAccountConfirmAction: 'Tutup akun permanen',
   reloadAccount: 'Muat ulang data akun',
   authenticatorSection: 'Autentikator admin',
