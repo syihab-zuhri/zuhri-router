@@ -1,9 +1,18 @@
 # Changelog: Router AI Komersial
 
-Version: 0.36.0
+Version: 0.37.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-15, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.37.0: Tidak ada pengembalian saldo
+
+CR-035
+Source: founder 2026-11-15, menjawab pertanyaan Antigravity tentang sisa saldo saat tutup akun: "tidak ada pengembalian saldo atau no refund, membeli = paham".
+
+- Pembelian token final; saldo tidak dapat diuangkan; sisa saldo saat akun ditutup hangus. Dicatat di TOKEN_CREDIT.md section 2 beserta risiko UU 8/1999 Pasal 18 ayat (1) huruf c di section 3.
+- Server tidak berubah: akun tertutup sudah tidak dapat masuk atau memakai key, dan saldonya sudah dipisahkan pada status. Tidak ada entri ledger penghapusan saldo; bila founder ingin saldo hangus dicatat sebagai entri tersendiri untuk pembukuan, itu perubahan terpisah.
+- Teks antarmuka: Hermes menambahkan pernyataan sebelum pembelian/redeem; Antigravity mengganti teks dialog tutup akun.
 
 ## 0.36.0: Agen ketiga; layar akun; tombol arsip di web; pemasangan
 
@@ -552,4 +561,4 @@ Verification:
 - Model usaha/supply/customer masih usulan saat versi ini dibuat.
 - Gate A saja; tidak ada implementasi atau deploy.
 
-<!-- END ROUTER-CHANGELOG v0.36.0 -->
+<!-- END ROUTER-CHANGELOG v0.37.0 -->

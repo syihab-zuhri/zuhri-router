@@ -111,3 +111,17 @@ Founder menambah agen ketiga, Antigravity. **Hermes mengerjakan nomor 1, 2 dan 5
 - Penggabungan juga membawa perubahan kecil dari Claude: port di `vite.config.ts`, `playwright.config.ts`, skrip `dev`/`preview` di `package.json`, dua skrip verifikasi, dan `guide.spec.ts` dapat diatur lewat environment (`WEB_PORT`, `VERIFY_*_PORT`). Nilai bawaan tidak berubah (5173, 4173, 55480 sampai 55482), jadi perintah Anda tetap sama.
 - `web/` sudah masuk Git (commit `cf0bf2c`, titik aman). `node_modules`, `dist`, `evidence`, `test-results` diabaikan Git.
 - Container `router-spike-pg` sempat mati (Docker/WSL restart) dan sudah dinyalakan lagi, sekarang dengan restart otomatis. Bila test Anda gagal karena koneksi database sekitar waktu itu, ulangi.
+
+## Tahap tiga, lanjutan (2026-11-15 siang)
+
+Pekerjaan arsip dan daftar model upstream Anda sudah digabung dan terpasang di https://zrouter.web.id (image `zrouter:r11151123`). Halaman akun dari Antigravity juga sudah ada di `main`; baca `docs/handoff/claude-log.md` bagian "layar akun dari Antigravity sudah digabung" sebelum mulai.
+
+Kerjakan berurutan:
+
+1. Nomor 1, 2 dan 5 dari daftar tahap tiga di atas (undang pelanggan, tangguhkan/pulihkan dan koreksi saldo, judul ZRouter dan ikon serta halaman aktivasi tanpa token).
+2. `auth.tsx`: lengkapi daftar `returnTo` dengan semua rute portal dan admin yang ada sekarang, termasuk `akun`.
+3. **Tidak ada pengembalian saldo (keputusan founder, CR-035, `docs/TOKEN_CREDIT.md` section 2).** Tampilkan satu kalimat dari satu kunci di `messages.ts` di dua tempat: dekat daftar paket di beranda, dan di atas form redeem pada Isi Saldo. Teks: "Pembelian token bersifat final. Saldo tidak dapat dikembalikan atau diuangkan, termasuk saat akun ditutup." Tambahkan test yang memeriksa teks itu tampil di kedua layar.
+
+Berkas bersama (`app.tsx`, `messages.ts`, `styles.css`) kini juga memuat bagian milik Antigravity: edit sebagian saja, jangan menulis ulang seluruh berkas, dan jangan mengubah `account-*.tsx`, `qr.ts`, atau blok `am`. Antigravity sedang mengerjakan audit aksesibilitas di foldernya sendiri dan akan melaporkan temuan pada layar Anda lewat Claude; jangan menunggu laporan itu.
+
+Selesai berarti sama seperti sebelumnya: typecheck, unit, seluruh test browser, `test:local`, `test:browser` lulus, lalu catat di `docs/handoff/hermes-log.md` bagian baru bertanggal dan sebutkan bahwa build siap dipasang.

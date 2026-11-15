@@ -1,9 +1,9 @@
 # Model Saldo Kredit Token
 
-Version: 0.3.0
+Version: 0.4.0
 Status: Draft; arah CONFIRMED founder (CR-013), rincian PROPOSED
 Owner keputusan: founder
-Updated: 2026-11-14, Asia/Jakarta
+Updated: 2026-11-15, Asia/Jakarta
 Dependencies: BILLING_REDEEM.md; ARCHITECTURE.md; PLANNING.md
 Evidence: E3 untuk bagian yang sudah diimplementasikan dan diuji di ../server/ (unit saldo, harga dengan multiplier saja, batas lebih-pakai). Paket token dan redeem ada di backend; UI belum.
 
@@ -36,16 +36,18 @@ Diagram founder 2026-11-14, dibaca dari berkas mxGraph yang ditempelkan:
 | Henti paksa di tengah stream | Gateway memutus stream saat pemakaian berjalan melewati saldo ditambah batas lebih-pakai | Belum diimplementasikan (TASK-012) |
 | Batas belanja API key | Dalam kredit token | Mengikuti unit |
 | Batas tagihan input | Input yang ditagih tidak melebihi ukuran request pelanggan dalam byte; kelebihan dari upstream dicatat tidak ditagih | CONFIRMED (CR-018), diimplementasikan |
+| Pengembalian | Tidak ada pengembalian uang. Pembelian token final; saldo tidak dapat diuangkan. Sisa saldo saat akun ditutup hangus; catatan ledger tetap ada dan tidak dihapus. Pernyataan ini ditampilkan sebelum pembelian/redeem dan pada dialog tutup akun | CONFIRMED founder 2026-11-15 (CR-035); teks antarmuka belum |
 
 ## 3. Akibat yang perlu diketahui founder
 
 - Upstream menagih output beberapa kali lebih mahal daripada input, dan sebagian memberi diskon cache. Dengan bobot seragam, pelanggan yang pemakaiannya berat di output lebih mahal bagi usaha daripada yang berat di input, padahal keduanya membayar sama. Pengali model harus ditetapkan dari skenario terburuk (semua output), atau bobot output dinaikkan. Mesin harga sudah mendukung keduanya.
 - Margin tidak lagi dapat dibaca langsung dari tarif. Margin guard (TASK-003) harus membandingkan nilai Rupiah satu kredit (dari harga paket yang berlaku, termasuk promo) dengan biaya upstream per token dikali kurs. Karena harga paket bisa berubah dan saldo lama dibeli dengan harga lama, guard memakai nilai kredit terendah yang masih beredar atau nilai yang ditetapkan admin.
 - Utang lebih-pakai: pelanggan yang berhenti setelah saldo minus meninggalkan kerugian sampai 500.000 kredit dikali pengali terkecil. Top-up berikutnya menutup minus itu lebih dulu.
+- Larangan klausula baku: UU 8/1999 tentang Perlindungan Konsumen Pasal 18 ayat (1) huruf c melarang klausula baku yang menyatakan pelaku usaha berhak menolak menyerahkan kembali uang yang dibayarkan konsumen, dan ayat (3) menyatakan klausula semacam itu batal demi hukum. Aturan "tidak ada pengembalian" di atas karena itu dapat tidak berlaku bila disengketakan, terutama bila layanan tidak dapat diberikan (misalnya semua upstream gagal lama). Founder sudah diberi tahu (2026-11-15); peninjauan oleh ahli hukum disarankan sebelum penjualan luas. Ini catatan risiko, bukan nasihat hukum.
 - Promo paling sederhana pada model ini adalah paket dengan token lebih banyak pada harga yang sama, atau kode redeem bernilai token tanpa penjualan. Keduanya tidak memerlukan mekanisme diskon tersendiri; cukup dicatat sebagai promo pada alasan penerbitan agar terpisah dari penjualan.
 
 ## 4. Yang digantikan
 
 ADR-005 (saldo Rupiah, mikro-IDR) dan OQ-004 ditutup ulang dengan keputusan ini. OQ-009 (bentuk promo) terjawab sebagian oleh butir terakhir section 3 dan menunggu konfirmasi founder. Contoh Rp68 menjadi Rp102 di BILLING_REDEEM.md section 2.3 tetap sah sebagai uji aritmetika mesin harga, bukan sebagai model tagihan produk.
 
-<!-- END ROUTER-TOKEN-CREDIT v0.3.0 -->
+<!-- END ROUTER-TOKEN-CREDIT v0.4.0 -->

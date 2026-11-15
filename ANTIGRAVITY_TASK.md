@@ -78,3 +78,42 @@ Dari `web/`, setelah `source ../.antigravity-env.sh`:
 Tulis di `docs/handoff/antigravity-log.md`: apa yang ditulis, apa yang dijalankan, apa yang lulus, apa yang belum, pertanyaan untuk founder, dan permintaan ke Claude/Hermes. Bedakan "ditulis", "dijalankan" dan "lulus". Commit semuanya ke cabang `antigravity/akun`, lalu laporkan ke founder. Claude yang memeriksa, menggabungkan ke `main`, dan memasang ke server.
 
 Tidak boleh: deploy, request ke upstream, email nyata, dependency baru, menonaktifkan atau melewati test agar hijau.
+
+---
+
+# Tugas dua (2026-11-15 siang)
+
+Tugas pertama diterima dan sudah terpasang di https://zrouter.web.id. Satu temuan dari pemeriksaan Claude: kode QR tidak terbaca untuk QR versi 7 ke atas (semua tautan autentikator), karena pola alignment yang berimpit dengan garis timing dilewati. Sudah diperbaiki di `web/src/qr.ts` dengan unit test `web/test/unit/qr.test.ts`. Pelajarannya untuk tugas ini: test harus memeriksa hasil yang benar-benar dipakai orang (QR yang dipindai), bukan hanya bahwa elemennya tampil.
+
+## Mulai dengan menyamakan folder
+
+    cd /mnt/d/router.dev.zuhri-antigravity && source .antigravity-env.sh
+    git checkout antigravity/akun && git pull --ff-only origin main
+
+Bila `git pull` menolak, berhenti dan laporkan; jangan memaksa.
+
+## A. Teks tutup akun (keputusan founder, CR-035)
+
+Founder memutuskan tidak ada pengembalian saldo (`docs/TOKEN_CREDIT.md` section 2). Ganti `closeConsequenceBalance` di blok `am` menjadi: "Sisa saldo token hangus dan tidak dapat dikembalikan atau diuangkan. Riwayat transaksi tetap tersimpan." Sesuaikan test yang memeriksa teks itu.
+
+## B. Audit aksesibilitas dan tampilan untuk semua layar
+
+Hermes mencatat bahwa audit aksesibilitas independen dan pemeriksaan 360 px untuk tiap state belum pernah dilakukan. Anda yang melakukannya, sebagai pemeriksa: **Anda tidak mengubah berkas Hermes**, hanya melaporkan.
+
+1. Tulis `web/scripts/a11y-audit.mjs` dengan pola `account-local-verify.mjs`: server Fastify nyata, schema privat acak yang dibuang di akhir, port dari `VERIFY_API_PORT`/`VERIFY_WEB_PORT`. Siapkan data lewat fungsi server (admin, pelanggan bersaldo, paket, kode redeem, API key, model berharga) agar layar tidak hanya menampilkan keadaan kosong. Data yang butuh jaringan luar (upstream) tidak perlu; catat layar yang hanya teraudit dalam keadaan kosong.
+2. Untuk setiap rute portal dan admin di `web/src/app.tsx`, pada lebar 360x640 dan 1280x800:
+   - axe (`@axe-core/playwright`, sudah ada) dengan tag `wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`;
+   - tidak ada gulir horizontal;
+   - semua elemen interaktif dapat dicapai dengan Tab dan fokusnya terlihat;
+   - judul halaman (`h1`) ada dan fokus berpindah ke konten saat ganti rute;
+   - dengan `prefers-reduced-motion: reduce`, tidak ada animasi berjalan.
+   Untuk dialog (step-up, konfirmasi): fokus masuk ke dialog, Escape menutup, fokus kembali ke tombol pembuka.
+3. Skrip keluar dengan kode 1 bila ada temuan. Simpan hasil di `web/evidence/antigravity-audit.json` dan ringkasannya di `web/evidence/antigravity-audit.txt`.
+
+## Batas berkas
+
+Boleh: `web/scripts/a11y-audit.mjs` (baru), berkas milik Anda dari tugas pertama, blok `am`, log Anda. Temuan pada layar milik Anda (`/akun`, `/admin/akun`) boleh langsung diperbaiki. Temuan pada layar lain **jangan diperbaiki**; tulis di log.
+
+## Laporan
+
+Di `docs/handoff/antigravity-log.md`, bagian baru bertanggal: tabel temuan dengan kolom layar, lebar, masalah, kriteria WCAG, cara mengulang, berkas, pemilik (Hermes/Antigravity), usulan perbaikan. Urutkan dari yang paling menghalangi pengguna. Lalu hasil test seperti tugas pertama (typecheck, unit, seluruh Playwright, `account-local-verify.mjs`, `a11y-audit.mjs`), dengan membedakan "ditulis", "dijalankan" dan "lulus". Commit ke cabang `antigravity/akun`, jangan push.
