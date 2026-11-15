@@ -103,3 +103,12 @@ Yang kini ada di `web/` dan perlu Anda ketahui:
 2. `src/qr.ts`: pembuat kode QR lokal untuk ganti autentikator. Versi pertama tidak terbaca untuk QR versi 7 ke atas (semua tautan autentikator); Claude memperbaikinya dan unit test-nya gagal pada kode lama.
 3. Port kini dapat diatur lewat environment (`WEB_PORT`, `WEB_PREVIEW_PORT`, `VERIFY_API_PORT`, `VERIFY_WEB_PORT`, `VERIFY_DIST_PORT`). Nilai bawaan sama seperti sebelumnya; skrip `dev`/`preview` di `package.json` tidak lagi menulis port sendiri, port diambil dari `vite.config.ts`.
 4. Permintaan dari Antigravity untuk Anda (`auth.tsx` milik Anda): daftar `returnTo` di baris 13 belum memuat `akun` (juga rute tahap dua seperti `model-harga`, `pemakaian`, `panduan`, `upstream`, `rekonsiliasi`, `batas-lebih-pakai`, `audit`). Bila sesi habis di halaman itu, sesudah masuk pengguna dikembalikan ke beranda. Mohon dilengkapi sebagai bagian dari nomor 5 tahap tiga.
+
+## 2026-11-15 sore, dua temuan audit aksesibilitas pada layar Hermes
+
+Untuk Hermes. Antigravity mengaudit 58 kombinasi layar dan lebar (axe WCAG 2.2 AA, 360 dan 1280 px, keyboard, reduced motion) terhadap server nyata. Claude menjalankan ulang auditnya dan memeriksa kedua temuan di kode: keduanya benar. Mohon diperbaiki sebagai bagian dari tahap tiga, masing-masing dengan test:
+
+1. `/pemakaian` pada 360 px (WCAG 1.4.10 Reflow): baris grafik harian melebar keluar panel. `styles.css` baris 11, `.usage-bar-row` memakai `grid-template-columns: minmax(6rem, 1fr) minmax(5rem, 2fr) minmax(7rem, auto)`, minimum sekitar 312 px sedangkan ruang isi 294 px. Usul: satu kolom atau wrap secara bawaan, tiga kolom hanya pada layar lebar.
+2. `/admin/batas-lebih-pakai` (WCAG 2.4.3 Focus Order): `OverdraftPage` di `admin-operations.tsx` mengembalikan `<Pending />` sebelum `<PageTitle>`, sehingga `h1` belum ada saat `RouteFocus` berjalan dan fokus tertinggal di tombol Menu atau tautan navigasi. Usul: render `PageTitle` lebih dulu seperti layar lain, dan beri `RouteFocus` cadangan ke `main` bila `h1` belum ada. Periksa layar lain yang berpola sama.
+
+Skrip auditnya (`web/scripts/a11y-audit.mjs`) masuk ke `main` saat cabang Antigravity digabung, sesudah pekerjaan Anda yang sekarang selesai. Skrip itu keluar dengan kode 1 selama dua temuan ini masih ada.

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { m } from '../../src/messages.ts';
 
 test('masuk keyboard, CSRF, shell 360px dan fokus navigasi', async ({ page }) => {
   let signedIn = false;
@@ -27,6 +28,43 @@ test('masuk keyboard, CSRF, shell 360px dan fokus navigasi', async ({ page }) =>
   const scan = await new AxeBuilder({ page }).analyze(); expect(scan.violations).toEqual([]);
 });
 
+test('halaman aktivasi tanpa token memberi bantuan dan link kembali', async ({ page }) => {
+  await page.goto('/aktivasi');
+  await expect(page.getByText(m.activationHelpMissing, { exact: true })).toBeVisible();
+  expect(await page.getByRole('link', { name: m.backLogin, exact: true }).first().getAttribute('href')).toBe('/masuk');
+});
+
+test('returnTo meliputi semua rute portal dan admin dalam bentuk allowlist', async ({ page }) => {
+  const portal = ['beranda','isi-saldo','api-key','model-harga','pemakaian','panduan','transaksi','akun'];
+  const admin = ['pelanggan','paket','kode','harga','upstream','rekonsiliasi','batas-lebih-pakai','audit','akun'];
+  const loginSource = await (await page.request.get('/src/auth.tsx')).text();
+  const portalGuard = 'beranda|isi-saldo|api-key|model-harga|pemakaian|panduan|transaksi|akun';
+  const adminGuard = 'pelanggan|paket|kode|harga|upstream|rekonsiliasi|batas-lebih-pakai|audit|akun';
+  expect(loginSource).toContain(portalGuard);
+  expect(loginSource).toContain(adminGuard);
+  expect(portal.join('|')).toBe(portalGuard);
+  expect(admin.join('|')).toBe(adminGuard);
+  await page.route('**/api/me', route => route.fulfill({ status: 401, json: { error: { code: 'unauthorized' } } }));
+  const customerRead = await page.request.get('/src/hooks.tsx');
+  expect(customerRead.status()).toBe(200);
+  await page.goto('/masuk');
+  await page.evaluate(() => window.history.replaceState({ usr: { returnTo: '/akun' } }, '', '/masuk'));
+  await expect.poll(() => page.evaluate(() => window.history.state?.usr?.returnTo ?? window.history.state?.returnTo)).toBe('/akun');
+  await page.goto('/admin/masuk');
+  await page.evaluate(() => window.history.replaceState({ usr: { returnTo: '/admin/akun' } }, '', '/admin/masuk'));
+  await expect.poll(() => page.evaluate(() => window.history.state?.usr?.returnTo ?? window.history.state?.returnTo)).toBe('/admin/akun');
+});
+
+test('kebijakan token tampil dari satu pesan pada beranda dan isi saldo', async ({ page }) => {
+  await page.route('**/api/me', route => route.fulfill({ json: { username: 'returnto-user', tenantStatus: 'ACTIVE', version: '1' } }));
+  await page.route('**/api/balance', route => route.fulfill({ json: { postedMicro: '0', heldMicro: '0', availableMicro: '0', currency: 'TOKEN' } }));
+  await page.route('**/api/packs', route => route.fulfill({ json: { packs: [] } }));
+  await page.goto('/beranda');
+  await expect(page.getByText(m.refundPolicy, { exact: true })).toBeVisible();
+  await page.goto('/isi-saldo');
+  await expect(page).toHaveURL(/\/isi-saldo$/);
+  await expect(page.getByText(m.refundPolicy, { exact: true })).toBeVisible();
+});
 test('aktivasi menghapus fragment sebelum request dan merender hasil server', async ({ page }) => {
   let payload: unknown;
   await page.route('**/api/auth/activate', async route => { payload = route.request().postDataJSON(); await route.fulfill({ status: 201, json: { ok: true } }); });

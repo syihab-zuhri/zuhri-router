@@ -33,7 +33,7 @@ export function ErrorBox({ error, retry }: { error: unknown; retry?: () => void 
 export function Pending() { return <p role="status" aria-busy="true">{m.loading}</p>; }
 export function Empty({ title = m.empty }: { title?: string }) { return <section className="empty"><span className="geometry" aria-hidden="true" /><h2>{title}</h2><p>{m.emptyHelp}</p></section>; }
 export function Badge({ status }: { status: string }) { const label = status in m.stateText ? m.stateText[status as keyof typeof m.stateText] : statusText[status] ?? status; return <span className="badge" data-status={status}>{label}</span>; }
-export function Brand() { return <aside className="brand"><p className="eyebrow">{m.brandNote}</p><div className="brand-word" aria-hidden="true">TOKEN</div><span className="geometry" aria-hidden="true" /><p>{m.welcome}</p><small>{m.brandCaption}</small></aside>; }
+export function Brand() { return <aside className="brand"><p className="eyebrow">{m.brandNote}</p><div className="brand-word" aria-hidden="true">{m.product}</div><span className="geometry" aria-hidden="true" /><p>{m.welcome}</p><small>{m.brandCaption}</small></aside>; }
 export function PageTitle({ children, subtitle }: { children: ReactNode; subtitle?: string }) { return <header className="page-title"><h1 tabIndex={-1}>{children}</h1>{subtitle && <p>{subtitle}</p>}</header>; }
 export function Modal({ title, children, onClose, busy = false }: { title: string; children: ReactNode; onClose: () => void; busy?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null); const titleId = useId();
