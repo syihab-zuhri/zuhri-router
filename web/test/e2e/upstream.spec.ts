@@ -1,0 +1,62 @@
+import { test, expect } from '@playwright/test';
+import { m } from '../../src/messages.ts';
+const id = '11111111-1111-4111-8111-111111111111';
+const upstream = { id, name: 'Router hulu uji', status: 'PENDING', baseUrls: { CHAT: 'https://chat.example.test/v1', ANTHROPIC: null, RESPONSES: null }, keySet: true, keySetAt: '2026-11-14T01:00:00.000Z', termsNote: 'Data diteruskan ke provider.', version: '4' };
+const modelId = 'vendor/model';
+test('upstream tidak mengisi ulang key dan perubahan URL meminta key baru', async ({ page }) => {
+  const writes: Record<string, unknown>[] = [];
+  let status = 'PENDING';
+  await page.route('**/admin/api/packs', route => route.fulfill({ json: { packs: [] } }));
+  await page.route('**/admin/api/upstreams', route => route.fulfill({ json: { upstreams: [{ ...upstream, status }] } }));
+  await page.route(`**/admin/api/upstreams/${id}`, async route => {
+    writes.push(route.request().postDataJSON());
+    expect(route.request().headers()['x-router-csrf']).toBe('1');
+    status = 'ELIGIBLE';
+    return route.fulfill({ json: { ...upstream, status, version: '5', keySetAt: '2026-11-14T02:00:00.000Z' } });
+  });
+  await page.route('**/admin/api/second-factor', route => route.fulfill({ json: { ok: true } }));
+  await page.goto('/admin/upstream');
+  await expect(page.getByRole('heading', { name: m.upstreams, exact: true })).toBeVisible();
+  await expect(page.getByText('Menunggu tinjauan', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: m.edit, exact: true }).click();
+  const upstreamForm = page.getByRole('dialog', { name: m.editUpstream });
+  await expect(upstreamForm.locator('input[type="password"]')).toHaveValue('');
+  await upstreamForm.getByLabel('Base URL CHAT').fill('https://other.example.test/v1');
+  await upstreamForm.locator('input[type="password"]').fill('synthetic-key-material');
+  await upstreamForm.getByLabel(m.reason).fill('Migrasi upstream uji');
+  await upstreamForm.getByRole('button', { name: m.save, exact: true }).click();
+  await expect(page.getByText('Tersimpan di', { exact: false })).toBeVisible();
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toMatchObject({ expectedVersion: '4', baseUrls: { CHAT: 'https://other.example.test/v1' }, apiKey: 'synthetic-key-material' });
+  expect(JSON.stringify(writes[0])).not.toContain('old-secret');
+  await expect(page.locator('input[type=password][value="synthetic-key-material"]')).toHaveCount(0);
+});
+
+test('route hanya menawarkan protokol upstream dan dikirim ulang sekali setelah step-up', async ({ page }) => {
+  const routes: Record<string, unknown>[] = [];
+  await page.route('**/admin/api/packs', route => route.fulfill({ json: { packs: [] } }));
+  await page.route('**/admin/api/models', route => route.fulfill({ json: { models: [{ id: modelId, displayName: 'Model uji', version: '3', sellable: false, draft: null, published: null }] } }));
+  await page.route('**/admin/api/upstreams', route => route.fulfill({ json: { upstreams: [upstream] } }));
+  await page.route('**/admin/api/routes**', route => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: { routes: [] } });
+    const body = route.request().postDataJSON(); routes.push(body);
+    expect(route.request().headers()['x-router-csrf']).toBe('1');
+    return routes.length === 1 ? route.fulfill({ status: 401, json: { error: { code: 'step_up_required' } } }) : route.fulfill({ status: 201, json: { id: 'route-1', ...body, version: '1' } });
+  });
+  await page.route('**/admin/api/second-factor', route => route.fulfill({ json: { ok: true } }));
+  await page.goto('/admin/upstream');
+  await page.getByRole('button', { name: m.createRoute }).click();
+  const dialog = page.getByRole('dialog', { name: m.createRoute });
+  await dialog.locator('#route-model').selectOption(modelId);
+  await dialog.locator('#route-upstream').selectOption(id);
+  expect(await dialog.getByLabel(m.protocol).locator('option').allTextContents()).toEqual(['CHAT']);
+  await dialog.getByLabel(m.upstreamModel).fill('provider/model');
+  await dialog.getByRole('button', { name: m.createRoute }).click();
+  await expect(page.getByRole('dialog', { name: m.stepUp })).toBeVisible();
+  await page.getByRole('dialog', { name: m.stepUp }).getByLabel(m.code).fill('123456');
+  await page.getByRole('dialog', { name: m.stepUp }).getByRole('button', { name: m.verify }).click();
+  await expect(dialog).not.toBeVisible();
+  expect(routes).toHaveLength(2);
+  expect(routes[0]).toEqual(routes[1]);
+  expect(routes[0]).toMatchObject({ modelId, upstreamId: id, protocol: 'CHAT', upstreamModel: 'provider/model' });
+});

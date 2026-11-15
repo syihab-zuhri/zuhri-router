@@ -10,3 +10,10 @@ codex-*.json
 Portrait Version.jpg
 docs/evidence/
 deploy/.env
+
+# web build and test output
+web/node_modules/
+web/dist/
+web/evidence/
+web/test-results/
+web/playwright-report/
