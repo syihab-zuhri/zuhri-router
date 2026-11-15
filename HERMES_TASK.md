@@ -87,3 +87,17 @@ Untuk tiap layar berlaku syarat "Selesai berarti" di atas. Catat hasil di `docs/
 ## Tetap bukan pekerjaan Hermes
 
 Deploy, perubahan `server/`, maskot (placeholder tetap dipakai), dan commit ke Git untuk berkas di luar `web/`. Untuk `web/` sendiri: jangan meng-commit `node_modules`, `dist`, `test-results`, atau berkas kredensial; tanyakan founder sebelum push.
+
+---
+
+# Tahap tiga (2026-11-15): yang masih kurang untuk pilot
+
+Hasil tinjauan Claude atas `web/` pada 2026-11-15 (baca-saja). Tidak ditemukan pelanggaran aturan: saldo memakai BigInt, tidak ada penyimpanan browser atau log, token aktivasi diambil dari fragment lalu dibuang, header CSRF hanya pada mutasi, tidak ada sumber luar. Yang kurang adalah layar, urut prioritas:
+
+1. **Undang pelanggan (paling mendesak; tanpa ini founder tidak dapat menambah pelanggan dari web).** Di layar Pelanggan: form email -> `POST /admin/api/invites` -> `{ inviteId, emailSent, activationLink }`. Server produksi berjalan tanpa email, jadi `emailSent=false` adalah keadaan normal: tampilkan `activationLink` sekali dengan tombol salin (CMP-022) dan teks bahwa admin harus mengirimkannya sendiri. Tautan dari server sudah lengkap dengan origin. Jangan simpan di URL, storage, atau log. Error: `conflict` (email sudah punya akun), `invalid_request`.
+2. **Tangguhkan/pulihkan pelanggan dan koreksi saldo** pada detail pelanggan: `POST /admin/api/customers/:username/suspend|restore` `{ expectedVersion, reason }`; `POST /admin/api/adjustments` `{ username, amountMicro (string bertanda), reason, idempotencyKey }`. Keduanya step-up dengan dialog konfirmasi yang menampilkan username dan nilai.
+3. **Akun admin**: ganti password dan ganti autentikator (rute ada di claude-log, bagian "rute akun admin"). Untuk autentikator: tampilkan kunci untuk diketik manual; kode QR boleh hanya bila dibuat di browser tanpa layanan luar dan tanpa dependency baru yang belum diperiksa.
+4. **Akun pelanggan (SCR-013)**: ganti password (`POST /api/account/password`), daftar dan cabut sesi (`GET /api/account/sessions`, `POST /api/account/sessions/:id/revoke`), tutup akun (`POST /api/account/close` `{ currentPassword, confirmUsername, expectedVersion }`).
+5. Butir pada claude-log "daftar model upstream dan arsip" dan "pemeriksaan browser pada situs publik" (judul ZRouter, ikon, halaman aktivasi tanpa token) bila belum selesai.
+
+Sesudah satu kelompok layar lulus test, tulis di hermes-log bagian baru bertanggal dan sebutkan bahwa build siap dipasang; Claude yang membangun image dan memasangnya ke server.
