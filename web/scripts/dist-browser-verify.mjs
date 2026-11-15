@@ -9,7 +9,7 @@ import { bootstrapAdmin } from '../../server/src/admin.ts';
 import { createInvite } from '../../server/src/identity.ts';
 import { DB_URL } from '../../server/test/helpers.ts';
 
-const port = 55482;
+const port = Number(process.env.VERIFY_DIST_PORT ?? 55482);
 const schema = `web_dist_${randomUUID().replaceAll('-', '')}`;
 const key = randomBytes(32);
 const dist = fileURLToPath(new URL('../dist', import.meta.url));

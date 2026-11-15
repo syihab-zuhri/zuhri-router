@@ -11,8 +11,8 @@ import { createInvite } from '../../server/src/identity.ts';
 import { totpAt, totpStep } from '../../server/src/crypto.ts';
 import { DB_URL } from '../../server/test/helpers.ts';
 
-const apiPort = 55481;
-const webPort = 5175;
+const apiPort = Number(process.env.VERIFY_API_PORT ?? 55481);
+const webPort = Number(process.env.VERIFY_WEB_PORT ?? 5175);
 const schema = `web_verify_${randomUUID().replaceAll('-', '')}`;
 const key = randomBytes(32);
 const mail = { invites: [], resets: [] };

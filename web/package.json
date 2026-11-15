@@ -5,10 +5,10 @@
   "type": "module",
   "engines": { "node": ">=24.0.0" },
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    "preview": "vite preview --host 127.0.0.1",
     "test": "node --test test/unit/*.test.ts",
     "test:e2e": "playwright test",
     "test:local": "node scripts/local-browser-verify.mjs",
