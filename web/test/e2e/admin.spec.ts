@@ -225,24 +225,51 @@ test('model dapat diarsipkan dan dipulihkan dengan step-up, daftar arsip dikenda
   expect(writes).toEqual([
     { id: model.id, archived: true, expectedVersion: '3' },
     { id: model.id, archived: true, expectedVersion: '3' },
-    { id: model.id, archived: false, expectedVersion: '4' },
+    { id: model.id, archived: false, expectedVersion: '3' },
   ]);
 });
 
 test('model yang masih dijual tidak dapat diarsipkan dan memberi tindakan berikutnya', async ({ page }) => {
   const listed = { ...model, version: '3', archived: false, published: { ...price, status: 'PUBLISHED' } };
+  let priceRetired = false;
+  const archiveMutationCalls: number[] = [];
+  const draftMutationCalls: number[] = [];
   const writes: Record<string, unknown>[] = [];
   await page.route('**/admin/api/models**', route => {
-    if (route.request().method() === 'GET') return route.fulfill({ json: new URL(route.request().url()).searchParams.has('id') ? listed : { models: [listed] } });
-    writes.push(route.request().postDataJSON());
-    return route.fulfill({ status: 409, json: { error: { code: 'model_on_sale' } } });
+    const url = new URL(route.request().url());
+    if (route.request().method() === 'GET') {
+      const data = priceRetired ? { ...listed, published: null, archived: false, draft: { ...price, status: 'DRAFT' } } : listed;
+      return route.fulfill({ json: url.searchParams.has('id') ? data : { models: [data] } });
+    }
+    const payload = route.request().postDataJSON(); writes.push(payload);
+    if (payload.archived === true) {
+      archiveMutationCalls.push(Date.now());
+      if (!priceRetired) return route.fulfill({ status: 409, json: { error: { code: 'model_on_sale' } } });
+      return route.fulfill({ json: { ...listed, archived: true } });
+    }
+    draftMutationCalls.push(Date.now());
+    priceRetired = true;
+    return route.fulfill({ json: { ...listed, version: '4', published: null, draft: { ...price, status: 'DRAFT' } } });
   });
   await mount(page, 'admin-models', 'ModelsPage');
   await page.getByRole('button', { name: m.archiveModel, exact: true }).click();
   const confirmation = page.getByRole('dialog', { name: m.archiveModel });
   await confirmation.getByRole('button', { name: m.archiveModel, exact: true }).click();
+  await expect(confirmation.getByText(m.modelOnSale, { exact: true })).toBeVisible();
   await expect(confirmation.getByRole('link', { name: m.retirePriceFirst, exact: true })).toHaveAttribute('href', `/admin/harga?id=${encodeURIComponent(model.id)}`);
-  expect(writes).toEqual([]);
+  await expect.poll(() => archiveMutationCalls.length).toBe(1);
+  expect(writes[0]).toEqual({ id: model.id, archived: true, expectedVersion: '3' });
+  await page.getByRole('button', { name: m.cancel, exact: true }).click();
+  await page.getByRole('button', { name: m.details, exact: true }).click();
+  await page.getByLabel(m.multiplier, { exact: true }).fill('1,1');
+  await page.getByRole('button', { name: m.draft, exact: true }).click();
+  await expect.poll(() => draftMutationCalls.length).toBe(1);
+  priceRetired = true;
+  await page.getByRole('button', { name: m.archiveModel, exact: true }).click();
+  const eligibleConfirmation = page.getByRole('dialog', { name: m.archiveModel });
+  await eligibleConfirmation.getByRole('button', { name: m.archiveModel, exact: true }).click();
+  await expect.poll(() => archiveMutationCalls.length).toBe(2);
+  expect(writes.at(-1)).toEqual({ id: model.id, archived: true, expectedVersion: '3' });
 });
 
 test('tarik harga meminta alasan dan tidak mengirim sebelum konfirmasi', async ({ page }) => {

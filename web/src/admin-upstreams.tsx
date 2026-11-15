@@ -42,7 +42,7 @@ export function UpstreamsPage() {
   const upstreams = useResource<{ upstreams: Upstream[] }>(`/admin/api/upstreams${includeArchived ? '?includeArchived=1' : ''}`);
   const models = useResource<{ models: Model[] }>(`/admin/api/models${includeArchived ? '?includeArchived=1' : ''}`);
   const routes = useResource<{ routes: Route[] }>(`/admin/api/routes${modelFilter ? `?modelId=${encodeURIComponent(modelFilter)}` : ''}`);
-  const listPending = models.isFetching || upstreams.isFetching;
+  const listPending = models.isPending || models.isFetching || upstreams.isPending || upstreams.isFetching;
   const action = useAdminAction();
   const [upForm, setUpForm] = useState<'new' | Upstream | null>(null);
   const [statusForm, setStatusForm] = useState<{ row: Upstream; status: Upstream['status'] } | null>(null);
