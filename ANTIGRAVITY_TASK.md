@@ -34,7 +34,7 @@ Ditulis 2026-11-15 oleh Claude. Tiga agen bekerja bersamaan: Claude (server, dep
 ### A. Akun pelanggan (SCR-013), rute `/akun`
 
 - **Ubah password**: `POST /api/account/password` `{ current, next }`. Error `invalid_credentials` (password lama salah), `weak_password`.
-- **Sesi**: `GET /api/account/sessions` -> `{ current, sessions: [{ id, created_at, last_seen_at }] }`. Tandai sesi yang sedang dipakai. Cabut: `POST /api/account/sessions/:id/revoke`. Mencabut sesi yang sedang dipakai berarti keluar: arahkan ke halaman masuk.
+- **Sesi**: `GET /api/account/sessions` -> `{ current, sessions: [{ id, createdAt, lastSeenAt }] }` (ISO 8601; versi awal berkas ini salah menulis snake_case). Tandai sesi yang sedang dipakai. Cabut: `POST /api/account/sessions/:id/revoke`. Mencabut sesi yang sedang dipakai berarti keluar: arahkan ke halaman masuk.
 - **Tutup akun**: `POST /api/account/close` `{ currentPassword, confirmUsername, expectedVersion }`; `expectedVersion` dari `GET /api/me`. Dialog konfirmasi wajib: pelanggan mengetik username dan password. Teks akibatnya (key berhenti bekerja, tidak bisa masuk lagi, nasib saldo) ambil dari dokumen; bila dokumen tidak menyebutkan, jangan mengarang: tulis di log sebagai pertanyaan. Sesudah berhasil, arahkan ke halaman masuk.
 
 ### B. Akun admin, rute `/admin/akun`

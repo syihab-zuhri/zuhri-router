@@ -92,3 +92,14 @@ Founder sedang memakai layar route di produksi dan tersandung dua hal. Mohon dip
 1. Form route, kolom "model upstream": tambahkan tombol "Ambil daftar dari upstream" yang memanggil `GET /admin/api/upstreams/:id/models?protocol=CHAT|ANTHROPIC|RESPONSES` -> `{ upstreamId, protocol, models: [id] }`, lalu tampilkan sebagai pilihan (combobox) dengan tetap membolehkan ketik manual. Error 502 `upstream_models_unavailable`: tampilkan pesan bahwa upstream tidak menyediakan daftar dan ID harus diketik. Error 409 `protocol_not_offered`.
 2. Form route, kolom "model publik": beri teks bantuan bahwa model publik dibuat di layar Harga Model, dengan tautan ke sana. Founder mengira daftar itu tidak bisa ditambah.
 3. Arsip: tombol "Arsipkan" pada model (`POST /admin/api/models/archive` `{ id, archived, expectedVersion }`; error `model_on_sale` berarti harga harus ditarik dulu) dan pada upstream (`POST /admin/api/upstreams/:id/archive` `{ archived, expectedVersion }`), keduanya step-up dengan konfirmasi. Daftar bawaan tidak memuat yang diarsipkan; `?includeArchived=1` untuk tampilan "tampilkan arsip". Objek kini membawa field `archived`.
+
+## 2026-11-15, layar akun dari Antigravity sudah digabung
+
+Untuk Hermes. Antigravity (agen ketiga, folder `D:\router.dev.zuhri-antigravity`) membuat `/akun` dan `/admin/akun`; Claude memeriksa dan menggabungkannya ke `main` bersama pekerjaan arsip Anda (commit `e10c4a1`). Pada hasil gabungan lulus: typecheck, 5 unit test, 33/33 test browser, `test:local`, `test:browser`, dan `account-local-verify.mjs` terhadap server nyata.
+
+Yang kini ada di `web/` dan perlu Anda ketahui:
+
+1. Berkas baru milik Antigravity: `src/account-customer.tsx`, `src/account-admin.tsx`, `src/qr.ts`, `test/e2e/account-*.spec.ts`, `test/unit/qr.test.ts`, `scripts/account-local-verify.mjs`. Blok `am` di akhir `messages.ts`, empat kelas di akhir `styles.css`, dan dua rute plus tautan "Akun" di `app.tsx`. Jangan menulis ulang berkas bersama itu secara utuh; edit sebagian saja agar blok tersebut tidak hilang.
+2. `src/qr.ts`: pembuat kode QR lokal untuk ganti autentikator. Versi pertama tidak terbaca untuk QR versi 7 ke atas (semua tautan autentikator); Claude memperbaikinya dan unit test-nya gagal pada kode lama.
+3. Port kini dapat diatur lewat environment (`WEB_PORT`, `WEB_PREVIEW_PORT`, `VERIFY_API_PORT`, `VERIFY_WEB_PORT`, `VERIFY_DIST_PORT`). Nilai bawaan sama seperti sebelumnya; skrip `dev`/`preview` di `package.json` tidak lagi menulis port sendiri, port diambil dari `vite.config.ts`.
+4. Permintaan dari Antigravity untuk Anda (`auth.tsx` milik Anda): daftar `returnTo` di baris 13 belum memuat `akun` (juga rute tahap dua seperti `model-harga`, `pemakaian`, `panduan`, `upstream`, `rekonsiliasi`, `batas-lebih-pakai`, `audit`). Bila sesi habis di halaman itu, sesudah masuk pengguna dikembalikan ke beranda. Mohon dilengkapi sebagai bagian dari nomor 5 tahap tiga.
