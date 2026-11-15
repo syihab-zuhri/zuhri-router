@@ -190,8 +190,10 @@ test('upstream dapat diarsipkan dan dipulihkan dengan step-up serta filter arsip
   const restoreDialog = page.getByRole('dialog', { name: m.restoreUpstream });
   await expect(restoreDialog).toContainText(m.upstreamRestoreImpact);
   await restoreDialog.getByRole('button', { name: m.restoreUpstream, exact: true }).click();
-  await page.getByRole('dialog', { name: m.stepUp }).getByLabel(m.code).fill('123456');
-  await page.getByRole('dialog', { name: m.stepUp }).getByRole('button', { name: m.verify }).click();
+  const restoreStepUp = page.getByRole('dialog', { name: m.stepUp });
+  await restoreStepUp.getByLabel(m.code).fill('123456');
+  await restoreStepUp.getByRole('button', { name: m.verify }).click();
+  await expect.poll(() => writes.length).toBe(4);
   await expect(page.getByRole('heading', { name: upstream.name, exact: true })).toBeVisible();
   expect(reads).toContain('1');
   expect(writes).toEqual([

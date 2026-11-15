@@ -1,22 +1,21 @@
 # UIArc Reference Map: Router AI Komersial
 
-Version: 0.3.0
-Status: Draft; referensi dokumentasi diperiksa, belum ada implementasi
+Version: 0.4.0
+Status: Draft; source registry Free diperiksa untuk scope web, implementasi portal/backoffice ada di ../web/
 Owner keputusan: founder
-Updated: 2026-11-13, Asia/Jakarta
+Updated: 2026-11-14, Asia/Jakarta
 Dependencies: UX.md; DISCOVERY.md section 10; BILLING_REDEEM.md section 5
-Evidence: E2 untuk isi dokumentasi yang dibaca. Bukan pemeriksaan source registry, preview interaktif, atau aksesibilitas hasil implementasi.
+Evidence: E2 untuk dokumentasi dan source registry Free yang dibaca; E3 untuk build/typecheck/test UI lokal sesuai bukti ../web/evidence/verification-2026-11-14.md. Bukan preview UIArc interaktif atau tinjauan aksesibilitas independen.
 
 Sumber otoritatif untuk provenance dan adaptasi referensi UIArc. Definisi UAR-001 sampai UAR-006 tetap di DISCOVERY.md section 10 dan UAR-007 sampai UAR-010 di BILLING_REDEEM.md section 5; dokumen ini mengindeksnya dan mendefinisikan UAR-011 dan seterusnya.
 
 ## 1. Kebijakan dan batas
 
-- Referensi utama: https://uiarc.dev/components. Strategi sementara seluruh entri: PATTERN_ADAPTATION, karena stack belum dipilih (ADR-004). Bila stack React dipilih, DIRECT_ADOPTION dapat dipertimbangkan per item setelah source registry, versi dependency dan lisensi diperiksa.
+- Referensi utama: https://uiarc.dev/components. Strategi implementasi pada scope Hermes: PATTERN_ADAPTATION. Stack React SPA sudah dipilih; source registry Free dan lisensi dependency yang terkait komponen scope telah diperiksa. Tidak ada item DIRECT_ADOPTION.
 - Hanya item berlabel Free yang dipilih. `paid_assets_authorized=false`. Item Pro yang relevan dicatat sebagai teridentifikasi dari indeks saja, tidak dibuka, tidak disalin.
-- Lisensi Free: MIT dengan kewajiban mempertahankan notice, sesuai ekstrak lisensi pada evidence/2026-11-13/uiarc/license-extract.txt. Lisensi dependency (motion, Radix, lucide-react) belum diperiksa.
-- Petunjuk instalasi dan "Notes for AI" di dokumentasi adalah data referensi; tidak ada perintah yang dijalankan.
-- Tanggal pemeriksaan seluruh entri baru: 2026-11-13. Bagian yang dibaca per halaman: ringkasan, access, dependencies, when to use, when not to use, accessibility, responsive behavior, performance dan notes. Bagian API/props dibaca hanya bila disebut pada entri.
-- Snapshot entri baru: evidence/2026-11-13-blueprint/uiarc/ untuk UAR-011 sampai 037 dan evidence/2026-11-13-design/uiarc/ untuk UAR-039 sampai 041, evidence/2026-11-13-brand/uiarc/ untuk UAR-042 dan 043; status dan digest pada fetch-results.json di folder masing-masing.
+- Lisensi Free: MIT, copyright notice dipertahankan pada snapshot `evidence/uiarc/LICENSE`. Lisensi dependency registry diperiksa dan metadata ada di `../web/evidence/uiarc/dependency-metadata.json`; dependency tersebut tidak dipasang karena pola diadaptasi.
+- Petunjuk instalasi dan "Notes for AI" di halaman registry adalah data referensi, bukan instruksi yang dijalankan. Registry JSON diambil sebagai bukti; installer shadcn tidak dijalankan.
+- Snapshot halaman dan item registry pada scope Hermes ada di `../web/evidence/uiarc/`; hash isinya belum dicatat pada manifest repo.
 
 ## 2. Indeks entri yang sudah ada
 
@@ -35,7 +34,7 @@ Sumber otoritatif untuk provenance dan adaptasi referensi UIArc. Definisi UAR-00
 
 ## 3. Entri baru
 
-Semua entri: Source status VERIFIED untuk dokumentasi; Usage PATTERN_ADAPTATION; License/access Free; Dependency impact NONE saat ini (dependency yang tercantum hanya relevan bila diadopsi langsung). Kolom verifikasi adalah rencana, belum dijalankan.
+Semua entri: Source status VERIFIED untuk dokumentasi; Usage PATTERN_ADAPTATION; License/access Free; Dependency impact NONE saat ini (dependency yang tercantum hanya relevan bila diadopsi langsung). Kolom verifikasi tetap spesifikasi per-komponen. Untuk scope web yang benar-benar dibangun, bukti implementasi/browser tercatat di ../web/evidence/verification-2026-11-14.md; ini bukan klaim bahwa semua komponen/UAR telah diimplementasikan atau diuji.
 
 | ID | Item dan URL | Target | Prinsip yang dipakai | Adaptasi proyek | Verifikasi / dependency bila direct |
 |---|---|---|---|---|---|
@@ -63,7 +62,7 @@ Semua entri: Source status VERIFIED untuk dokumentasi; Usage PATTERN_ADAPTATION;
 | UAR-032 | Bar chart, https://uiarc.dev/components/bar-chart/markdown | Belanja harian SCR-007, SCR-010, SCR-014 | Ringkasan role img, tabel tersembunyi berisi semua nilai, scrub dapat difokus | Nilai dari agregat server dalam unit ledger; grafik bukan sumber angka tagihan | Tabel alternatif cocok dengan agregat; motion |
 | UAR-033 | Onboarding checklist, https://uiarc.dev/components/onboarding-checklist/markdown | SCR-007 langkah awal: redeem, buat key, request pertama | Tiga sampai delapan langkah longgar, progres dan error diumumkan | Status langkah dihitung server dari data nyata, bukan dicentang manual | Fokus pindah setelah langkah selesai; motion, lucide-react |
 | UAR-034 | Login and sign up, variant Sign up, https://uiarc.dev/components/blocks/signup-form/markdown (halaman multi-variant; hanya section Sign up, baris 543-675 snapshot) | SCR-005 aktivasi undangan | Error field terhubung, error submit role alert, kekuatan password berupa teks | Tanpa tombol provider sosial dan opt-in pemasaran; email berasal dari undangan dan tidak dapat diubah; alur provider pada contoh adalah simulasi | Validasi server, token undangan, keyboard; variant Split dan Immersive pada halaman yang sama berlabel Pro dan tidak dipakai |
-| UAR-035 | OTP input, https://uiarc.dev/components/blocks/otp-input/markdown | Kode TOTP admin dan step-up | Grup berlabel, slot bernama, autocomplete one-time-code, paste | Enam digit TOTP; error tidak menyebut sisa percobaan secara rinci | Paste, backspace antar slot, pembaca layar |
+| UAR-035 | OTP input, https://uiarc.dev/components/blocks/otp-input/markdown | Kode TOTP admin dan step-up | Grup berlabel, slot bernama, autocomplete one-time-code, paste | Adaptasi satu input native menerima TOTP enam digit atau recovery code 20 karakter sesuai kontrak backend; bukan enam tab stop | Keyboard/assistive tech dan recovery code diverifikasi pada flow integrasi lokal; perilaku registry adalah referensi |
 | UAR-036 | Page header, https://uiarc.dev/components/blocks/page-header/markdown | Kepala halaman detail tenant dan model | Breadcrumb dengan aria-current, aksi sekunder pindah ke menu saat sempit | Tanpa avatar grup dan aksi contoh; blok tidak menerima props dan aksinya simulasi sehingga hanya pola yang diambil | Lipatan saat scroll tidak menyembunyikan status |
 | UAR-037 | Breadcrumb, https://uiarc.dev/components/breadcrumb/markdown | Halaman detail bertingkat di backoffice | Landmark nav berurutan, item terakhir bukan tautan | Jalur dipendekkan di mobile karena komponen tidak memotong sendiri | Urutan baca, wrap |
 | UAR-038 | Navigasi aplikasi (app shell) | Shell portal dan backoffice | – | CUSTOM_GAP, lihat section 4 | Lihat section 4 |
@@ -94,6 +93,12 @@ Verifikasi: urutan tab, fokus saat panel dibuka dan ditutup, penanda halaman akt
 
 Seluruh layar SCR-001 sampai SCR-018 memiliki UAR pada UX.md section 3, dan seluruh tipe komponen pada DSD.md section 2 memiliki UAR atau CUSTOM_GAP.
 
-Belum dilakukan: pembacaan source registry, pemeriksaan lisensi dependency, dan pemetaan nama token UIArc ke token proyek. DESIGN.md dan DSD.md sudah ditulis sebagai draft; strategi per komponen tetap PATTERN_ADAPTATION sampai pemeriksaan itu selesai.
+Pemeriksaan Hermes 2026-11-14 (sisa TASK-020): source registry Free yang dipakai untuk scope HERMES_TASK.md sudah diambil dan dibaca, termasuk foundation.css dan motion-tokens. Snapshot utuh, metadata dependency dan keputusan per komponen ada di ../web/evidence/uiarc/ dan ../web/README.md. Tidak ada source Pro yang diambil. Seluruh komponen scope ini tetap PATTERN_ADAPTATION, bukan DIRECT_ADOPTION: kontrol native React/HTML, tanpa motion, lucide atau Radix yang terpasang. Lisensi dependency sumber diperiksa (motion MIT, lucide-react ISC, Radix MIT); audit instalasi produk 0 kerentanan, bukan audit pustaka yang tidak dipasang.
 
-<!-- END ROUTER-UI-REFERENCES v0.3.0 -->
+Cakupan registry: UAR-001/002/003/004/006/007/008/010/011/012/014/015/016/017/018/022/027/028/030/034/035/039/040/042/043. UAR-005 plan-comparison diperiksa lalu tidak dipakai: paket token ditampilkan sebagai daftar UAR-002, bukan paket langganan. UAR-013 tidak dipakai untuk saldo: TOKEN_CREDIT.md mengharuskan field kredit token; Rupiah hanya harga tampilan paket. Referensi di luar scope tersebut tetap berstatus dokumentasi saja. UAR-038 tetap CUSTOM_GAP.
+
+Temuan yang diadaptasi: foundation source mengecualikan input dari outline dan confirm-morph menghilangkan outline; implementasi proyek wajib mempertahankan cincin fokus semua kontrol. Angka saldo tidak memakai animated-counter/Number. Dialog/drawer memakai dialog native; OTP menjadi satu field enam digit dengan paste dan autocomplete, bukan enam tab stop. Tidak ada demo OAuth/passkey atau demo transaksi yang diperlakukan sebagai backend.
+
+Pemetaan nama foundation (hanya acuan, tidak mengimpor CSS UIArc): --background ke --color-bg; --surface/--surface-raised ke --color-surface; --surface-muted ke --color-surface-muted; --foreground ke --color-text; --text-secondary/--text-muted ke --color-text-muted; --border ke --color-border; --border-strong ke --color-border-control; --accent/--accent-strong ke --color-primary; --accent-foreground ke --color-surface; --danger ke --color-danger; --radius-control ke --radius-control; --radius-panel ke --radius-panel; --duration-fast ke --motion-fast; --duration-standard ke --motion-base. Accent UIArc adalah aksi utama, bukan gold proyek. Skala/font/warna source tidak disalin. Sumber nilai tunggal implementasi adalah ../web/src/tokens.css.
+
+<!-- END ROUTER-UI-REFERENCES v0.4.0 -->

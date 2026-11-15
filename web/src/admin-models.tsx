@@ -42,7 +42,7 @@ export function ModelsPage() {
     {models.isPending ? <Pending /> : models.error ? <ErrorBox error={models.error} retry={() => { void models.refetch(); }} /> : models.data.models.length === 0 ? <Empty /> : <DataList caption={m.models}>{models.data.models.map(model => <article className="data-row" key={model.id}>
       <div><h2>{model.displayName}</h2><p>{model.id}</p><Badge status={model.archived ? 'RETIRED' : model.published ? 'PUBLISHED' : model.draft ? 'DRAFT' : 'RETIRED'} />{!model.published && !model.draft && <p>{m.noPrice}</p>}</div>
       <dl><dt>{m.version}</dt><dd>{model.version}</dd>{model.published && <><dt>{m.multiplier}</dt><dd>{model.published.multiplier.replace('.', ',')}</dd></>}</dl>
-      <div className="actions">{!model.archived && <Button className="secondary" onClick={() => setParams({ id: model.id })}>{m.details}</Button>}<Button className={model.archived ? 'secondary' : 'danger-button'} disabled={!model.archived && Boolean(model.published)} onClick={() => setArchiveTarget(model)}>{model.archived ? m.restoreModel : m.archiveModel}</Button></div>
+      <div className="actions">{!model.archived && <Button className="secondary" onClick={() => setParams({ id: model.id })}>{m.details}</Button>}<Button className={model.archived ? 'secondary' : 'danger-button'} onClick={() => setArchiveTarget(model)}>{model.archived ? m.restoreModel : m.archiveModel}</Button></div>
     </article>)}</DataList>}
     {selected && <ModelDetail key={selected} id={selected} refreshList={async () => { await models.refetch(); }} />}
     {creating && <Modal title={m.createModel} busy={action.busy} onClose={() => { setCreating(false); action.setError(null); }}>

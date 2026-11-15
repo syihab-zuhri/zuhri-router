@@ -31,14 +31,17 @@ Bukti final disimpan di `web/evidence/stage2-*`:
 - `git diff --check`: lulus.
 - Suite server tidak dijalankan pada tahap dua, agar tidak berebut `router_test` dengan Claude. Tidak ada perubahan pada `server/`.
 
-## Gap/batas tersisa
+## Verifikasi terbaru (2026-11-15)
 
-- SCR-015 daftar pelanggan dan detail+usage kini terhubung; UI belum menampilkan daftar request per pelanggan karena endpoint detail request tidak diberikan dalam handoff. Panel usage memiliki loading/error/empty terpisah; seluruh susunan tidak menjalani tinjauan a11y independen.
-- SCR-010 API hanya memberi cursor dan daftar; ringkasan/grafik adalah halaman yang tampil (maksimum 50), bukan agregat rentang periode penuh. Ini dinyatakan eksplisit di UI.
-- E2E untuk SCR-017/018 menggunakan HTTP contract mocks; backend test:local tidak seed unresolved atau mengubah setting. Pengujian integrasi nyata untuk bagian ini belum dilakukan. `test:local` nyata mencakup list/detail customer, usage endpoint, dan top-up step-up.
-- Upstream/route E2E mock, bukan kredensial/permintaan provider nyata; aturan proyek melarang request ke upstream tanpa izin founder.
-- Audit aksesibilitas independen dan cakupan 360 px/zoom 200%/reduced motion untuk setiap state baru belum dilakukan.
-- Belum deploy. Tidak mengubah backend, tidak memanggil upstream berbayar, tidak mengirim email nyata, dan tidak menghentikan container `router-spike-pg`.
+- `web/evidence/stage3-typecheck.txt`: `npm run typecheck`, exit 0.
+- `web/evidence/stage3-unit.txt`: `npm test`, 2/2 lulus.
+- `web/evidence/stage3-e2e.txt`: browser E2E, 29/29 lulus.
+- `web/evidence/stage3-local.txt`: `npm run test:local`, `local-browser-verify: PASS`.
+- `web/evidence/stage3-browser.txt`: `npm run test:browser`, build dan `same-origin-dist-verify: PASS`.
+- `web/evidence/stage3-npm-audit.json`: 0 kerentanan, inventory 86 paket.
+- `git diff --check`: lulus.
+
+Build berhasil dengan warning dependency `MODULE_LEVEL_DIRECTIVE`; warning tidak menggagalkan build atau test dist.
 
 ## Permintaan ke Claude
 
