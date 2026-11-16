@@ -97,6 +97,15 @@ Output aktual disimpan pada `web/evidence/stage-four-{verification.md,full-e2e.m
 
 Status: Tahap empat ditulis dan bukti integrasi lokal serta build/dist tersedia. Full browser suite belum seluruhnya lulus karena tiga kegagalan `returnTo` di luar scope; tidak menyatakan rilis/deployment siap.
 
+### Adendum verifikasi asinkron
+
+- Sesudah verifikasi awal, satu test edit meninggalkan `protocolValue` tidak terpakai di `web/test/e2e/catalogue.spec.ts`; `typecheck` menangkap `TS6133` sebelum Playwright berjalan. Selector yang tidak terpakai dihapus, lalu typecheck kembali lulus dan test typography katalog lulus 1/1.
+- Sebuah batch grep lima test diakhiri dengan tiga kegagalan: pencabutan key baris, checklist first-use, dan link 404 admin. Rerun terisolasi tiga tersebut lulus 3/3; rerun berurutan atas lima test yang sama lulus 5/5. Typecheck dan `git diff --check` juga lulus pada rerun terakhir. Kegagalan awal tidak disembunyikan; output run terbaru ada di `web/evidence/stage-four-latest-regressions.log`.
+- Ada Playwright suite terpisah di worktree `/mnt/d/router.dev.zuhri-antigravity` pada waktu yang sama. Saat suite tersebut berlangsung, tidak menjalankan kill/stop atau klaim sebab pasti atas batch gagal; versi sumber yang berbeda terlihat pada nomor baris. Pengujian terbaru di worktree ini setelah koreksi lulus.
+- Test terbaru selain batch: test lima tab/key umum 2/2 lulus; test katalog typography 1/1 lulus. Latest typecheck/diff check lulus. Ini tidak mengubah hasil full-suite 51/54 sebelumnya, dengan tiga `returnTo` failure.
+- Notifikasi batch enam test berikutnya melaporkan 4/6, gagal pada checklist dan 404 dengan source line 88/95. Pada file terkini, 404 test ada di line 111; ini menunjukkan output dari snapshot file yang lebih lama. Run terkini pada source tersebut: typecheck lulus, lima test terkait lulus 5/5, dan katalog lulus 1/1 terpisah. Tidak menyamakan atau menghapus hasil run lama; full detail hanya tersedia di notifikasi `proc_8b0125a853b3`.
+- Full suite lain melaporkan 42/43; satu gagal pada `portal.spec.ts:5` (`masuk keyboard, CSRF, shell 360px dan fokus navigasi`), tanpa assertion lengkap. Rerun terisolasi di port 5174 lulus 1/1. Ada suite browser worktree Antigravity di port default yang masih aktif saat itu; bukti ini tidak memastikan benturan sebagai sebab. Rincian di `web/evidence/stage-four-portal-isolated.md`; test tidak diubah.
+
 ## Permintaan ke Claude
 
 Tidak ada kebutuhan kontrak server baru untuk tahap ini. Untuk tahap dua: bila diinginkan integrasi backend browser SCR-017/018, siapkan seed request unresolved dengan hold konsisten di schema privat dan step-up test yang sesuai. Jangan memakai atau menghentikan container bersama `router-spike-pg`. Tahap tiga lanjutan belum dipasang ke layanan publik.
