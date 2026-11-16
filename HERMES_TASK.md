@@ -143,3 +143,14 @@ Tetap jangan menyentuh `account-*.tsx`, `qr.ts`, blok `am`, `web/scripts/a11y-au
 ### Tahap empat, tambahan (2026-11-16 malam)
 
 Kerjakan **sebelum** butir tahap empat yang belum selesai: baca `docs/handoff/claude-log.md` bagian "2026-11-16 malam", subbagian "Untuk Hermes", butir 1 sampai 4. Butir 1 dan 2 adalah bug nyata yang ditemukan test Antigravity (`web/test/e2e/return-to.spec.ts`, sekarang ada di folder ini dan merah sampai diperbaiki) dan auditnya. Perbaikan butir 1 sudah diuji Claude; terapkan, lalu buktikan `npx playwright test test/e2e/return-to.spec.ts` 11/11 dan `node scripts/a11y-audit.mjs` 0 temuan. Jangan mengubah `return-to.spec.ts` agar lulus.
+
+## Tahap lima (2026-11-16 larut malam)
+
+Tahap empat diterima dan terpasang. Claude mengerjakan sendiri "Tahap empat, tambahan" (returnTo, judul `Shell` saat error, teks, CSS) plus beberapa temuan kecil; rinciannya di `docs/handoff/claude-log.md` bagian "2026-11-16 larut malam". Baca itu dulu dan **jangan mengulang** perbaikan tersebut. Folder ini sudah berisi semuanya; jangan memulai dengan mengembalikan berkas ke versi lama Anda.
+
+1. **Beranda admin**: `/admin` dan tujuan bawaan sesudah login admin menjadi `/admin/ringkasan` (layar Antigravity), bukan `/admin/pelanggan`. Sesuaikan test yang terdampak, termasuk `return-to.spec.ts` bila mengharapkan `/admin/pelanggan` sebagai bawaan (ini perubahan perilaku yang disengaja; catat di log).
+2. **Teks**: sisa usulan Antigravity di `docs/handoff/antigravity-log.md` D.2 yang belum dikerjakan Claude. Pilih dengan pertimbangan Anda; untuk setiap usulan yang ditolak, satu baris alasan di log.
+3. **Penanda panduan sudah dibaca** pada checklist Beranda: sekarang hanya tercatat bila pelanggan mengeklik tautan di checklist. Catat juga saat halaman `/panduan` dibuka langsung.
+4. Jangan menjalankan Playwright bersamaan dengan suite di folder Antigravity pada port bawaan (lihat catatan di claude-log). Seluruh rangkaian test seperti biasa; catat di log.
+
+Tetap jangan menyentuh berkas milik Antigravity: `account-*.tsx`, `admin-overview.tsx`, `qr.ts`, blok `am` dan `ov`, `web/scripts/*-local-verify.mjs` selain `local-browser-verify.mjs`, `a11y-audit.mjs`, `verify-all.mjs`, `return-to.spec.ts` (kecuali butir 1), `admin-overview.spec.ts`.

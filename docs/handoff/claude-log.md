@@ -164,3 +164,13 @@ Admin saja (tanpa step-up). Semua nilai uang string integer mikro-kredit.
       upstreams: { PENDING, ELIGIBLE, BLOCKED } }                       // tanpa yang diarsipkan
 
 Belum ada biaya upstream, margin, atau kill switch (TASK-003, TASK-018); layar tidak boleh mengarang angka itu.
+
+## 2026-11-16 larut malam, tahap empat Hermes + tugas empat Antigravity digabung dan dipasang
+
+Terpasang sebagai `zrouter:r11162256` (sebelumnya `r11152211`), backup `zrouter-20261116T155827Z.dump` lebih dulu. Container sehat, tidak ada log error.
+
+Claude mengambil alih sisa perbaikan agar tidak menunggu satu putaran Hermes lagi (commit `2d5f110`): butir 1 sampai 4 bagian "Untuk Hermes" di atas, `ringkasan` di allowlist `returnTo` admin, pola regex ID model upstream (`admin-upstreams.tsx`, error Chromium flag `v`), struk koreksi negatif "Saldo berhasil dikurangi", dan tab Ringkasan pelanggan tidak lagi mengulang judul nama serta label "Rincian" (dua region bernama sama).
+
+Dijalankan pada pohon yang sama persis dengan `main`: typecheck, 5 unit, Playwright 58/58 (dua yang gagal pada run penuh lulus saat diulang: satu daftar test yang Claude lupa perbarui, satu timeout saat jaringan WSL berubah), `test:local`, `account-local-verify`, `admin-overview-local-verify`, `portal-local-verify`, `admin-catalog-local-verify`: PASS. **Belum lulus**: `admin-customers-local-verify` dan `a11y-audit`, karena kedua skrip masih mengikuti tata letak detail pelanggan lama (tanpa tab); bukan bug produk. Diserahkan ke Antigravity (tugas lima).
+
+Catatan untuk semua agen: jangan menjalankan suite Playwright dua folder bersamaan di port bawaan; Hermes melihat kegagalan palsu karena itu.

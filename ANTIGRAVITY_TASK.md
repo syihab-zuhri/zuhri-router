@@ -208,3 +208,36 @@ Boleh membuat: `admin-overview.tsx`, dua berkas test/verifikasi A, `portal-local
 ## Laporan
 
 Bagian bertanggal di `docs/handoff/antigravity-log.md` per bagian A sampai D: "ditulis", "dijalankan", "lulus", dengan perintah dan bukti di `web/evidence/`. Commit ke `antigravity/akun`, jangan push.
+
+---
+
+# Tugas lima (2026-11-16 larut malam)
+
+Tugas empat diterima, digabung dan terpasang (layar Ringkasan Operasi sekarang ada di https://zrouter.web.id/admin/ringkasan). Cabang Anda sudah Claude majukan ke `main` terbaru (`ba49f5c`), yang juga berisi tahap empat Hermes: **detail pelanggan sekarang memakai tab** (Ringkasan, Saldo, Pemakaian, Transaksi, API key; tab aktif di query `?customer=...&tab=...`). Bug `returnTo` dan judul `Shell` sudah diperbaiki Claude.
+
+    cd /mnt/d/router.dev.zuhri-antigravity && source .antigravity-env.sh
+    git checkout antigravity/akun && git pull --ff-only origin main
+
+Periksa dulu bahwa commit dan `127.0.0.1:55432` bekerja seperti di tugas empat.
+
+## A. Sesuaikan dua skrip dengan tab
+
+1. `admin-customers-local-verify.mjs` berhenti di koreksi saldo: form koreksi dan tambah saldo ada di tab **Saldo**, angka saldo di tab **Ringkasan**, entri ledger di tab **Transaksi**. Pindah tab lewat tombol tab (bukan URL) sebelum tiap langkah. Claude sudah mengganti satu asersi: query string boleh berisi parameter navigasi (`customer`, `tab`, `keyAfter`, `prefix`, `after`, `before`), bukan harus kosong; jangan dilonggarkan lebih jauh.
+2. `a11y-audit.mjs` berhenti menunggu `Jumlah kredit token` (tab Saldo). Audit setiap tab detail pelanggan sebagai keadaan tersendiri, dan tambahkan pemeriksaan pola ARIA tabs: panah kiri/kanan, Home/End, `aria-selected`, `aria-controls`/`aria-labelledby` menunjuk elemen yang ada, panel dapat dicapai dengan Tab.
+3. Hasil yang diharapkan: kedua skrip PASS, audit 0 temuan. Temuan baru pada layar Hermes: laporkan, jangan perbaiki.
+
+## B. Satu perintah untuk semua verifikasi
+
+`web/scripts/verify-all.mjs` (baru): menjalankan berurutan typecheck, unit, Playwright penuh, `test:local` dan semua `*-local-verify.mjs` serta `a11y-audit.mjs`, masing-masing dengan port dan database dari environment; menyimpan keluaran tiap langkah di `web/evidence/verify-all/<langkah>.txt`; mencetak tabel ringkas (langkah, lulus/gagal, durasi); keluar 1 bila ada yang gagal. Opsi `--only <nama>` dan `--skip <nama>`. Ingat: `test:local` milik Hermes mensyaratkan nama database `router_test` (schema privat acak, aman dipakai bersama). Tidak boleh mengubah `package.json`; cara pakainya ditulis di log.
+
+## C. Uji tahan banting layar Ringkasan
+
+Tambahkan ke `admin-overview.spec.ts`: respons yang field-nya hilang atau bertipe salah (misalnya `negativeAccounts` berupa string, `customers` tidak ada) tidak boleh membuat layar putih; tampilkan `ErrorBox` dengan judul tetap ada. Saat ini `formatCount` melempar error di tengah render; bila tidak ada error boundary, perbaiki di berkas Anda sendiri (validasi bentuk data sebelum render).
+
+## Batas berkas
+
+Berkas Anda sendiri, `a11y-audit.mjs`, `verify-all.mjs` (baru), blok `ov` dan `am`, log Anda. Tidak boleh: berkas Hermes, `server/`, `package.json`, dependency baru.
+
+## Laporan
+
+Bagian bertanggal di log Anda per bagian A sampai C, dengan keluaran `verify-all.mjs` lengkap sebagai bukti akhir. Commit ke `antigravity/akun`, jangan push.
