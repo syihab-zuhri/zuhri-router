@@ -266,3 +266,93 @@ Seluruh perintah dijalankan setelah `source .antigravity-env.sh`. Bukti tersimpa
 | `node scripts/a11y-audit.mjs` (diperluas Bagian C) | **Ditulis, Diperiksa Sintaks; Eksekusi Terhalang Sandbox (PostgreSQL)** | Keluar kode `1` saat koneksi DB: `Error: connect ECONNREFUSED 127.0.0.1:55432` (siap dijalankan di host dengan PostgreSQL aktif) | — |
 
 
+
+---
+
+## 2026-11-16 — Tugas empat (2026-11-16 malam): Layar Ringkasan Operasi, Verifikasi Portal & Katalog Backoffice, serta Uji Ulang
+
+- Tanggal pengerjaan: 2026-11-16 malam (Asia/Jakarta)
+- Cabang git: `antigravity/akun` (sinkron dengan `origin/main` pada `eaed030`)
+- Ruang lingkup: `ANTIGRAVITY_TASK.md` bagian **Tugas empat (2026-11-16 malam)** — Bagian A sampai D.
+
+### Pemeriksaan Lingkungan Awal
+
+- Di dalam sandbox bawaan tool (`BypassSandbox: false`), kedua pemeriksaan gagal karena isolasi container (`.git` ter-mount `ro` sehingga `Read-only file system`, dan `127.0.0.1:55432` menjawab `connect ECONNREFUSED`).
+- Dengan persetujuan founder untuk menjalankan perintah `.git` dan skrip verifikasi PostgreSQL memakai `BypassSandbox: true`:
+  - `git commit --allow-empty -m probe && git reset --soft HEAD~1`: **Lulus** (exit code `0`).
+  - `node -e "require('net').connect(55432,'127.0.0.1')..."`: **Lulus** (`ok`, exit code `0`).
+  - `git pull --ff-only origin main`: **Lulus** (fast-forward `62187e7..eaed030`).
+
+---
+
+### Bagian A — Layar Ringkasan Operasi (SCR-014), rute `/admin/ringkasan`
+
+- **Status**: **Ditulis, Dijalankan & Lulus**, **Di-commit** (`d81d39b`).
+- **Berkas baru**:
+  - [`web/src/admin-overview.tsx`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/admin-overview.tsx): Layar `AdminOverviewPage` membaca `GET /admin/api/overview`:
+    - Kartu metrik: pelanggan (`ACTIVE`, `SUSPENDED`, `CLOSED`), total saldo tercatat & saldo positif (tidak termasuk `CLOSED`), saldo ditahan, akun bersaldo minus (jumlah & totalnya, ditandai `.metric-warning` serta badge teks `'Perlu perhatian'` saat `negativeAccounts > 0`), kode aktif belum ditukar (jumlah & nominal), request 24 jam (total, gagal, estimasi, total debit), request menunggu keputusan (tautan ke `/admin/rekonsiliasi`), dan upstream aktif non-arsip per status (`Menunggu tinjauan`, `Layak`, `Diblokir`, tautan ke `/admin/upstream`).
+    - Menampilkan waktu `generatedAt` (`formatDate`), tombol `Muat ulang`, keadaan memuat (`Pending`), keadaan gagal (`ErrorBox` dengan `h1` tetap ada), dan keadaan nol (`0` / `0 kredit token` + `ov.zeroOverviewNote` bila semua nol).
+    - Seluruh nilai mikro-kredit diformat memakai `formatCredits` dari [`web/src/credits.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/credits.ts) tanpa `Number()`.
+    - Menampilkan tepat satu kalimat bahwa angka biaya upstream, margin, dan kill switch belum tersedia dari server; tidak mengarang angka biaya maupun kontrol kill switch.
+  - [`web/test/e2e/admin-overview.spec.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/admin-overview.spec.ts): 4 uji Playwright (mock): seluruh metrik/peringatan/tautan/catatan biaya + Axe WCAG 2.2 AA, loading/error `500` dengan `h1` tetap ada/nol, angka di atas `2^53` mikro-kredit (`9.007.199.254.740.993,000001` dst.) tampil eksak, serta reflow `360x640`, keyboard-only, dan `prefers-reduced-motion: reduce`.
+  - [`web/scripts/admin-overview-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-overview-local-verify.mjs): Verifikasi terhadap server Fastify + PostgreSQL nyata (schema temporer `web_overview_*`): 2 pelanggan (1 ditangguhkan dengan request `SETTLED`/`FAILED`/`UNRESOLVED`, 1 minus `-0,25` lewat koreksi), 1 kode aktif (`50` kredit token), 1 upstream `PENDING`; memeriksa kesesuaian seluruh angka layar dengan `GET /admin/api/overview`, penanda peringatan akun minus, reflow `360px`, serta navigasi tautan ke `/admin/rekonsiliasi` dan `/admin/upstream`.
+- **Berkas diubah (sesuai batas)**:
+  - [`web/src/messages.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/messages.ts): Blok `// --- ringkasan (Antigravity) ---` berisi `ov` di akhir berkas.
+  - [`web/src/styles.css`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/styles.css): Blok `/* --- ringkasan (Antigravity) --- */` memakai token dari [`web/src/tokens.css`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/tokens.css) saja.
+  - [`web/src/app.tsx`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/app.tsx): Menambah import `AdminOverviewPage`, tautan `['/admin/ringkasan', ov.overview]` di `adminLinks`, dan `<Route path="/admin/ringkasan" ... />` (pengalihan `/admin` tetap ke `/admin/pelanggan`).
+  - [`web/scripts/a11y-audit.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/a11y-audit.mjs): Menambah `/admin/ringkasan` pada keadaan kosong, terisi, dan error `500` (`360px` & `1280px`).
+- **Hasil verifikasi Bagian A**:
+  - `npx playwright test test/e2e/admin-overview.spec.ts --reporter=line`: **4 passed (7.6s)** -> [`web/evidence/antigravity-admin-overview-e2e.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-admin-overview-e2e.txt).
+  - `node scripts/admin-overview-local-verify.mjs`: **PASS (exit 0)** -> [`web/evidence/antigravity-admin-overview-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-admin-overview-verify.txt).
+- **Usulan & Permintaan terkait Bagian A**:
+  1. **Untuk Claude / Founder**: Pertimbangkan mengalihkan rute bawaan `/admin` dari `/admin/pelanggan` ke `/admin/ringkasan` setelah disetujui.
+  2. **Untuk Hermes**: Tambahkan `ringkasan` pada allowlist `returnTo` di [`web/src/auth.tsx#L13`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/auth.tsx#L13) (serta pembaruannya di [`web/test/e2e/portal.spec.ts#L39-L42`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/portal.spec.ts#L39-L42)) agar sesi admin yang berakhir di `/admin/ringkasan` kembali ke `/admin/ringkasan` setelah masuk ulang.
+
+---
+
+### Bagian B — Verifikasi Portal Pelanggan terhadap Server Nyata
+
+- **Status**: **Ditulis, Dijalankan & Lulus**, **Di-commit** (`d43ea2a`).
+- **Berkas baru**: [`web/scripts/portal-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/portal-local-verify.mjs).
+- **Bukti eksekusi**: [`web/evidence/antigravity-portal-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-portal-verify.txt) -> berakhir `portal-local-verify: PASS (redeem SALE + replay/wrong reject + API key secret-once & revoke 401 + usage/ledger pagination + catalogue non-archived)`.
+- **Yang dibuktikan terhadap server Fastify + PostgreSQL nyata (tanpa upstream eksternal)**:
+  1. **Redeem kode SALE (`/isi-saldo`)**: Kode salah ditolak dengan pesan `code_unusable`; kode `SALE` (`100` kredit token) menaikkan saldo tepat `100_000_000n` mikro-kredit (`100 kredit token`); penukaran ulang oleh pemilik menampilkan pesan replay tanpa kredit ganda; penukaran kode yang sudah terpakai oleh pelanggan kedua ditolak `400 code_unusable` (`Kode ini tidak dapat dipakai. Periksa penulisannya atau hubungi penjual.`).
+  2. **API key (`/api-key`)**: Secret tampil sekali pada modal `SecretReveal`, tidak bocor di URL, storage, atau konsol; setelah modal ditutup dan halaman dimuat ulang, hanya prefix tersamar (`rtr_...`) yang terlihat; key aktif diterima `GET /v1/models` (`200`); setelah key dicabut lewat UI, `GET /v1/models` ditolak dengan `401 key_revoked`.
+  3. **Pemakaian & Transaksi (`/pemakaian`, `/transaksi`)**: 55 request selesai (total debit `6.650.000` mikro-kredit) di-seed lewat `ledger.placeKeyHold` & `ledger.settleHold` tanpa upstream. `/pemakaian` menampilkan debit (`1,25 kredit token`) sesuai ledger dan pagination bekerja across 2 halaman (`50` + `5`); `/transaksi` mencantumkan entri ledger yang sama (`-1,25 kredit token` + ID entri DB) dan pagination bekerja (`50` + `6` termasuk entri redeem awal `100 kredit token`).
+  4. **Model dan Harga (`/model-harga`)**: Menampilkan model terbit non-arsip (`portal/uniform-2x` dengan `x2`, `portal/varied-rates` dengan tarif per kategori sama persis dengan `/api/models`), sedangkan `portal/archived-model` (diarsipkan) dan `portal/draft-only` (belum terbit) tidak tampil.
+
+---
+
+### Bagian C — Verifikasi Backoffice Katalog terhadap Server Nyata
+
+- **Status**: **Ditulis, Dijalankan & Lulus**, **Di-commit** (`9818830`).
+- **Berkas baru**: [`web/scripts/admin-catalog-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-catalog-local-verify.mjs).
+- **Bukti eksekusi**: [`web/evidence/antigravity-admin-catalog-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-admin-catalog-verify.txt) -> berakhir `admin-catalog-local-verify: PASS (packs create/edit/deactivate + voucher issue/once/revoke + model draft/preview/publish/retire + upstream base_url_rejected/route + overdraft step-up)`.
+- **Yang dibuktikan terhadap server Fastify + PostgreSQL nyata (resolver offline, tanpa request luar)**:
+  1. **Paket (`/admin/paket`)**: Buat paket (`Paket Katalog Awal`, `50` / `Rp100.000`), ubah (`Paket Katalog Baru`, `75` / `Rp140.000`, `Promo`), buat lalu nonaktifkan paket kedua (`Paket Nonaktif Uji` -> `Ditarik`), dan setiap perubahan langsung tercermin pada `/beranda` pelanggan.
+  2. **Kode redeem (`/admin/kode`)**: Terbitkan kode dari `Paket Katalog Baru` lewat dialog konfirmasi + step-up asli; kode mentah tampil sekali lalu hilang setelah panel ditutup dan tidak bocor ke URL/storage/konsol; cabut kode lewat step-up (`Dicabut`) lalu penukaran di `/isi-saldo` ditolak `code_unusable`.
+  3. **Harga model (`/admin/harga` & `/model-harga`)**: Buat model `cat/model-uji`, tambah route ke upstream `ELIGIBLE` offline melalui UI `/admin/upstream` + step-up; simpan draf (belum tampil di pelanggan); hitung preview (`6.300 kredit token`); terbit harga via step-up (pelanggan melihat tarif per kategori); simpan draf baru `x2,5` (pelanggan tetap melihat harga terbit lama sebelum dipublikasikan) lalu terbitkan (`x2.5` tampil di `/model-harga`); tarik harga via step-up (`cat/model-uji` hilang dari `/model-harga`).
+  4. **Batas lebih-pakai (`/admin/batas-lebih-pakai`)**: Ubah menjadi `125` kredit token lewat dialog konfirmasi + step-up; bertahan setelah muat ulang (`ledger.overdraftMicro(db) === 125_000_000n`).
+  5. **Upstream (`/admin/upstream`)**: Validasi alamat internal (`https://internal.example.test/v1` via resolver offline) ditolak server dengan pesan `Base URL ditolak. Gunakan HTTPS pada alamat publik yang tidak mengarah ke jaringan internal.` (`base_url_rejected`) dan tidak tersimpan ke DB.
+- **Temuan bug baru pada berkas Hermes (dilaporkan, tidak diperbaiki)**:
+  - [`web/src/admin-upstreams.tsx#L105`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/admin-upstreams.tsx#L105): Atribut `pattern="[A-Za-z0-9][A-Za-z0-9_.:/\[\]-]{0,127}"` pada input `ID model di upstream` memicu error konsol Chromium (flag `/v` UnicodeSets): `Pattern attribute value [A-Za-z0-9][A-Za-z0-9_.:/\[\]-]{0,127} is not a valid regular expression: Uncaught SyntaxError: Invalid regular expression: /[A-Za-z0-9][A-Za-z0-9_.:/\[\]-]{0,127}/v: Invalid character in character class`. Usul ke Hermes: perbaiki escape karakter kelas agar valid di mode RegExp `/v`.
+
+---
+
+### Bagian D — Uji Ulang Setelah Hermes Selesai & Ringkasan Verifikasi Akhir
+
+- **Status sinkronisasi `origin/main`**: `git fetch origin` dan `git log --oneline HEAD..origin/main` menunjukkan **belum ada commit baru** dari Hermes di `origin/main` setelah `eaed030` (perbaikan `returnTo` pada `hooks.tsx`/`catalogue.tsx` serta judul `Shell` pada `app.tsx` belum masuk ke `main`). Sesuai instruksi, hasil dicatat tanpa menunggu dan seluruh rangkaian verifikasi dijalankan ulang pada kondisi terkini:
+
+| Pemeriksaan | Status | Hasil Teramati | File Bukti |
+|---|---|---|---|
+| `cd server && npm run typecheck` | **Dijalankan & Lulus** (sesudah suntingan akhir) | Exit code `0`, `0` error | — |
+| `cd web && npm run typecheck` | **Dijalankan & Lulus** (sesudah suntingan akhir) | Exit code `0`, `0` error | [`web/evidence/antigravity-typecheck.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-typecheck.txt) |
+| `cd web && npm test` (unit) | **Dijalankan & Lulus** (sesudah suntingan akhir) | Exit code `0`, `5/5` lulus (`api`, `credits`, `3` uji `qr.test.ts`) | [`web/evidence/antigravity-unit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-unit.txt) |
+| `cd web && npm run build` | **Dijalankan & Lulus** (sesudah suntingan akhir) | Exit code `0`, `161` modul terbundle | [`web/evidence/antigravity-build.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-build.txt) |
+| `npx playwright test test/e2e/admin-overview.spec.ts --reporter=line` | **Dijalankan & Lulus** | Exit code `0`, `4/4` lulus | [`web/evidence/antigravity-admin-overview-e2e.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-admin-overview-e2e.txt) |
+| `node scripts/admin-overview-local-verify.mjs` | **Dijalankan & Lulus** (`127.0.0.1:55432`) | Exit code `0`, `admin-overview-local-verify: PASS` | [`web/evidence/antigravity-admin-overview-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-admin-overview-verify.txt) |
+| `node scripts/portal-local-verify.mjs` | **Dijalankan & Lulus** (`127.0.0.1:55432`) | Exit code `0`, `portal-local-verify: PASS` | [`web/evidence/antigravity-portal-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-portal-verify.txt) |
+| `node scripts/admin-catalog-local-verify.mjs` | **Dijalankan & Lulus** (`127.0.0.1:55432`) | Exit code `0`, `admin-catalog-local-verify: PASS` | [`web/evidence/antigravity-admin-catalog-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-admin-catalog-verify.txt) |
+| `npx playwright test test/e2e/return-to.spec.ts --reporter=line` | **Dijalankan**; `8` lulus / `3` gagal (menunggu perbaikan Hermes) | Exit code `1`: `8 passed`, `3 failed` (bug `returnTo` di `hooks.tsx` & `catalogue.tsx` belum diperbaiki di `origin/main`) | [`web/evidence/antigravity-return-to.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-return-to.txt) |
+| `npx playwright test --reporter=line` (seluruh suite `web/`) | **Dijalankan**; `50` lulus / `3` gagal | Exit code `1`: `50 passed` (seluruh `account-admin` `2/2`, `account-customer` `2/2`, `admin-overview` `4/4`, `upstreams` `5/5`, dll. lulus), `3 failed` hanya pada `return-to.spec.ts` | [`web/evidence/antigravity-playwright-all.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-playwright-all.txt) |
+| `node scripts/a11y-audit.mjs` (`140` kombinasi layar-lebar) | **Dijalankan**; `0` temuan layar Antigravity, `6` temuan pra-ada milik Hermes | Exit code `1`: `/admin/ringkasan`, `/akun`, dan `/admin/akun` lulus `0` temuan; `6` temuan `h1` kosong saat error `500` pada `Shell` (`app.tsx` & `admin-packs.tsx`) masih menunggu perbaikan Hermes | [`web/evidence/antigravity-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-audit.txt), [`web/evidence/antigravity-audit.json`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-audit.json) |
