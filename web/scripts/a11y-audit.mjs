@@ -92,6 +92,7 @@ function ownerAndFile(screen) {
   if (screen.startsWith('Shell ')) return { owner: 'Hermes', file: 'web/src/app.tsx' };
   if (screen.startsWith('/akun')) return { owner: 'Antigravity', file: 'web/src/account-customer.tsx' };
   if (screen.startsWith('/admin/akun')) return { owner: 'Antigravity', file: 'web/src/account-admin.tsx' };
+  if (screen.startsWith('/admin/ringkasan')) return { owner: 'Antigravity', file: 'web/src/admin-overview.tsx' };
   if (screen.startsWith('/admin/pelanggan')) return { owner: 'Hermes', file: 'web/src/admin-customers.tsx' };
   if (screen.startsWith('/admin/paket')) return { owner: 'Hermes', file: 'web/src/admin-packs.tsx' };
   if (screen.startsWith('/admin/kode')) return { owner: 'Hermes', file: 'web/src/admin-vouchers.tsx' };
@@ -630,7 +631,7 @@ try {
       const height = width === 360 ? 640 : 800;
       await emptyAdminPage.setViewportSize({ width, height });
 
-      for (const route of ['/admin/paket', '/admin/kode', '/admin/harga', '/admin/upstream', '/admin/rekonsiliasi', '/admin/pelanggan']) {
+      for (const route of ['/admin/ringkasan', '/admin/paket', '/admin/kode', '/admin/harga', '/admin/upstream', '/admin/rekonsiliasi', '/admin/pelanggan']) {
         await navigateShell(emptyAdminPage, route, width);
         await auditScreen({ page: emptyAdminPage, screen: `${route} (kosong)`, width, viaRouteTransition: true, emptyData: true });
       }
@@ -971,6 +972,7 @@ try {
 
   let rotatedRecoveryCode = admin.recoveryCodes[1];
   const adminRoutes = [
+    { path: '/admin/ringkasan', empty: false },
     { path: '/admin/paket', empty: false },
     { path: '/admin/kode', empty: false },
     { path: '/admin/harga', empty: false },
@@ -1280,6 +1282,7 @@ try {
       await errAdminPage.getByRole('heading', { name: 'Batas lebih-pakai', exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
 
       for (const spec of [
+        { path: '/admin/ringkasan', match: url => url.pathname === '/admin/api/overview' },
         { path: '/admin/pelanggan', match: url => url.pathname === '/admin/api/customers' },
         { path: '/admin/kode', match: url => url.pathname === '/admin/api/vouchers' },
         { path: '/admin/harga', match: url => url.pathname === '/admin/api/models' && !url.searchParams.has('id') },

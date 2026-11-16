@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { ApiError, post } from './api.ts';
-import { am, m } from './messages.ts';
+import { am, m, ov } from './messages.ts';
 import { formatCredits } from './credits.ts';
 import { useAction, useResource } from './hooks.tsx';
 import { Alert, Button, ErrorBox, Modal, PageTitle, Pending } from './ui.tsx';
@@ -18,10 +18,11 @@ import { VouchersPage } from './admin-vouchers.tsx';
 import { ModelsPage } from './admin-models.tsx';
 import { UpstreamsPage } from './admin-upstreams.tsx';
 import { AuditPage, OverdraftPage, UnresolvedPage } from './admin-operations.tsx';
+import { AdminOverviewPage } from './admin-overview.tsx';
 import { AdminAccountPage } from './account-admin.tsx';
 
 const portalLinks = [['/beranda', m.home], ['/isi-saldo', m.redeem], ['/api-key', m.keys], ['/model-harga', m.catalogue], ['/pemakaian', m.requests], ['/panduan', m.guide], ['/transaksi', m.ledger], ['/akun', am.account]];
-const adminLinks = [['/admin/pelanggan', m.customers], ['/admin/paket', m.packs], ['/admin/kode', m.vouchers], ['/admin/harga', m.models], ['/admin/upstream', m.upstreams], ['/admin/rekonsiliasi', m.unresolved], ['/admin/batas-lebih-pakai', m.overdraft], ['/admin/audit', m.audit], ['/admin/akun', am.account]];
+const adminLinks = [['/admin/ringkasan', ov.overview], ['/admin/pelanggan', m.customers], ['/admin/paket', m.packs], ['/admin/kode', m.vouchers], ['/admin/harga', m.models], ['/admin/upstream', m.upstreams], ['/admin/rekonsiliasi', m.unresolved], ['/admin/batas-lebih-pakai', m.overdraft], ['/admin/audit', m.audit], ['/admin/akun', am.account]];
 function Navigation({ admin, close }: { admin: boolean; close?: () => void }) {
   return <nav aria-label={admin ? m.backoffice : m.portal}>{(admin ? adminLinks : portalLinks).map(([path, label]) => <NavLink key={path} to={path} onClick={close}>{label}</NavLink>)}</nav>;
 }
@@ -54,7 +55,7 @@ function LinkBalance({ text }: { text: string }) { return <NavLink className="sh
 export function App({ takeToken }: { takeToken: () => string | null }) {
   return <><RouteFocus /><Routes><Route path="/masuk" element={<LoginPage />} /><Route path="/admin/masuk" element={<LoginPage admin />} /><Route path="/aktivasi" element={<TokenPage kind="activate" takeToken={takeToken} />} /><Route path="/atur-ulang" element={<TokenPage kind="reset" takeToken={takeToken} />} /><Route path="/lupa-password" element={<RequestResetPage />} />
     <Route element={<Shell />}><Route path="/beranda" element={<HomePage />} /><Route path="/isi-saldo" element={<RedeemPage />} /><Route path="/api-key" element={<KeysPage />} /><Route path="/model-harga" element={<CataloguePage />} /><Route path="/pemakaian" element={<UsagePage />} /><Route path="/panduan" element={<GuidePage />} /><Route path="/transaksi" element={<LedgerPage />} /><Route path="/akun" element={<CustomerAccountPage />} /></Route>
-    <Route element={<Shell admin />}><Route path="/admin/pelanggan" element={<CustomersPage />} /><Route path="/admin/paket" element={<PacksPage />} /><Route path="/admin/kode" element={<VouchersPage />} /><Route path="/admin/harga" element={<ModelsPage />} /><Route path="/admin/upstream" element={<UpstreamsPage />} /><Route path="/admin/rekonsiliasi" element={<UnresolvedPage />} /><Route path="/admin/batas-lebih-pakai" element={<OverdraftPage />} /><Route path="/admin/audit" element={<AuditPage />} /><Route path="/admin/akun" element={<AdminAccountPage />} /></Route>
+    <Route element={<Shell admin />}><Route path="/admin/ringkasan" element={<AdminOverviewPage />} /><Route path="/admin/pelanggan" element={<CustomersPage />} /><Route path="/admin/paket" element={<PacksPage />} /><Route path="/admin/kode" element={<VouchersPage />} /><Route path="/admin/harga" element={<ModelsPage />} /><Route path="/admin/upstream" element={<UpstreamsPage />} /><Route path="/admin/rekonsiliasi" element={<UnresolvedPage />} /><Route path="/admin/batas-lebih-pakai" element={<OverdraftPage />} /><Route path="/admin/audit" element={<AuditPage />} /><Route path="/admin/akun" element={<AdminAccountPage />} /></Route>
     <Route path="/" element={<Navigate to="/beranda" replace />} /><Route path="/admin" element={<Navigate to="/admin/pelanggan" replace />} /><Route path="*" element={<main className="standalone"><PageTitle>{m.notFound}</PageTitle><NavLink to="/beranda">{m.goHome}</NavLink></main>} />
   </Routes></>;
 }
