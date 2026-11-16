@@ -24,13 +24,17 @@ const schema = `web_audit_${randomUUID().replaceAll('-', '')}`;
 const key = randomBytes(32);
 const mail = { invites: [], resets: [] };
 const mailer = {
-  invite: async (to, token) => { mail.invites.push({ to, token }); },
+  invite: async (to, token) => {
+    mail.invites.push({ to, token });
+    if (to.startsWith('audit-manual-')) throw new Error('manual_delivery');
+  },
   passwordReset: async (to, token) => { mail.resets.push({ to, token }); },
 };
 
 const offlinePublicResolver = async () => ['93.184.216.34'];
 const adminUsername = 'audit_admin';
 const adminPassword = 'audit-admin-password-14';
+const emptyCustUsername = 'audit_empty';
 const custUsername = 'audit_user';
 const custPassword = 'audit-customer-password-1';
 const suspendedUsername = 'audit_suspended';
@@ -85,6 +89,7 @@ async function waitSettled(page) {
 }
 
 function ownerAndFile(screen) {
+  if (screen.startsWith('Shell ')) return { owner: 'Hermes', file: 'web/src/app.tsx' };
   if (screen.startsWith('/akun')) return { owner: 'Antigravity', file: 'web/src/account-customer.tsx' };
   if (screen.startsWith('/admin/akun')) return { owner: 'Antigravity', file: 'web/src/account-admin.tsx' };
   if (screen.startsWith('/admin/pelanggan')) return { owner: 'Hermes', file: 'web/src/admin-customers.tsx' };
@@ -575,7 +580,7 @@ try {
   db = createPool(databaseUrl.href);
   await migrate(db);
 
-  // ---- Seed data lewat fungsi server (tanpa jaringan eksternal) ----
+  // ---- Tahap 0: mulai server & browser sebelum seed data agar keadaan kosong nyata dapat diaudit ----
   const admin = await bootstrapAdmin(db, key, {
     username: adminUsername,
     email: 'audit-admin@example.test',
@@ -583,15 +588,108 @@ try {
   });
   const seed = base32Decode(admin.totpSecretBase32);
 
+  app = await buildApp({ db, key, mailer, secureCookies: false, resolveHost: offlinePublicResolver, publicBaseUrl: webBase });
+  await app.listen({ host: '127.0.0.1', port: apiPort });
+
+  const viteErr = [];
+  vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], {
+    cwd: new URL('..', import.meta.url),
+    env: { ...process.env, WEB_PORT: String(webPort), ROUTER_API_TARGET: `http://127.0.0.1:${apiPort}` },
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  vite.stderr.on('data', chunk => { viteErr.push(String(chunk)); });
+  await waitFor(`${webBase}/`);
+
+  browser = await chromium.launch({
+    executablePath: '/root/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',
+    headless: true,
+    args: ['--no-proxy-server'],
+  });
+
+  // Hangatkan cache pre-bundling Vite sekali sebelum loop audit berjalan
+  const warmCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const warmPage = await warmCtx.newPage();
+  await warmPage.goto(`${webBase}/masuk`, { waitUntil: 'networkidle' });
+  await warmPage.getByRole('heading', { name: 'Masuk', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await warmCtx.close();
+
+  // ---- Tahap 1a: Keadaan kosong admin (DB nyata tanpa pelanggan/paket/kode/model/upstream/request) ----
+  {
+    const emptyAdminCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const emptyAdminPage = await emptyAdminCtx.newPage();
+    await emptyAdminPage.goto(`${webBase}/admin/masuk`);
+    await emptyAdminPage.getByLabel('Username atau email').fill(adminUsername);
+    await emptyAdminPage.getByLabel('Password', { exact: true }).fill(adminPassword);
+    await emptyAdminPage.getByRole('button', { name: 'Masuk', exact: true }).click();
+    await emptyAdminPage.getByLabel('Kode autentikator', { exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
+    await emptyAdminPage.getByLabel('Kode autentikator', { exact: true }).fill(admin.recoveryCodes[0]);
+    await emptyAdminPage.getByRole('button', { name: 'Verifikasi kode', exact: true }).click();
+    await emptyAdminPage.getByRole('heading', { name: 'Pelanggan', exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+
+    for (const width of [360, 1280]) {
+      const height = width === 360 ? 640 : 800;
+      await emptyAdminPage.setViewportSize({ width, height });
+
+      for (const route of ['/admin/paket', '/admin/kode', '/admin/harga', '/admin/upstream', '/admin/rekonsiliasi', '/admin/pelanggan']) {
+        await navigateShell(emptyAdminPage, route, width);
+        await auditScreen({ page: emptyAdminPage, screen: `${route} (kosong)`, width, viaRouteTransition: true, emptyData: true });
+      }
+
+      // Tanpa hasil pencarian awalan di /admin/pelanggan
+      await emptyAdminPage.getByLabel('Awalan username').fill('zz_tidak_ada');
+      await emptyAdminPage.getByRole('button', { name: 'Cari', exact: true }).click();
+      await waitSettled(emptyAdminPage);
+      await auditScreen({ page: emptyAdminPage, screen: '/admin/pelanggan (tanpa hasil pencarian)', width, viaRouteTransition: false, emptyData: true });
+      await emptyAdminPage.getByLabel('Awalan username').fill('');
+      await emptyAdminPage.getByRole('button', { name: 'Cari', exact: true }).click();
+      await waitSettled(emptyAdminPage);
+
+      // Audit event selalu memuat admin.bootstrap di DB nyata; gunakan mock kosong untuk memeriksa state kosong layar audit
+      await emptyAdminPage.route('**/admin/api/audit*', route => route.fulfill({ json: { events: [] } }));
+      await navigateShell(emptyAdminPage, '/admin/audit', width);
+      await auditScreen({ page: emptyAdminPage, screen: '/admin/audit (kosong)', width, viaRouteTransition: true, emptyData: true });
+      await emptyAdminPage.unroute('**/admin/api/audit*');
+    }
+    await emptyAdminCtx.close();
+  }
+
+  // ---- Tahap 1b: Keadaan kosong pelanggan (pelanggan bersaldo 0, tanpa key/request/ledger, sebelum paket & model dibuat) ----
+  await createInvite(db, { email: 'audit-empty@example.test', adminUser: admin.userId }, mailer);
+  await activateInvite(db, { token: mail.invites[0].token, username: emptyCustUsername, password: custPassword });
+  {
+    const emptyCustCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const emptyCustPage = await emptyCustCtx.newPage();
+    await emptyCustPage.goto(`${webBase}/masuk`);
+    await emptyCustPage.getByLabel('Username atau email').fill(emptyCustUsername);
+    await emptyCustPage.getByLabel('Password', { exact: true }).fill(custPassword);
+    await emptyCustPage.getByRole('button', { name: 'Masuk', exact: true }).click();
+    await emptyCustPage.getByRole('heading', { name: 'Beranda', exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+
+    for (const width of [360, 1280]) {
+      const height = width === 360 ? 640 : 800;
+      await emptyCustPage.setViewportSize({ width, height });
+      for (const route of ['/api-key', '/model-harga', '/pemakaian', '/panduan', '/transaksi', '/beranda']) {
+        await navigateShell(emptyCustPage, route, width);
+        await auditScreen({ page: emptyCustPage, screen: `${route} (kosong)`, width, viaRouteTransition: true, emptyData: true });
+      }
+      await emptyCustPage.route('**/api/account/sessions', route => route.fulfill({ json: { current: '', sessions: [] } }));
+      await navigateShell(emptyCustPage, '/akun', width);
+      await auditScreen({ page: emptyCustPage, screen: '/akun (tanpa sesi)', width, viaRouteTransition: true, emptyData: true });
+      await emptyCustPage.unroute('**/api/account/sessions');
+    }
+    await emptyCustCtx.close();
+  }
+
+  // ---- Tahap 2: Seed data lengkap untuk layar terisi, dialog baru, dan kotak undangan ----
   await createInvite(db, { email: 'audit-user@example.test', adminUser: admin.userId }, mailer);
-  const cust1 = await activateInvite(db, { token: mail.invites[0].token, username: custUsername, password: custPassword });
+  const cust1 = await activateInvite(db, { token: mail.invites[1].token, username: custUsername, password: custPassword });
 
   await createInvite(db, { email: 'audit-suspended@example.test', adminUser: admin.userId }, mailer);
-  await activateInvite(db, { token: mail.invites[1].token, username: suspendedUsername, password: custPassword });
+  await activateInvite(db, { token: mail.invites[2].token, username: suspendedUsername, password: custPassword });
   await changeTenantStatus(db, { username: suspendedUsername, to: 'SUSPENDED', expectedVersion: '1', reason: 'Audit status ditangguhkan', actorUser: admin.userId });
 
   await createInvite(db, { email: 'audit-pending@example.test', adminUser: admin.userId }, mailer);
-  const activateToken = mail.invites[2].token;
+  const activateToken = mail.invites[3].token;
   await requestPasswordReset(db, { email: 'audit-user@example.test', ip: '127.0.0.1' }, mailer);
   const resetToken = mail.resets[0].token;
 
@@ -698,31 +796,6 @@ try {
     priority: 10,
     enabled: true,
   }, admin.userId);
-
-  app = await buildApp({ db, key, mailer, secureCookies: false, resolveHost: offlinePublicResolver });
-  await app.listen({ host: '127.0.0.1', port: apiPort });
-
-  const viteErr = [];
-  vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], {
-    cwd: new URL('..', import.meta.url),
-    env: { ...process.env, WEB_PORT: String(webPort), ROUTER_API_TARGET: `http://127.0.0.1:${apiPort}` },
-    stdio: ['ignore', 'ignore', 'pipe'],
-  });
-  vite.stderr.on('data', chunk => { viteErr.push(String(chunk)); });
-  await waitFor(`${webBase}/`);
-
-  browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',
-    headless: true,
-    args: ['--no-proxy-server'],
-  });
-
-  // Hangatkan cache pre-bundling Vite sekali sebelum loop audit berjalan
-  const warmCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-  const warmPage = await warmCtx.newPage();
-  await warmPage.goto(`${webBase}/masuk`, { waitUntil: 'networkidle' });
-  await warmPage.getByRole('heading', { name: 'Masuk', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
-  await warmCtx.close();
 
   // ---- 1. Layar publik / autentikasi (pada 360 dan 1280) ----
   for (const width of [360, 1280]) {
@@ -896,6 +969,7 @@ try {
   await adminPage.getByRole('button', { name: 'Verifikasi kode', exact: true }).click();
   await adminPage.getByRole('heading', { name: 'Pelanggan', exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
 
+  let rotatedRecoveryCode = admin.recoveryCodes[1];
   const adminRoutes = [
     { path: '/admin/paket', empty: false },
     { path: '/admin/kode', empty: false },
@@ -917,6 +991,14 @@ try {
       await auditScreen({ page: adminPage, screen: r.path, width, viaRouteTransition: true, emptyData: r.empty });
 
       if (r.path === '/admin/pelanggan') {
+        // Form undangan & kotak hasil undangan dengan activationLink manual
+        const inviteForm = adminPage.locator('form').filter({ hasText: 'Undang pelanggan' });
+        await inviteForm.getByLabel('Email').fill(`audit-manual-${width}@example.test`);
+        await inviteForm.getByRole('button', { name: 'Undang pelanggan', exact: true }).click();
+        await adminPage.getByRole('heading', { name: 'Undangan dibuat', exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
+        await adminPage.getByLabel('Tautan aktivasi').waitFor({ state: 'visible', timeout: 5_000 });
+        await auditScreen({ page: adminPage, screen: '/admin/pelanggan (hasil undangan)', width, viaRouteTransition: false, emptyData: false });
+
         const custCard = adminPage.locator('.data-row').filter({ hasText: custUsername });
         await custCard.getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
         await adminPage.getByRole('heading', { name: custUsername, exact: true }).last().waitFor({ state: 'visible', timeout: 5_000 });
@@ -932,6 +1014,44 @@ try {
           name: 'Konfirmasi tambah saldo',
           triggerLocator: topupBtn,
           open: () => topupBtn.click(),
+        });
+
+        const suspendBtn = adminPage.getByRole('button', { name: 'Tangguhkan pelanggan', exact: true });
+        await auditDialogBehavior({
+          page: adminPage,
+          screen: '/admin/pelanggan (detail)',
+          width,
+          name: 'Tangguhkan pelanggan',
+          triggerLocator: suspendBtn,
+          open: () => suspendBtn.click(),
+        });
+
+        const adjForm = adminPage.locator('form').filter({ hasText: 'Koreksi saldo (kredit token)' });
+        await adjForm.getByLabel('Koreksi saldo (kredit token)').fill('2,5');
+        await adjForm.getByLabel('Alasan').fill('Audit dialog koreksi saldo');
+        const adjBtn = adjForm.getByRole('button', { name: 'Koreksi saldo', exact: true });
+        await auditDialogBehavior({
+          page: adminPage,
+          screen: '/admin/pelanggan (detail)',
+          width,
+          name: 'Konfirmasi koreksi saldo',
+          triggerLocator: adjBtn,
+          open: () => adjBtn.click(),
+        });
+
+        const suspendedCard = adminPage.locator('.data-row').filter({ hasText: suspendedUsername });
+        await suspendedCard.getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
+        await adminPage.getByRole('heading', { name: suspendedUsername, exact: true }).last().waitFor({ state: 'visible', timeout: 5_000 });
+        await auditScreen({ page: adminPage, screen: '/admin/pelanggan (detail ditangguhkan)', width, viaRouteTransition: false, emptyData: false });
+
+        const restoreBtn = adminPage.getByRole('button', { name: 'Pulihkan pelanggan', exact: true });
+        await auditDialogBehavior({
+          page: adminPage,
+          screen: '/admin/pelanggan (detail ditangguhkan)',
+          width,
+          name: 'Pulihkan pelanggan',
+          triggerLocator: restoreBtn,
+          open: () => restoreBtn.click(),
         });
       }
 
@@ -1048,6 +1168,7 @@ try {
           await adminPage.getByLabel('Kode autentikator baru').fill(totpAt(base32Decode(pendingSecret), rotStep - 1n));
           await adminPage.getByRole('button', { name: 'Konfirmasi autentikator baru', exact: true }).click();
           await adminPage.locator('dialog[open]').last().waitFor({ state: 'visible', timeout: 5_000 });
+          rotatedRecoveryCode = (await adminPage.locator('dialog[open] pre.secret').last().innerText()).split('\n')[0].trim();
           await auditAxeAndLayout(adminPage, '/admin/akun [dialog: Kode pemulihan]', 360);
           await adminPage.setViewportSize({ width: 1280, height: 800 });
           await auditAxeAndLayout(adminPage, '/admin/akun [dialog: Kode pemulihan]', 1280);
@@ -1059,6 +1180,157 @@ try {
   }
 
   await adminCtx.close();
+
+  // ---- Tahap 3: Keadaan error (server menjawab 500 pada pembacaan utama tiap layar) ----
+  const respond500 = route => route.fulfill({
+    status: 500,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: { code: 'internal_error', message: 'Something went wrong' } }),
+  });
+
+  // 3a. Keadaan error portal pelanggan
+  {
+    const errCustCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const errCustPage = await errCustCtx.newPage();
+    await errCustPage.goto(`${webBase}/masuk`);
+    await errCustPage.getByLabel('Username atau email').fill(custUsername);
+    await errCustPage.getByLabel('Password', { exact: true }).fill(custPassword);
+    await errCustPage.getByRole('button', { name: 'Masuk', exact: true }).click();
+    await errCustPage.getByRole('heading', { name: 'Beranda', exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+
+    const customerErrorSpecs = [
+      { path: '/api-key', pattern: '**/api/keys*' },
+      { path: '/model-harga', pattern: '**/api/models*' },
+      { path: '/pemakaian', pattern: '**/api/requests*' },
+      { path: '/panduan', pattern: '**/api/keys*' },
+      { path: '/transaksi', pattern: '**/api/ledger*' },
+      { path: '/akun', pattern: '**/api/account/sessions' },
+    ];
+
+    for (const width of [360, 1280]) {
+      const height = width === 360 ? 640 : 800;
+      await errCustPage.setViewportSize({ width, height });
+
+      // Keadaan error Shell (/api/me -> 500)
+      await errCustPage.route('**/api/me', respond500);
+      await errCustPage.goto(`${webBase}/beranda`);
+      await errCustPage.getByRole('alert').first().waitFor({ state: 'visible', timeout: 10_000 });
+      await auditScreen({ page: errCustPage, screen: 'Shell pelanggan (error 500 /api/me)', width, viaRouteTransition: false, emptyData: false });
+      await errCustPage.unroute('**/api/me');
+
+      await errCustPage.goto(`${webBase}/isi-saldo`);
+      await errCustPage.getByRole('heading', { name: 'Isi saldo', exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+
+      // /isi-saldo: error 500 saat submit redeem
+      await errCustPage.route('**/api/redeem', respond500);
+      await errCustPage.getByLabel('Kode redeem').fill('KODE-ERROR-500');
+      await errCustPage.getByRole('button', { name: 'Tukar kode', exact: true }).click();
+      await errCustPage.getByRole('alert').first().waitFor({ state: 'visible', timeout: 10_000 });
+      await auditScreen({ page: errCustPage, screen: '/isi-saldo (error 500)', width, viaRouteTransition: false, emptyData: false });
+      await errCustPage.unroute('**/api/redeem');
+
+      // /beranda: /api/balance dan /api/packs -> 500
+      await errCustPage.route('**/api/balance', respond500);
+      await errCustPage.route('**/api/packs', respond500);
+      await navigateShell(errCustPage, '/beranda', width);
+      await errCustPage.getByRole('alert').first().waitFor({ state: 'visible', timeout: 10_000 });
+      await auditScreen({ page: errCustPage, screen: '/beranda (error 500)', width, viaRouteTransition: true, emptyData: false });
+      await errCustPage.unroute('**/api/balance');
+      await errCustPage.unroute('**/api/packs');
+
+      for (const spec of customerErrorSpecs.filter(s => s.path !== '/beranda')) {
+        await errCustPage.route(spec.pattern, respond500);
+        await navigateShell(errCustPage, spec.path, width);
+        await errCustPage.getByRole('alert').first().waitFor({ state: 'visible', timeout: 10_000 });
+        await auditScreen({ page: errCustPage, screen: `${spec.path} (error 500)`, width, viaRouteTransition: true, emptyData: false });
+        await errCustPage.unroute(spec.pattern);
+      }
+    }
+    await errCustCtx.close();
+  }
+
+  // 3b. Keadaan error backoffice admin
+  {
+    const errAdminCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const errAdminPage = await errAdminCtx.newPage();
+    await errAdminPage.goto(`${webBase}/admin/masuk`);
+    await errAdminPage.getByLabel('Username atau email').fill(adminUsername);
+    await errAdminPage.getByLabel('Password', { exact: true }).fill(adminPassword);
+    await errAdminPage.getByRole('button', { name: 'Masuk', exact: true }).click();
+    await errAdminPage.getByLabel('Kode autentikator', { exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
+    await errAdminPage.getByLabel('Kode autentikator', { exact: true }).fill(rotatedRecoveryCode);
+    await errAdminPage.getByRole('button', { name: 'Verifikasi kode', exact: true }).click();
+    await errAdminPage.getByRole('heading', { name: 'Pelanggan', exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+
+    const customerDetailMatch = url => url.pathname === `/admin/api/customers/${custUsername}`;
+    const modelDetailMatch = url => url.pathname === '/admin/api/models' && url.searchParams.has('id');
+
+    for (const width of [360, 1280]) {
+      const height = width === 360 ? 640 : 800;
+      await errAdminPage.setViewportSize({ width, height });
+
+      // Keadaan error Shell admin (/admin/api/packs -> 500)
+      await errAdminPage.route('**/admin/api/packs', respond500);
+      await errAdminPage.goto(`${webBase}/admin/pelanggan`);
+      await errAdminPage.getByRole('alert').first().waitFor({ state: 'visible', timeout: 10_000 });
+      await auditScreen({ page: errAdminPage, screen: 'Shell admin (error 500 /admin/api/packs)', width, viaRouteTransition: false, emptyData: false });
+      await errAdminPage.unroute('**/admin/api/packs');
+
+      await errAdminPage.goto(`${webBase}/admin/batas-lebih-pakai`);
+      await errAdminPage.getByRole('heading', { name: 'Batas lebih-pakai', exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+
+      for (const spec of [
+        { path: '/admin/pelanggan', match: url => url.pathname === '/admin/api/customers' },
+        { path: '/admin/kode', match: url => url.pathname === '/admin/api/vouchers' },
+        { path: '/admin/harga', match: url => url.pathname === '/admin/api/models' && !url.searchParams.has('id') },
+        { path: '/admin/upstream', match: url => url.pathname === '/admin/api/upstreams' || url.pathname === '/admin/api/routes' },
+        { path: '/admin/rekonsiliasi', match: url => url.pathname === '/admin/api/requests/unresolved' },
+        { path: '/admin/batas-lebih-pakai', match: url => url.pathname === '/admin/api/settings/overdraft' },
+        { path: '/admin/audit', match: url => url.pathname === '/admin/api/audit' },
+      ]) {
+        await errAdminPage.route(spec.match, respond500);
+        await navigateShell(errAdminPage, spec.path, width);
+        await errAdminPage.getByRole('alert').first().waitFor({ state: 'visible', timeout: 10_000 });
+        await auditScreen({ page: errAdminPage, screen: `${spec.path} (error 500)`, width, viaRouteTransition: true, emptyData: false });
+        await errAdminPage.unroute(spec.match);
+      }
+
+      // Detail pelanggan & detail harga saat 500
+      await navigateShell(errAdminPage, '/admin/pelanggan', width);
+      await errAdminPage.route(customerDetailMatch, respond500);
+      await errAdminPage.locator('.data-row').filter({ hasText: custUsername }).getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
+      await errAdminPage.getByRole('alert').first().waitFor({ state: 'visible', timeout: 10_000 });
+      await auditScreen({ page: errAdminPage, screen: '/admin/pelanggan (detail error 500)', width, viaRouteTransition: false, emptyData: false });
+      await errAdminPage.unroute(customerDetailMatch);
+
+      await navigateShell(errAdminPage, '/admin/harga', width);
+      await errAdminPage.route(modelDetailMatch, respond500);
+      await errAdminPage.locator('.data-row').filter({ hasText: 'Audit Alpha Mini' }).getByRole('button', { name: 'Rincian', exact: true }).click();
+      await errAdminPage.getByRole('alert').first().waitFor({ state: 'visible', timeout: 10_000 });
+      await auditScreen({ page: errAdminPage, screen: '/admin/harga (detail error 500)', width, viaRouteTransition: false, emptyData: false });
+      await errAdminPage.unroute(modelDetailMatch);
+
+      // /admin/akun error 500 saat ubah password
+      await db.query("update session set auth_at=clock_timestamp() where user_id=$1 and kind='ADMIN'", [admin.userId]);
+      await navigateShell(errAdminPage, '/admin/akun', width);
+      await errAdminPage.route('**/admin/api/account/password', respond500);
+      const adminPwForm = errAdminPage.locator('form').filter({ hasText: 'Ubah password' });
+      await adminPwForm.getByLabel('Password saat ini').fill(adminPassword);
+      await adminPwForm.getByLabel('Password baru').fill('audit-admin-baru-14');
+      await adminPwForm.getByRole('button', { name: 'Ubah password', exact: true }).click();
+      await errAdminPage.getByRole('alert').first().waitFor({ state: 'visible', timeout: 10_000 });
+      await auditScreen({ page: errAdminPage, screen: '/admin/akun (error 500)', width, viaRouteTransition: false, emptyData: false });
+      await errAdminPage.unroute('**/admin/api/account/password');
+
+      // /admin/paket (error 500): /admin/api/packs juga dipakai Shell probe
+      await errAdminPage.route('**/admin/api/packs', respond500);
+      await errAdminPage.goto(`${webBase}/admin/paket`);
+      await errAdminPage.getByRole('alert').first().waitFor({ state: 'visible', timeout: 10_000 });
+      await auditScreen({ page: errAdminPage, screen: '/admin/paket (error 500)', width, viaRouteTransition: false, emptyData: false });
+      await errAdminPage.unroute('**/admin/api/packs');
+    }
+    await errAdminCtx.close();
+  }
 
   // Deduplikasi temuan per (screen, width, problem)
   const seen = new Set();
