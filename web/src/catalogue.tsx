@@ -19,7 +19,7 @@ function isUniform(model: CustomerModel): boolean {
 function ModelCard({ model }: { model: CustomerModel }) {
   const uniform = isUniform(model);
   return <article className="data-row">
-    <header className="request-heading"><div><h2>{model.displayName}</h2><p className="mono">{model.id}</p></div><div className="protocol-list" aria-label={m.protocol}>{model.protocols.map(protocol => <span className="badge" key={protocol}>{protocol}</span>)}</div></header>
+    <header className="request-heading"><div><h2>{model.displayName}</h2><p className="mono">{model.id}</p></div><div className="protocol-list" aria-label={m.protocol}>{model.protocols.map(protocol => <span className="badge protocol-value" key={protocol}>{protocol}</span>)}</div></header>
     {uniform ? <p className="model-multiplier">x{model.multiplier}</p> : <section className="usage-detail" aria-label={m.pricePerCategory}><h3>{m.pricePerCategory}</h3><dl>{rateEntries(model.creditsPerToken).map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="number">{formatDecimal(value)} {m.credits}</dd></div>)}</dl></section>}
   </article>;
 }
