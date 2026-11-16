@@ -20,6 +20,7 @@ import { UpstreamsPage } from './admin-upstreams.tsx';
 import { AuditPage, OverdraftPage, UnresolvedPage } from './admin-operations.tsx';
 import { AdminOverviewPage } from './admin-overview.tsx';
 import { AdminAccountPage } from './account-admin.tsx';
+import { NotFoundPage } from './not-found.tsx';
 
 const portalLinks = [['/beranda', m.home], ['/isi-saldo', m.redeem], ['/api-key', m.keys], ['/model-harga', m.catalogue], ['/pemakaian', m.requests], ['/panduan', m.guide], ['/transaksi', m.ledger], ['/akun', am.account]];
 const adminLinks = [['/admin/ringkasan', ov.overview], ['/admin/pelanggan', m.customers], ['/admin/paket', m.packs], ['/admin/kode', m.vouchers], ['/admin/harga', m.models], ['/admin/upstream', m.upstreams], ['/admin/rekonsiliasi', m.unresolved], ['/admin/batas-lebih-pakai', m.overdraft], ['/admin/audit', m.audit], ['/admin/akun', am.account]];
@@ -28,7 +29,10 @@ function Navigation({ admin, close }: { admin: boolean; close?: () => void }) {
 }
 function RouteFocus() {
   const location = useLocation();
-  useEffect(() => { const timer = requestAnimationFrame(() => document.querySelector<HTMLElement>('h1')?.focus()); return () => cancelAnimationFrame(timer); }, [location.pathname, location.search]);
+  useEffect(() => {
+    const timer = requestAnimationFrame(() => (document.querySelector<HTMLElement>('h1') ?? document.querySelector<HTMLElement>('main#main'))?.focus());
+    return () => cancelAnimationFrame(timer);
+  }, [location.pathname, location.search]);
   return null;
 }
 function Shell({ admin = false }: { admin?: boolean }) {
@@ -39,7 +43,7 @@ function Shell({ admin = false }: { admin?: boolean }) {
   if (probe.isPending) return <main className="standalone"><Pending /></main>;
   if (probe.isError) {
     if (probe.error instanceof ApiError && probe.error.status === 401) return <Navigate to={admin ? '/admin/masuk' : '/masuk'} replace state={{ expired: true, returnTo: location.pathname + location.search }} />;
-    return <main className="standalone"><ErrorBox error={probe.error} retry={() => void probe.refetch()} /></main>;
+    return <main className="standalone"><PageTitle>{m.failed}</PageTitle><ErrorBox error={probe.error} retry={() => void probe.refetch()} /></main>;
   }
   const tenant = !admin && probe.data && typeof probe.data === 'object' && 'tenantStatus' in probe.data ? probe.data.tenantStatus : null;
   return <div className="app-shell"><a className="skip" href="#main">{m.skip}</a><aside className="desktop-nav"><p className="product-name">{m.product}</p><p>{admin ? m.backoffice : m.portal}</p><Navigation admin={admin} /></aside>
@@ -56,6 +60,6 @@ export function App({ takeToken }: { takeToken: () => string | null }) {
   return <><RouteFocus /><Routes><Route path="/masuk" element={<LoginPage />} /><Route path="/admin/masuk" element={<LoginPage admin />} /><Route path="/aktivasi" element={<TokenPage kind="activate" takeToken={takeToken} />} /><Route path="/atur-ulang" element={<TokenPage kind="reset" takeToken={takeToken} />} /><Route path="/lupa-password" element={<RequestResetPage />} />
     <Route element={<Shell />}><Route path="/beranda" element={<HomePage />} /><Route path="/isi-saldo" element={<RedeemPage />} /><Route path="/api-key" element={<KeysPage />} /><Route path="/model-harga" element={<CataloguePage />} /><Route path="/pemakaian" element={<UsagePage />} /><Route path="/panduan" element={<GuidePage />} /><Route path="/transaksi" element={<LedgerPage />} /><Route path="/akun" element={<CustomerAccountPage />} /></Route>
     <Route element={<Shell admin />}><Route path="/admin/ringkasan" element={<AdminOverviewPage />} /><Route path="/admin/pelanggan" element={<CustomersPage />} /><Route path="/admin/paket" element={<PacksPage />} /><Route path="/admin/kode" element={<VouchersPage />} /><Route path="/admin/harga" element={<ModelsPage />} /><Route path="/admin/upstream" element={<UpstreamsPage />} /><Route path="/admin/rekonsiliasi" element={<UnresolvedPage />} /><Route path="/admin/batas-lebih-pakai" element={<OverdraftPage />} /><Route path="/admin/audit" element={<AuditPage />} /><Route path="/admin/akun" element={<AdminAccountPage />} /></Route>
-    <Route path="/" element={<Navigate to="/beranda" replace />} /><Route path="/admin" element={<Navigate to="/admin/pelanggan" replace />} /><Route path="*" element={<main className="standalone"><PageTitle>{m.notFound}</PageTitle><NavLink to="/beranda">{m.goHome}</NavLink></main>} />
+    <Route path="/" element={<Navigate to="/beranda" replace />} /><Route path="/admin" element={<Navigate to="/admin/pelanggan" replace />} /><Route path="*" element={<NotFoundPage />} />
   </Routes></>;
 }

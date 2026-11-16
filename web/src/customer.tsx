@@ -16,9 +16,34 @@ type Key = { id: string; name: string; maskedKey: string; version: string; statu
 export function BalanceView({ value }: { value: Balance }) {
   return <div className="metrics">{[[m.available, value.availableMicro], [m.posted, value.postedMicro], [m.held, value.heldMicro]].map(([label, amount]) => <section className="metric" key={label}><h2>{label}</h2><p className="number">{formatCredits(amount)}</p><small>{m.credits}</small></section>)}</div>;
 }
+const GUIDE_READ_KEY = 'zrouter-guide-read-v1';
+
+function FirstUseChecklist({ username, postedMicro, keys }: { username: string; postedMicro: string; keys: { id: string }[] }) {
+  const guideReadKey = `${GUIDE_READ_KEY}:${username}`;
+  const [guideRead, setGuideRead] = useState(() => window.sessionStorage.getItem(guideReadKey) === 'yes');
+  const steps = [
+    { label: m.firstUseTopup, help: m.firstUseTopupHelp, complete: BigInt(postedMicro) > 0n, href: '/isi-saldo' },
+    { label: m.firstUseCreateKey, help: m.firstUseCreateKeyHelp, complete: keys.length > 0, href: '/api-key' },
+    { label: m.firstUseGuide, help: m.firstUseGuideHelp, complete: guideRead, href: '/panduan' },
+  ];
+  const done = steps.filter(step => step.complete).length;
+  if (done === steps.length) return null;
+  return <section className="panel onboarding-checklist" aria-label={m.firstUseTitle}>
+    <header className="stack"><h2>{m.firstUseTitle}</h2><p className="first-use-progress">{m.firstUseProgress(String(done))}</p></header>
+    {steps.map(step => <article className="onboarding-step" data-complete={step.complete} key={step.label}>
+      <div className="request-heading"><h3>{step.label}</h3><span>{step.complete ? m.completed : m.notCompleted}</span></div>
+      <p>{step.help}</p>
+      {!step.complete && <Link to={step.href} onClick={step.href === '/panduan' ? () => { window.sessionStorage.setItem(guideReadKey, 'yes'); setGuideRead(true); } : undefined}>{step.label}</Link>}
+    </article>)}
+  </section>;
+}
+
 export function HomePage() {
+  const me = useResource<{ username: string }>('/api/me');
   const balance = useResource<Balance>('/api/balance'); const packs = useResource<{ packs: Pack[] }>('/api/packs');
+  const keys = useResource<{ keys: { id: string; status: string }[] }>('/api/keys?limit=1');
   return <><PageTitle subtitle={m.homeSubtitle}>{m.home}</PageTitle>{balance.isPending ? <Pending /> : balance.isError ? <ErrorBox error={balance.error} retry={() => void balance.refetch()} /> : <><BalanceView value={balance.data} /><p className="muted">{m.updated}: {formatDate(new Date(balance.dataUpdatedAt).toISOString())}</p>{BigInt(balance.data.availableMicro) <= 0n && <Alert>{m.zeroBalance} <Link to="/isi-saldo">{m.redeem}</Link></Alert>}</>}
+    {me.isSuccess && balance.isSuccess && (keys.isError ? <ErrorBox error={keys.error} retry={() => void keys.refetch()} /> : keys.isSuccess && <FirstUseChecklist username={me.data.username} postedMicro={balance.data.postedMicro} keys={keys.data.keys} />)}
     <section className="panel stack"><h2>{m.packs}</h2><p>{m.packsNote}</p><p className="refund-policy">{m.refundPolicy}</p>{packs.isPending ? <Pending /> : packs.isError ? <ErrorBox error={packs.error} retry={() => void packs.refetch()} /> : !packs.data.packs.length ? <Empty title={m.noPacks} /> : <DataList caption={m.packs}>{packs.data.packs.map(pack => <article key={pack.id} className="data-row"><h3>{pack.name}</h3>{pack.isPromo && <Badge status="PROMO" />}<dl><dt>{m.tokens}</dt><dd>{grouped(pack.tokens)}</dd><dt>{m.priceIdr}</dt><dd>Rp{grouped(pack.displayPriceIdr)}</dd></dl></article>)}</DataList>}</section></>;
 }
 export function RedeemPage() {

@@ -1,9 +1,9 @@
 # UIArc Reference Map: Router AI Komersial
 
-Version: 0.4.0
+Version: 0.5.0
 Status: Draft; source registry Free diperiksa untuk scope web, implementasi portal/backoffice ada di ../web/
 Owner keputusan: founder
-Updated: 2026-11-14, Asia/Jakarta
+Updated: 2026-11-16, Asia/Jakarta
 Dependencies: UX.md; DISCOVERY.md section 10; BILLING_REDEEM.md section 5
 Evidence: E2 untuk dokumentasi dan source registry Free yang dibaca; E3 untuk build/typecheck/test UI lokal sesuai bukti ../web/evidence/verification-2026-11-14.md. Bukan preview UIArc interaktif atau tinjauan aksesibilitas independen.
 
@@ -101,4 +101,32 @@ Temuan yang diadaptasi: foundation source mengecualikan input dari outline dan c
 
 Pemetaan nama foundation (hanya acuan, tidak mengimpor CSS UIArc): --background ke --color-bg; --surface/--surface-raised ke --color-surface; --surface-muted ke --color-surface-muted; --foreground ke --color-text; --text-secondary/--text-muted ke --color-text-muted; --border ke --color-border; --border-strong ke --color-border-control; --accent/--accent-strong ke --color-primary; --accent-foreground ke --color-surface; --danger ke --color-danger; --radius-control ke --radius-control; --radius-panel ke --radius-panel; --duration-fast ke --motion-fast; --duration-standard ke --motion-base. Accent UIArc adalah aksi utama, bukan gold proyek. Skala/font/warna source tidak disalin. Sumber nilai tunggal implementasi adalah ../web/src/tokens.css.
 
-<!-- END ROUTER-UI-REFERENCES v0.4.0 -->
+## 7. Typography untuk data UI
+
+Panduan komparatif, bukan aturan monospace satu-kasus. Cloudscape merekomendasikan monospace untuk code/output, nilai numerik dalam dataset, waktu dinamis, alamat IP/MAC dan ID string, serta memperingatkan agar tidak berlebihan.[1] Carbon memisahkan code snippets (`code-01`/`code-02`) dari label dan helper text.[3] GOV.UK menjelaskan bahwa tabular numbers menyamakan lebar digit, sehingga angka untuk perbandingan dan angka dinamis lebih mudah dibaca.[2]
+
+Google menyarankan code font ketika teks harus dimasukkan verbatim atau merupakan entitas kode, bukan sekadar konsep teknis yang disebut dalam prosa.[4] USWDS menekankan keterbacaan body text dan menyarankan ukuran efektif minimal 16 px untuk sebagian besar teks berjalan, sementara ukuran lebih kecil digunakan lebih hemat.[5]
+
+Keputusan proyek berdasarkan jenis data dan cara pengguna membacanya:
+
+| Data yang dirender | Gaya | Alasan/pengecualian |
+|---|---|---|
+| Saldo, nominal debit/hold, harga tampilan Rupiah, batas kredit | Font UI sans dengan angka tabular (`font-variant-numeric: tabular-nums`) dan format locale Indonesia; nominal saldo memakai `formatCredits` (titik ribuan, koma desimal) | Tetap mudah dibaca sebagai angka finansial lokal dan digit stabil untuk perbandingan. Tidak monospace karena bukan kode/identifier. Format nilai yang terlihat tidak boleh mengganti separator backend (`amountMicro`, string mikro-kredit). |
+| Nilai model dan protokol yang dipilih/dipakai (`displayName`, protocol badge seperti CHAT/ANTHROPIC/RESPONSES) | Font UI sans, badge protokol memakai token status/komponen badge | Ini label/nilai pilihan untuk dibaca, bukan instruksi mengetik atau karakter yang harus disalin persis. Besar huruf kapital pada protokol berasal dari enum kontrak API. |
+| ID model publik, `upstreamModel`, nama header, path endpoint, nama field, kode error/state yang harus dicocokkan persis; URL konfigurasi hanya saat disajikan sebagai nilai yang harus disalin | Monospace (`.mono` atau elemen code yang sesuai) dengan pembungkusan aman | Nilai teknis tepat yang perlu disalin, dicocokkan, atau diketik. Teks biasa yang menyebut konsep “model” atau “protokol” tetap sans. URL navigasi yang tampil sebagai tautan tetap teks UI/link biasa, bukan code. |
+| API key tersamar, UUID/session/request/transaction ID, tautan aktivasi rahasia, kode redeem | Monospace dan pembungkus responsif; secret hanya mengikuti flow reveal yang sudah ditentukan | Identifier rahasia/opaque yang dibedakan karakter dan dapat dipilih; penggunaan monospace tidak mengubah aturan penyimpanan dan masa tampil. |
+| Tanggal/periode dan hitungan dataset | Sans sebagai default; tabular numerals jika nilai dibandingkan, berkolom, berubah dinamis, atau menjadi ringkasan grafik | Hindari mengubah satu tanggal atau angka naratif menjadi blok kode. |
+
+Tidak menambah font/dependency: tetap memakai system sans dan stack monospace dari tokens.css. Kontrak format saldo tetap memakai formatter `formatCredits` (titik ribuan, koma desimal); nominal kredit tidak dipindah ke stack monospace. Test browser mengukur computed font: nilai protokol/kategori harga memakai sans, ID model publik memakai monospace, dan nilai numerik tabel memakai angka tabular. Pemeriksaan viewport 360 px dilakukan pada test yang sama.
+
+Sumber panduan luar yang dibandingkan:
+
+## Sources
+
+[1] https://cloudscape.design/foundation/visual-foundation/typography — Cloudscape Design System Typography
+[2] https://design-system.service.gov.uk/styles/font-override-classes — GOV.UK font override and tabular numbers
+[3] https://carbondesignsystem.com/building-blocks/foundations/typography/type-sets — Carbon Design System typography
+[4] https://developers.google.com/style/code-in-text — Google developer style: code in text
+[5] https://designsystem.digital.gov/components/typography — USWDS typography
+
+<!-- END ROUTER-UI-REFERENCES v0.5.0 -->

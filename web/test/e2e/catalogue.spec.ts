@@ -21,6 +21,18 @@ test('katalog pelanggan menampilkan multiplier ringkas atau tarif tiap kategori 
   await expect(page.getByText('CHAT', { exact: true })).toBeVisible();
   await expect(page.getByText('ANTHROPIC', { exact: true })).toBeVisible();
   await expect(page.getByText('RESPONSES', { exact: true })).toBeVisible();
+  const modelId = page.locator('.data-row').filter({ hasText: 'uji/varied' }).locator('.mono');
+  const typography = await page.evaluate(({ protocol, numeric }) => ({
+    protocolFamily: getComputedStyle(document.querySelector(protocol)!).fontFamily,
+    numericFamily: getComputedStyle(document.querySelector(numeric)!).fontFamily,
+    numericVariant: getComputedStyle(document.querySelector(numeric)!).fontVariantNumeric,
+  }), { protocol: '.protocol-value', numeric: '.usage-detail .number' });
+  const identifierFamily = await modelId.evaluate(element => getComputedStyle(element).fontFamily);
+  expect(typography.protocolFamily).toContain('system-ui');
+  expect(identifierFamily).toContain('monospace');
+  expect(typography.numericFamily).toContain('system-ui');
+  expect(typography.numericVariant).toContain('tabular-nums');
+  await expect(modelId).toBeVisible();
   await page.setViewportSize({ width: 360, height: 800 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   payload = { models: [] };

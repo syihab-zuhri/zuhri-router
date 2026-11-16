@@ -69,6 +69,34 @@ Bukti run aktual: `web/evidence/stage3-continuation-{typecheck,unit,e2e,build,br
 
 Build web siap dipasang. Ini hanya hasil build lokal, belum menjadi deployment/image publik; pemasangan tetap melalui proses rilis terpisah.
 
+## Tahap empat (2026-11-16)
+
+### Ditulis
+
+- `web/src/admin-customers.tsx`: detail pelanggan memakai lima tab (`ringkasan`, `saldo`, `pemakaian`, `transaksi`, `API key`), status tab disimpan dalam query string dan pulih setelah reload. Daftar pelanggan mempertahankan aksi pengelolaan/pencabutan key langsung dari baris, dengan konfirmasi, optimistic version, dan step-up sebelum request mutasi.
+- `web/src/customer.tsx`: checklist first-use menghitung saldo dan keberadaan key dari respons API, mencatat panduan yang dibaca pada session storage, dan hilang setelah ketiga langkah selesai. Daftar key yang sudah ada, termasuk key dicabut, tetap dianggap memenuhi langkah “buat API key”.
+- `web/src/app.tsx`, `web/src/not-found.tsx`: halaman 404 Bahasa Indonesia dengan arah kembali dan pemulihan fokus.
+- `web/src/catalogue.tsx`: typography membedakan label model/protokol, ID teknis dan angka finansial; format kredit tidak diubah.
+- `web/src/styles.css`: aturan undangan panjang dan kebijakan kredit; `min-width: var(--zero)` pada tablist memperbaiki overflow mobile. Test real CSS sempat mendeteksi scrollWidth 376 px pada viewport 360 px; test regresi yang sama lulus setelah perbaikan.
+- `web/test/e2e/` dan `web/scripts/local-browser-verify.mjs`: uji keyboard, URL tab/reload, pencabutan dari baris, state first-use, 404, kontras, wrapping tautan undangan pada 360 px; harness admin memakai CSS dan wrapper `main#main` aplikasi sebenarnya. Local flow menavigasi ke tab Saldo sebelum top-up.
+- `docs/UI_REFERENCES.md`: catatan komparatif typography berdasarkan Cloudscape, GOV.UK, Carbon, Google dan USWDS, dengan keputusan proyek per kategori data, tanpa dependency/font baru. Versi dokumen 0.5.0.
+
+Tidak mengedit `server/`, `HERMES_TASK.md`, `docs/CHANGELOG.md`, `docs/TASKS.md`, `docs/PROJECT_MANIFEST.md`, atau berkas `account-*`. Tidak mengubah unit formatter kredit; hasil tetap memakai koma desimal. Tidak ada commit, deploy, request upstream berbayar atau pengiriman email nyata.
+
+### Dijalankan dan lulus
+
+- `npm run typecheck`: lulus.
+- `npm test`: 5/5 lulus.
+- E2E fokus Tahap empat (`--workers=1`): 9/9 lulus. Full E2E final: 51/54 lulus; tiga kegagalan berulang di `test/e2e/return-to.spec.ts` (expired session/returnTo), terpisah dari scope tahap ini. Run file tersebut sendiri: 8/11. Detail dan test IDs di `web/evidence/stage-four-full-e2e.md` serta `web/test-results/.last-run.json`. Kegagalan tersebut tidak dimatikan atau diubah.
+- `npm run test:local`: `local-browser-verify: PASS`; memakai Fastify/PostgreSQL lokal, `router_test` loopback dan schema sementara `web_verify_<uuid>` yang dibersihkan saat exit.
+- `npm run test:browser`: build berhasil, `same-origin-dist-verify: PASS`; schema sementara dist juga terisolasi dan dibersihkan. Build menampilkan warning bundler `MODULE_LEVEL_DIRECTIVE` dari dependency React Query/React Router; tidak menggagalkan build atau smoke.
+- `hermes verify --json`: exit 0, readiness lokal HTTP 200, build/typecheck/unit lulus.
+- `git diff --check`: lulus. Sitasi dokumen lulus pemeriksaan ledger; sumber diverifikasi pada `docs/UI_REFERENCES.md`.
+
+Output aktual disimpan pada `web/evidence/stage-four-{verification.md,full-e2e.md,focused-e2e.log,typecheck.log,unit.log,local.log,dist.log,diffcheck.log,citations.log,hermes-verify.log}`. Keluaran Playwright terbaru berada di `web/test-results/` (folder evidence/test hasil diabaikan Git).
+
+Status: Tahap empat ditulis dan bukti integrasi lokal serta build/dist tersedia. Full browser suite belum seluruhnya lulus karena tiga kegagalan `returnTo` di luar scope; tidak menyatakan rilis/deployment siap.
+
 ## Permintaan ke Claude
 
 Tidak ada kebutuhan kontrak server baru untuk tahap ini. Untuk tahap dua: bila diinginkan integrasi backend browser SCR-017/018, siapkan seed request unresolved dengan hold konsisten di schema privat dan step-up test yang sesuai. Jangan memakai atau menghentikan container bersama `router-spike-pg`. Tahap tiga lanjutan belum dipasang ke layanan publik.

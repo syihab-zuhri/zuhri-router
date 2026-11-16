@@ -15,6 +15,7 @@ async function mount(page: Page, module: string, name: string) {
   if (!queryUrl || !routerUrl) throw new Error('Vite dependency paths unavailable');
   await page.goto('/__admin-test');
   await page.evaluate(() => { history.replaceState({ usr: {} }, '', '/'); });
+  await page.addScriptTag({ type: 'module', content: `import '/src/tokens.css'; import '/src/styles.css';` });
   await page.addScriptTag({ type: 'module', content: `
     import React from '/node_modules/.vite/deps/react.js';
     import ReactDOM from '/node_modules/.vite/deps/react-dom_client.js';
@@ -50,6 +51,7 @@ test('pencarian username dan tambah saldo menunggu konfirmasi serta mempertahank
   await page.getByRole('button', { name: m.search, exact: true }).click();
   await expect(page.getByText('9.007.199.254.740.993', { exact: false }).first()).toBeVisible();
   await page.getByRole('button', { name: m.customerDetails, exact: true }).click();
+  await page.getByRole('tab', { name: m.balanceTab }).click();
   await page.getByLabel(m.tokens, { exact: true }).fill('25');
   await page.getByLabel(m.saleRef).fill('penjualan-uji');
   await page.getByRole('button', { name: m.topup, exact: true }).click();
@@ -123,9 +125,10 @@ test('terbit kode memerlukan konfirmasi dan secret hilang setelah panel ditutup'
   await expect(page.getByText(voucher.maskedCode, { exact: true })).toBeVisible();
 });
 
-test('undangan tanpa email mengungkapkan tautan server hanya setelah sukses dan dapat disalin', async ({ page }) => {
+test('undangan tanpa email mengungkapkan tautan server tanpa meluber di 360 px', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
   const writes: Record<string, unknown>[] = [];
-  const activationLink = 'https://zrouter.example/aktivasi#token=once-only-test';
+  const activationLink = `https://zrouter.example/aktivasi#token=once-only-${'x'.repeat(180)}`;
   await page.route('**/admin/api/customers?*', route => route.fulfill({ json: { customers: [], nextAfter: null } }));
   await page.route('**/admin/api/invites', route => {
     writes.push(route.request().postDataJSON());
@@ -137,8 +140,11 @@ test('undangan tanpa email mengungkapkan tautan server hanya setelah sukses dan 
   await page.getByRole('button', { name: m.inviteCustomer, exact: true }).click();
   await expect(page.getByText(activationLink, { exact: true })).toBeVisible();
   await expect(page.getByText(m.inviteManualDelivery, { exact: true }).first()).toBeVisible();
+  const activationText = page.locator('.activation-link');
+  expect(await activationText.evaluate(element => getComputedStyle(element).overflowWrap)).toBe('anywhere');
+  expect(await activationText.evaluate(element => element.getBoundingClientRect().right <= innerWidth)).toBeTruthy();
   expect(writes).toEqual([{ email: 'new-customer@example.test' }]);
-  expect(page.url()).not.toContain('once-only-test');
+  expect(page.url()).not.toContain('once-only-');
   expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0);
 });
 
@@ -179,6 +185,7 @@ test('suspend dan koreksi saldo meminta konfirmasi, step-up, dan mengirim nilai 
   await stepUpStatus.getByRole('button', { name: m.verify }).click();
   await expect(stepUpStatus).not.toBeVisible();
   expect(writes[0]).toMatchObject({ path: '/admin/api/customers/pelanggan/suspend', body: { expectedVersion: '4', reason: 'Peninjauan operator' } });
+  await page.getByRole('tab', { name: m.balanceTab }).click();
   const adjustmentForm = page.getByRole('heading', { name: m.adjustCustomerBalance, exact: true }).locator('xpath=..');
   await adjustmentForm.getByLabel(m.signedTokenAmount, { exact: true }).fill('-2,5');
   await adjustmentForm.getByLabel(m.reason, { exact: true }).fill('Koreksi uji');

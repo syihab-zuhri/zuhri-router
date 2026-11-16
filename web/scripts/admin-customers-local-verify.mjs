@@ -92,7 +92,9 @@ async function assertCleanSecretHygiene(page, secrets, label) {
   }));
   assert.equal(state.localStorageEntries.length, 0, `${label}: localStorage tidak kosong`);
   assert.equal(state.sessionStorageEntries.length, 0, `${label}: sessionStorage tidak kosong`);
-  assert.equal(state.search, '', `${label}: query string tidak kosong (${state.search})`);
+  // Navigation state (selected customer, tab, list cursors) may live in the query string; nothing else may.
+  const allowedQuery = new Set(['customer', 'tab', 'keyAfter', 'prefix', 'after', 'before']);
+  for (const key of new URLSearchParams(state.search).keys()) assert.ok(allowedQuery.has(key), `${label}: parameter URL tak terduga (${key})`);
   assert.equal(state.hash, '', `${label}: fragment URL tidak kosong (${state.hash})`);
   const storageDump = JSON.stringify([state.localStorageEntries, state.sessionStorageEntries]);
   for (const secret of secrets) {

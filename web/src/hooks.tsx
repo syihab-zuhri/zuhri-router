@@ -11,6 +11,8 @@ export function useResource<T>(path: string) {
     staleTime: 0, gcTime: 0, refetchOnWindowFocus: false });
   useEffect(() => {
     if (result.error instanceof ApiError && (result.error.code === 'unauthorized' || result.error.code === 'second_factor_required')) {
+      // A second failing read must not overwrite the returnTo saved by the first redirect.
+      if (/^\/(admin\/)?masuk$/.test(window.location.pathname)) return;
       cache.clear(); navigate(path.startsWith('/admin/') ? '/admin/masuk' : '/masuk', { replace: true, state: { expired: true, returnTo: location.pathname + location.search } });
     }
   }, [result.error, navigate, cache, path]);
