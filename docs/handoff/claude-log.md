@@ -125,3 +125,42 @@ Perbaikan Claude pada berkas Hermes saat memeriksa:
 - Temuan audit 1 (`styles.css`, `.usage-bar-row`): dua kolom di bawah 640 px dengan batang di baris kedua. Temuan audit 2 (`admin-operations.tsx`, `OverdraftPage`): judul halaman dirender juga saat memuat dan saat gagal.
 
 Catatan: test `returnTo` di `portal.spec.ts` hanya memeriksa teks sumber; test perilaku diberikan ke Antigravity (tugas tiga, bagian B).
+
+## 2026-11-16 malam, tugas tiga Antigravity diperiksa dan digabung; pekerjaan untuk Hermes
+
+Sandbox Antigravity sempat tidak bisa commit (`.git` read-only) dan tidak bisa menjangkau PostgreSQL. Claude menjalankan semuanya di host lalu meng-commit bagian B sampai D atas namanya (`62187e7`) dan menggabungkannya ke `main`:
+
+- `admin-customers-local-verify.mjs` (undang, aktivasi, tolak tautan ulang, konflik email, tangguhkan/pulihkan sampai admission, koreksi +2,5/-1, idempotency, kebersihan rahasia): PASS.
+- `a11y-audit.mjs` diperluas ke 134 kombinasi layar/lebar (keadaan kosong, error 500, dialog baru): 6 temuan, satu sebab (lihat butir 2).
+- `return-to.spec.ts`: 8 lulus, **3 gagal karena bug nyata** (butir 1). Test ini sekarang ada di `main`, jadi seluruh Playwright Hermes akan merah di tiga test itu sampai butir 1 diperbaiki. Itu disengaja.
+
+### Untuk Hermes
+
+1. **`returnTo` tertimpa saat sesi berakhir** (`hooks.tsx`, `catalogue.tsx`). Saat beberapa pembacaan gagal 401 bersamaan (atau `Shell` dan halaman sama-sama gagal), pengalihan pertama membawa `returnTo` yang benar, lalu pengalihan berikutnya membaca `window.location` yang sudah `/masuk` dan menimpa `returnTo` dengan `/masuk`. Akibatnya pelanggan selalu mendarat di Beranda, bukan halaman asal. `/model-harga` memakai `useQuery` mentah sehingga 401 tidak pernah mengalihkan ke halaman masuk. Perbaikan yang sudah Claude uji (11/11 `return-to.spec.ts` dan `catalogue.spec.ts` lulus, lalu dikembalikan karena berkas Anda):
+   - di efek `useResource`, sebelum `cache.clear()`: `if (/^\/(admin\/)?masuk$/.test(window.location.pathname)) return;`
+   - `CataloguePage`: ganti `useQuery({...})` dengan `useResource<Catalogue>('/api/models')` dan buang impor `useQuery`/`api` yang tidak terpakai.
+2. **`Shell` tanpa judul saat server error** (`app.tsx`, cabang `probe.isError` bukan 401): merender `<main className="standalone"><ErrorBox/></main>` tanpa `h1`, sehingga pembaca layar tidak tahu halaman apa. Beri `PageTitle` (misalnya `m.failed`) di atas `ErrorBox`. Ini menutup 6 temuan audit (portal dan admin, 360 dan 1280; `/admin/paket` error 500 adalah kasus yang sama karena probe admin memakai `/admin/api/packs`).
+3. **Teks dari laporan Antigravity** (`docs/handoff/antigravity-log.md`, D.2) yang perlu diperbaiki karena salah atau usang, bukan sekadar gaya:
+   - `unbilledInput` "Input belum ditagih": maknanya input berlebih yang **tidak** ditagih (CR-018), bukan akan ditagih nanti. Usul: "Input tidak ditagih".
+   - `modelScopeHelp`, `modelHelp`, `untestedTools`: masih menyebut katalog pelanggan atau tool belum ada; keduanya sudah ada.
+   - `customerHelp`: masih "masukkan username lengkap"; layar sekarang daftar dengan filter awalan.
+   - `redeemed` "Saldo berhasil ditambah" juga tampil pada struk koreksi negatif. Bedakan teks struk koreksi.
+   - `protocolHelp` "Protocol" -> "Protokol"; `statusPending`/`statusEligible` "Set status ..." -> "Ubah status menjadi ...".
+   Butir lain di D.2 dan seluruh D.1 bersifat usulan; ambil yang menurut Anda layak, tidak wajib.
+4. **CSS yang belum ada** selain `.refund-policy`/`.activation-link` (sudah di tahap empat): `.guide-code`, `.protocol-list`, `.model-multiplier`, dan warna badge untuk `ELIGIBLE`, `PENDING`, `BLOCKED` sesuai `docs/DESIGN.md` section 3.
+
+Saat menjalankan test server, pakai `TEST_DATABASE_URL` yang mengarah ke `router_test` hanya bila tidak ada skrip verifikasi lain yang sedang berjalan di database yang sama: test server membuat ulang skema dan bentrok (14 gagal palsu terlihat hari ini). Claude memakai `router_test_claude`.
+
+### Server: `GET /admin/api/overview` (baru, untuk SCR-014)
+
+Admin saja (tanpa step-up). Semua nilai uang string integer mikro-kredit.
+
+    { generatedAt,
+      customers: { ACTIVE, SUSPENDED, CLOSED },                       // jumlah tenant
+      balances: { postedMicro, heldMicro, positiveMicro, negativeAccounts, negativeMicro },  // tanpa tenant CLOSED
+      activeVouchers: { count, amountMicro },                          // kode aktif belum kedaluwarsa: kewajiban token yang belum ditukar
+      requests24h: { total, failed, estimated, debitMicro },
+      unresolved: { count, heldMicro },
+      upstreams: { PENDING, ELIGIBLE, BLOCKED } }                       // tanpa yang diarsipkan
+
+Belum ada biaya upstream, margin, atau kill switch (TASK-003, TASK-018); layar tidak boleh mengarang angka itu.

@@ -139,3 +139,7 @@ Mulai dengan `git pull --ff-only origin main` tidak diperlukan: folder ini sudah
 5. Untuk setiap butir: test Playwright termasuk keyboard dan 360 px, lalu seluruh rangkaian test seperti biasa, dan catat di `docs/handoff/hermes-log.md`.
 
 Tetap jangan menyentuh `account-*.tsx`, `qr.ts`, blok `am`, `web/scripts/a11y-audit.mjs`, `web/test/e2e/return-to.spec.ts` dan `web/scripts/admin-customers-local-verify.mjs` (milik Antigravity).
+
+### Tahap empat, tambahan (2026-11-16 malam)
+
+Kerjakan **sebelum** butir tahap empat yang belum selesai: baca `docs/handoff/claude-log.md` bagian "2026-11-16 malam", subbagian "Untuk Hermes", butir 1 sampai 4. Butir 1 dan 2 adalah bug nyata yang ditemukan test Antigravity (`web/test/e2e/return-to.spec.ts`, sekarang ada di folder ini dan merah sampai diperbaiki) dan auditnya. Perbaikan butir 1 sudah diuji Claude; terapkan, lalu buktikan `npx playwright test test/e2e/return-to.spec.ts` 11/11 dan `node scripts/a11y-audit.mjs` 0 temuan. Jangan mengubah `return-to.spec.ts` agar lulus.

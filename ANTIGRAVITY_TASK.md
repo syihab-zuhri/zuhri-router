@@ -160,3 +160,51 @@ Boleh membuat: tiga berkas di atas. Boleh mengubah: berkas milik Anda dari tugas
 ## Laporan
 
 Bagian baru bertanggal di `docs/handoff/antigravity-log.md`, per bagian A sampai D, dengan "ditulis", "dijalankan", "lulus". Jalankan juga seluruh rangkaian (typecheck, unit, Playwright, `account-local-verify.mjs`, `a11y-audit.mjs`). Commit ke `antigravity/akun`, jangan push.
+
+---
+
+# Tugas empat (2026-11-16 malam)
+
+Tugas tiga diterima dan digabung ke `main` (Claude meng-commit bagian B sampai D karena `.git` Anda read-only, dan menjalankan audit serta verifikasi di host). Temuan Anda nyata: tiga bug `returnTo` dan `Shell` tanpa judul saat error; semuanya diserahkan ke Hermes. Laporan teks dan token juga diteruskan.
+
+Tugas ini besar dan terdiri dari empat bagian yang tidak saling menunggu. Kerjakan berurutan, commit per bagian, lapor sekali di akhir. Bila satu bagian terhalang, catat dan lanjut.
+
+**Sebelum mulai, pastikan lingkungan Anda bisa commit dan menjangkau `127.0.0.1:55432`** (`git commit --allow-empty -m probe && git reset --soft HEAD~1`, lalu `node -e "require('net').connect(55432,'127.0.0.1').on('connect',()=>{console.log('ok');process.exit(0)}).on('error',e=>{console.log(e.message);process.exit(1)})"`). Bila salah satu gagal, minta founder memulai ulang sesi Anda di terminal WSL, bukan sandbox.
+
+    cd /mnt/d/router.dev.zuhri-antigravity && source .antigravity-env.sh
+    git checkout antigravity/akun && git pull --ff-only origin main
+
+## A. Layar Ringkasan Operasi (SCR-014), rute `/admin/ringkasan`
+
+Server sudah ada: `GET /admin/api/overview`, kontraknya di `docs/handoff/claude-log.md` bagian "2026-11-16 malam" (`server/src/overview.ts`). Baca `docs/UX.md` SCR-014 dan aturan umum layar.
+
+- Berkas baru `web/src/admin-overview.tsx`. Kartu angka: pelanggan aktif/ditangguhkan, total saldo, saldo ditahan, akun bersaldo minus (jumlah dan totalnya, ditandai warna peringatan bila lebih dari nol), kode aktif belum ditukar, request 24 jam (total, gagal, estimasi, debit), request menunggu keputusan (tautan ke `/admin/rekonsiliasi`), upstream per status (tautan ke `/admin/upstream`).
+- Tampilkan waktu `generatedAt` dan tombol muat ulang; keadaan memuat, gagal (dengan `h1` tetap ada), dan nol.
+- Angka uang lewat `formatCredits` dari `credits.ts`; tidak ada `Number()` pada nilai mikro-kredit.
+- Jangan menampilkan biaya upstream, margin, atau kill switch: belum ada di server. Tulis satu kalimat bahwa angka biaya belum tersedia.
+- Tambah baris rute dan tautan navigasi di `app.tsx` (hanya itu). Jadikan `/admin` mengarah ke `/admin/ringkasan`? **Jangan**; itu keputusan Claude/founder, catat sebagai usulan.
+- Test: `web/test/e2e/admin-overview.spec.ts` (mock, termasuk error, nol, angka besar di atas 2^53 mikro-kredit tampil eksak, 360 px, keyboard) dan `web/scripts/admin-overview-local-verify.mjs` (server nyata: siapkan dua pelanggan, satu ditangguhkan, satu minus lewat koreksi, satu kode aktif; angka di layar sama persis dengan data). Tambahkan layar ini ke `a11y-audit.mjs`.
+
+## B. Verifikasi portal pelanggan terhadap server nyata
+
+`web/scripts/portal-local-verify.mjs`, pola sama. Buktikan lewat browser:
+1. Tukar kode SALE: saldo naik persis sebesar nilai kode; menukar kode yang sama lagi ditolak dengan pesan yang benar; kode salah juga.
+2. Buat API key: secret tampil sekali, tidak ada di URL/storage/konsol; setelah dialog ditutup tidak bisa dilihat lagi; cabut key lalu key itu ditolak di admission (`GET /v1/models` 401).
+3. Pemakaian: siapkan request selesai lewat fungsi server (tanpa upstream), lalu `/pemakaian` menampilkan debit yang sama dengan ledger dan `/transaksi` mencantumkan entrinya; pagination bekerja dengan lebih dari satu halaman data.
+4. Halaman Model dan Harga menampilkan model dengan harga terbit dan pengali yang sama dengan server; model diarsipkan tidak tampil.
+
+## C. Verifikasi backoffice katalog terhadap server nyata
+
+`web/scripts/admin-catalog-local-verify.mjs`: paket (buat, ubah, nonaktifkan; harga tampilan di beranda pelanggan ikut berubah), kode redeem (terbitkan dari paket, kode tampil sekali, cabut lalu tidak bisa ditukar), harga model (draf, pratinjau, terbit, tarik; pelanggan melihat perubahan), batas lebih-pakai (ubah dengan step-up, nilai baru tampil). Upstream: bila validasi alamat server menolak alamat uji, cukup buktikan pesan penolakannya dan catat.
+
+## D. Ulang setelah Hermes selesai
+
+Bila Hermes sudah memperbaiki `returnTo` dan judul `Shell` (lihat `git log origin/main`), tarik `main` lalu jalankan seluruh rangkaian: `return-to.spec.ts` harus 11/11 dan `a11y-audit.mjs` 0 temuan. Bila belum, catat dan jangan menunggu.
+
+## Batas berkas
+
+Boleh membuat: `admin-overview.tsx`, dua berkas test/verifikasi A, `portal-local-verify.mjs`, `admin-catalog-local-verify.mjs`. Boleh mengubah: berkas milik Anda sebelumnya, `a11y-audit.mjs`, satu blok baru `ringkasan (Antigravity)` di akhir `messages.ts` dan `styles.css` (nilai hanya dari token), baris rute/navigasi `app.tsx`, log Anda. Tidak boleh: berkas lain, `server/`, dependency baru. Bug di berkas Hermes: laporkan, jangan perbaiki. Bila server perlu field atau fungsi seed baru, tulis permintaannya di log.
+
+## Laporan
+
+Bagian bertanggal di `docs/handoff/antigravity-log.md` per bagian A sampai D: "ditulis", "dijalankan", "lulus", dengan perintah dan bukti di `web/evidence/`. Commit ke `antigravity/akun`, jangan push.

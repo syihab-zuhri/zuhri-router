@@ -12,6 +12,7 @@ import { registerGateway, listRequests, listUnresolved, resolveRequest, type Gat
 import { systemResolver, type Resolver } from '../netguard.ts';
 import { registerStatic } from './static.ts';
 import { creditsToMicro } from '../money.ts';
+import { overview } from '../overview.ts';
 
 export type AppDeps = { db: Db; key: Buffer; mailer: identity.Mailer; secureCookies: boolean; logger?: boolean; resolveHost?: Resolver; gateway?: Partial<GatewayDeps>;
   /** Folder with the built web app; when set it is served from this origin. */ webDist?: string;
@@ -298,6 +299,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.post('/admin/api/routes/:id', async req => { const p = admin.requireAdmin(await adminSession(req), { stepUp: true }); return upstreams.updateRoute(db, (req.params as { id: string }).id, body(req), p.userId); });
 
   // ---- Requests waiting for a decision (API-037, FR-015) ----
+  app.get('/admin/api/overview', async req => { admin.requireAdmin(await adminSession(req)); return overview(db); });
   app.get('/admin/api/requests/unresolved', async req => { admin.requireAdmin(await adminSession(req)); return listUnresolved(db); });
   app.post('/admin/api/requests/:id/resolve', async req => { const p = admin.requireAdmin(await adminSession(req), { stepUp: true }); return resolveRequest(db, (req.params as { id: string }).id, body(req), p.userId); });
 
