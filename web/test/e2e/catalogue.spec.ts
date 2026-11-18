@@ -12,6 +12,8 @@ test('katalog pelanggan menampilkan multiplier ringkas atau tarif tiap kategori 
   await page.route('**/api/models', route => route.fulfill({ json: payload }));
   await page.goto('/model-harga');
   await expect(page.getByRole('heading', { name: 'Model dan Harga', exact: true })).toBeVisible();
+  await expect(page.getByText('Daftar model tersedia dan biaya kredit untuk setiap token.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Biaya kredit per jenis pemakaian token', { exact: true })).toBeVisible();
   await expect(page.getByText('x2', { exact: true })).toBeVisible();
   const varied = page.locator('.data-row').filter({ hasText: 'uji/varied' });
   await expect(varied).toContainText('1 kredit token');

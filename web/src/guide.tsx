@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router';
 import { useResource } from './hooks.tsx';
+import { GUIDE_READ_KEY } from './customer.tsx';
 import { m } from './messages.ts';
 import { Alert, ErrorBox, PageTitle, Pending } from './ui.tsx';
 
@@ -26,8 +28,12 @@ const commands = [
 ] as const;
 
 export function GuidePage() {
+  const me = useResource<{ username: string }>('/api/me');
   const keys = useResource<{ keys: { id: string }[] }>('/api/keys?limit=1');
   const baseUrl = `${window.location.origin}/v1`;
+  useEffect(() => {
+    if (me.isSuccess) window.sessionStorage.setItem(`${GUIDE_READ_KEY}:${me.data.username}`, 'yes');
+  }, [me.data?.username, me.isSuccess]);
   return <>
     <PageTitle subtitle={m.guideSubtitle}>{m.guide}</PageTitle>
     {keys.isPending ? <Pending /> : keys.isError ? <ErrorBox error={keys.error} retry={() => { void keys.refetch(); }} /> : keys.data.keys.length === 0 ? <Alert>{m.guideNoKey} <Link to="/api-key">{m.createKey}</Link></Alert> : <Alert>{m.guideKeyReady}</Alert>}

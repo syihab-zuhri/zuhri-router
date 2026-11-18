@@ -75,8 +75,8 @@ test('route membatasi protokol ke yang ditawarkan dan menahan POST sampai step-u
   });
   await page.route('**/admin/api/second-factor', route => route.fulfill({ json: { ok: true } }));
   await mount(page, 'admin-upstreams', 'UpstreamsPage');
-  await page.getByRole('button', { name: m.createRoute, exact: true }).click();
-  const routeForm = page.getByRole('dialog', { name: m.createRoute });
+  await page.getByRole('button', { name: m.addRoute, exact: true }).click();
+  const routeForm = page.getByRole('dialog', { name: m.addRoute });
   const modelSelect = routeForm.locator('#route-model');
   await modelSelect.selectOption(model.id);
   const upstreamSelect = routeForm.locator('#route-upstream');
@@ -84,7 +84,7 @@ test('route membatasi protokol ke yang ditawarkan dan menahan POST sampai step-u
   const protocols = await routeForm.getByLabel(m.protocol).locator('option').allTextContents();
   expect(protocols).toEqual(['CHAT']);
   await routeForm.getByLabel(m.upstreamModel).fill('provider/model');
-  await routeForm.getByRole('button', { name: m.createRoute, exact: true }).click();
+  await routeForm.getByRole('button', { name: m.addRoute, exact: true }).click();
   await page.getByRole('dialog', { name: m.stepUp }).getByLabel(m.code).fill('123456');
   await page.getByRole('dialog', { name: m.stepUp }).getByRole('button', { name: m.verify }).click();
   await expect(routeForm).toHaveCount(0);
@@ -112,8 +112,8 @@ test('daftar model upstream diminta eksplisit, dapat dipilih, dan ID manual teta
   });
   await page.route('**/admin/api/second-factor', route => route.fulfill({ json: { ok: true } }));
   await mount(page, 'admin-upstreams', 'UpstreamsPage');
-  await page.getByRole('button', { name: m.createRoute, exact: true }).click();
-  const routeForm = page.getByRole('dialog', { name: m.createRoute });
+  await page.getByRole('button', { name: m.addRoute, exact: true }).click();
+  const routeForm = page.getByRole('dialog', { name: m.addRoute });
   await routeForm.locator('#route-model').selectOption(model.id);
   await routeForm.locator('#route-upstream').selectOption(upstream.id);
   await expect(routeForm.getByLabel(m.upstreamModel)).toHaveValue('');
@@ -123,7 +123,7 @@ test('daftar model upstream diminta eksplisit, dapat dipilih, dan ID manual teta
   await expect(routeForm.locator('#route-upstream-model-options option')).toHaveCount(2);
   await expect(routeForm.getByRole('link', { name: m.modelPriceLink, exact: true })).toHaveAttribute('href', '/admin/harga');
   await routeForm.getByLabel(m.upstreamModel).fill('manual/custom-model');
-  await routeForm.getByRole('button', { name: m.createRoute, exact: true }).click();
+  await routeForm.getByRole('button', { name: m.addRoute, exact: true }).click();
   await page.getByRole('dialog', { name: m.stepUp }).getByLabel(m.code).fill('123456');
   await page.getByRole('dialog', { name: m.stepUp }).getByRole('button', { name: m.verify }).click();
   await expect.poll(() => writes.length).toBe(2);
@@ -140,8 +140,8 @@ test('kegagalan daftar model upstream menjelaskan bahwa ID dapat diketik manual'
   });
   await page.route('**/admin/api/routes**', route => route.fulfill({ json: { routes: [] } }));
   await mount(page, 'admin-upstreams', 'UpstreamsPage');
-  await page.getByRole('button', { name: m.createRoute, exact: true }).click();
-  const routeForm = page.getByRole('dialog', { name: m.createRoute });
+  await page.getByRole('button', { name: m.addRoute, exact: true }).click();
+  const routeForm = page.getByRole('dialog', { name: m.addRoute });
   await routeForm.locator('#route-model').selectOption(model.id);
   await routeForm.locator('#route-upstream').selectOption(upstream.id);
   await routeForm.getByRole('button', { name: 'Ambil daftar dari upstream', exact: true }).click();

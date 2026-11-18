@@ -110,6 +110,60 @@ Status: Tahap empat ditulis dan bukti integrasi lokal serta build/dist tersedia.
 - Konfirmasi async terbaru `proc_929a2323e72d` juga keluar dengan exit 0 dan `local-browser-verify: PASS`; output mencakup redeem/balance/ledger serta step-up publish harga/voucher. Ringkasan: `web/evidence/stage-four-local-latest.md`.
 - Konfirmasi async terbaru `proc_83c15a674af7`: `npm run test:browser` exit 0, production build sukses dan `same-origin-dist-verify: PASS`. Warning non-blocking `[MODULE_LEVEL_DIRECTIVE]` dari dependency React Query/React Router. Rincian: `web/evidence/stage-four-dist-latest.md`.
 
+## Tahap lima (2026-11-18)
+
+### Ditulis
+
+- `web/src/app.tsx`: `/admin` kini mengarahkan ke `/admin/ringkasan`.
+- `web/src/auth.tsx`: login admin tanpa `returnTo` (termasuk `returnTo` yang ditolak allowlist) mendarat di `/admin/ringkasan`; returnTo valid tetap dipulihkan.
+- `web/src/not-found.tsx`, `web/src/messages.ts`: tautan kembali di halaman 404 admin sekarang menuju dan menyebut Ringkasan.
+- `web/src/customer.tsx`, `web/src/guide.tsx`: membuka `/panduan` setelah profil pelanggan terkonfirmasi menyimpan status baca ke sessionStorage, dengan kunci per username yang sama seperti checklist; direct navigation kini menandai langkah panduan selesai. Tidak mencatat status sebelum data profil dimuat.
+- `web/src/admin-vouchers.tsx`: helper dan label alasan promo dibedakan dari jenis “Promo”; pesan verifikasi pembayaran hanya tampil untuk kode Penjualan.
+- `web/src/ui.tsx`, `web/src/messages.ts`, pemanggil receipt: receipt membedakan penukaran baru/replay, top-up, dan koreksi; koreksi negatif tidak lagi dilabeli saldo berhasil ditambah.
+- Copy D.2 yang diterapkan mencakup penyebutan kredit token yang konsisten, klarifikasi estimasi/pemakaian, panduan Responses stateless dan pemilihan endpoint, status/uplink terminology, katalog dan kategori harga, bantuan promo, margin guard, preview, saldo replay, koreksi, request unresolved, overdraft, audit, kategori ledger, dan konflik idempotency.
+- `web/scripts/local-browser-verify.mjs`: flow admin menguji tujuan login Ringkasan lalu navigasi eksplisit ke Pelanggan; klik detail mengikuti label baru “Buka rincian pelanggan”; assertion replay diselaraskan dengan pesan receipt.
+- Test ditambah/diperbarui untuk `/admin`, login default dan returnTo tidak valid, halaman 404 admin, panduan yang dibuka langsung, promo, receipt koreksi, copy katalog/pemakaian, salin-secret, dan teks yang dikoreksi.
+
+### Audit lengkap atas usulan D.2 antigravity-log.md
+
+Diterapkan:
+
+- `m.customerDetails`: “Buka rincian pelanggan” konsisten dengan `m.details` dan copy UX.
+- `m.modelPriceLink`/`m.models`: kapitalisasi diselaraskan ke “Harga model”.
+- `m.welcome`: menyebut saldo kredit token; `m.refundPolicy` kini menyebut “kredit token”.
+- `m.suspended`: usulan memisahkan copy pelanggan/admin diterapkan; shell pelanggan memakai copy pelanggan lama, detail backoffice memakai kunci baru `m.adminSuspended`.
+- Usulan status upstream `m.statusPending`/`m.statusEligible`, awalan filter `m.customerHelp`, dan makna `m.unbilledInput` sudah benar di source sebelum Tahap lima; diperiksa dan tidak diubah.
+- Receipt memberi heading terpisah untuk penukaran, replay, top-up dan koreksi.
+- `m.keySubtitle`, judul/peringatan/tombol buang secret menjelaskan API key dalam bahasa pelanggan.
+- `m.limitHelp`, `m.noModels`, `m.modelScopeHelp` diperjelas tanpa mengklaim katalog tidak tersedia; batasannya adalah pemilihan model khusus pada form key.
+- `m.noUsage`, `m.chargedUsage`, `m.estimated`, `m.notFinal` memakai pemakaian token dan konteks biaya yang lebih lengkap.
+- `m.protocolHelp` menggunakan “Protokol” dan “didukung”. `m.createRoute` dihapus karena tidak memiliki pemanggil; pemanggil test yang masih memakai kunci itu dialihkan ke `m.addRoute`.
+- `m.catalogueSubtitle`, `m.pricePerCategory`, `m.guideProtocolNote`, `m.responsesStateless`, `m.untestedToolVersions` diperjelas. Guide membedakan tool yang sudah diuji dari yang belum diuji lewat daftar nama/versi yang ada.
+- `m.customerHelp` pada pohon kerja sudah menyebut awalan username, jadi tidak perlu perubahan.
+- Kode Penjualan tidak lagi muncul sebagai enum mentah pada helper; label/reason PROMO terpisah dan ringkasan konfirmasi memakai label yang tepat.
+- `m.modelHelp`, `m.previewHelp`, `m.receiptCurrent`, copy koreksi dan `kindText` adjustment, `m.unbilledInput`, copy unresolved/overdraft/noAudit, serta `errorText.idempotency_conflict` mengikuti makna aktual.
+
+Usulan tidak diterapkan, dengan alasan:
+
+- Mengubah `am.closeConsequenceBalance` untuk menyebut “kredit token”: berada pada blok `am` milik Antigravity yang dilarang disentuh oleh HERMES_TASK Tahap lima. Perubahan harus diajukan ke pemilik blok.
+- Mengubah `am.manualKeyLabel`/`am.copyKey`: sama, blok `am` adalah milik Antigravity; mempertahankan pembedaan API key pelanggan dari kunci authenticator admin sampai pemiliknya mengubah.
+- Menambah kunci admin baru untuk `m.suspended` tidak diperlukan setelah pemeriksaan caller: pemakaian lama di detail pelanggan diganti khusus, sedangkan shell pelanggan tetap memakai copy pelanggan yang tepat.
+- Menghapus `m.untestedTools` tidak diperlukan: kunci itu tidak ada pada pesan aktif; guide memakai `m.untestedToolVersions` dan konstanta live `Hermes`, `ZCode`.
+
+### Dijalankan dan lulus
+
+- `npm run typecheck`: lulus.
+- `npm test`: 5/5 lulus.
+- `git diff --check`: lulus.
+- `npm run test:e2e -- --workers=1 --reporter=line`: lulus 62/62 pada run terbaru. Run sebelumnya 59/62 memiliki tiga kegagalan assertion/copy usang yang diperbaiki atau diselaraskan: login keyboard kini memeriksa fokus textbox password sesudah Tab; test discard-secret memakai pesan/kunci API key aktif; usage test memeriksa teks pada parent row (charged region hanya ada saat usage tersedia). Tiga failure run lama tidak dianggap hasil final.
+- `npm run test:local`: lulus (`local-browser-verify: PASS`) setelah verifier diselaraskan dengan tujuan admin baru, navigasi eksplisit ke daftar pelanggan, label rincian pelanggan, dan teks receipt replay.
+- `npm run test:browser`: lulus; build produksi sukses dan `same-origin-dist-verify: PASS`. Warning `[MODULE_LEVEL_DIRECTIVE]` dari dependency React Query/React Router tidak menghentikan build.
+- Tidak menjalankan Playwright bersamaan dengan Antigravity: sebelum run penuh terbaru tidak terlihat proses suite Antigravity; saat diminta, proses suite Antigravity yang aktif dihormati dan dist/browser dijalankan setelah ia selesai.
+
+Bukti terbaru: `web/evidence/stage-five-local.log`, `web/evidence/stage-five-dist.log`. Full E2E hasil 62/62 berasal dari proses `proc_4432350dbb4b`; hasil run lama `proc_daa5e716734d` adalah 59/62 dan digantikan setelah memperbaiki assertion stale. Typecheck/unit dijalankan ulang setelah E2E dan lulus.
+
+Status: Tahap lima dikerjakan berurutan dan diverifikasi. Build lokal siap dipasang dari sisi web; belum ada deployment atau perubahan ke server.
+
 ## Permintaan ke Claude
 
 Tidak ada kebutuhan kontrak server baru untuk tahap ini. Untuk tahap dua: bila diinginkan integrasi backend browser SCR-017/018, siapkan seed request unresolved dengan hold konsisten di schema privat dan step-up test yang sesuai. Jangan memakai atau menghentikan container bersama `router-spike-pg`. Tahap tiga lanjutan belum dipasang ke layanan publik.

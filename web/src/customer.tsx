@@ -16,7 +16,7 @@ type Key = { id: string; name: string; maskedKey: string; version: string; statu
 export function BalanceView({ value }: { value: Balance }) {
   return <div className="metrics">{[[m.available, value.availableMicro], [m.posted, value.postedMicro], [m.held, value.heldMicro]].map(([label, amount]) => <section className="metric" key={label}><h2>{label}</h2><p className="number">{formatCredits(amount)}</p><small>{m.credits}</small></section>)}</div>;
 }
-const GUIDE_READ_KEY = 'zrouter-guide-read-v1';
+export const GUIDE_READ_KEY = 'zrouter-guide-read-v1';
 
 function FirstUseChecklist({ username, postedMicro, keys }: { username: string; postedMicro: string; keys: { id: string }[] }) {
   const guideReadKey = `${GUIDE_READ_KEY}:${username}`;

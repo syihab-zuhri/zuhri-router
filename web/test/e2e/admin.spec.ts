@@ -109,11 +109,13 @@ test('terbit kode memerlukan konfirmasi dan secret hilang setelah panel ditutup'
   });
   await mount(page, 'admin-vouchers', 'VouchersPage');
   await expect(page.getByRole('heading', { name: m.vouchers, exact: true })).toBeVisible();
+  await expect(page.getByText(m.voucherHelp, { exact: true })).toBeVisible();
   await page.getByLabel(m.pack, { exact: true }).selectOption(pack.id);
   await page.getByLabel(m.saleRef, { exact: true }).fill('penjualan-kode');
   await page.getByRole('button', { name: m.issueVoucher, exact: true }).click();
   expect(issued).toHaveLength(0);
   const confirmation = page.getByRole('dialog', { name: m.issueVoucher });
+  await expect(confirmation.getByText(m.voucherHelp, { exact: true })).toBeVisible();
   await expect(confirmation).toContainText('100.000.000');
   await confirmation.getByRole('button', { name: m.issueVoucher }).click();
   await expect(page.getByText(secret, { exact: true })).toBeVisible();
@@ -123,6 +125,22 @@ test('terbit kode memerlukan konfirmasi dan secret hilang setelah panel ditutup'
   await page.getByRole('button', { name: m.copiedDone }).click();
   await expect(page.getByText(secret, { exact: true })).toHaveCount(0);
   await expect(page.getByText(voucher.maskedCode, { exact: true })).toBeVisible();
+});
+
+test('kode promo menjelaskan alasan terbit dan menampilkannya pada konfirmasi', async ({ page }) => {
+  await page.route('**/admin/api/packs', route => route.fulfill({ json: { packs: [pack] } }));
+  await page.route('**/admin/api/vouchers', route => route.fulfill({ json: { vouchers: [], nextBefore: null, outstandingMicro: '0' } }));
+  await mount(page, 'admin-vouchers', 'VouchersPage');
+  await page.getByLabel(m.voucherKind, { exact: true }).selectOption('PROMO');
+  await expect(page.getByLabel(m.promoReasonLabel, { exact: true })).toBeVisible();
+  await expect(page.getByText(m.voucherPromoHelp, { exact: true })).toBeVisible();
+  await page.getByLabel(m.pack, { exact: true }).selectOption(pack.id);
+  await page.getByLabel(m.promoReasonLabel, { exact: true }).fill('Bonus pengguna baru');
+  await page.getByRole('button', { name: m.issueVoucher, exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: m.issueVoucher });
+  await expect(confirmation.getByText(m.voucherPromoHelp, { exact: true })).toBeVisible();
+  await expect(confirmation.getByText(m.promoReasonLabel, { exact: true })).toBeVisible();
+  await expect(confirmation).toContainText('Bonus pengguna baru');
 });
 
 test('undangan tanpa email mengungkapkan tautan server tanpa meluber di 360 px', async ({ page }) => {
@@ -154,7 +172,8 @@ test('suspend dan koreksi saldo meminta konfirmasi, step-up, dan mengirim nilai 
   const writes: { path: string; body: Record<string, unknown> }[] = [];
   await page.route('**/admin/api/customers?*', route => route.fulfill({ json: { customers: [{ username: 'pelanggan', tenantStatus: 'ACTIVE', createdAt: '2026-11-15T00:00:00.000Z', postedMicro: detailCustomer.postedMicro, heldMicro: detailCustomer.heldMicro }], nextAfter: null } }));
   await page.route('**/admin/api/customers/pelanggan/usage?*', route => route.fulfill({ json: { username: 'pelanggan', days: 7, byDay: [], byModel: [], byKey: [], recent: [] } }));
-  await page.route('**/admin/api/customers/pelanggan', route => route.fulfill({ json: detailCustomer }));
+  let tenantStatus = 'ACTIVE';
+  await page.route('**/admin/api/customers/pelanggan', route => route.fulfill({ json: { ...detailCustomer, tenantStatus } }));
   let statusRequests = 0;
   let adjustmentRequests = 0;
   await page.route('**/admin/api/customers/pelanggan/suspend', route => {
@@ -162,7 +181,8 @@ test('suspend dan koreksi saldo meminta konfirmasi, step-up, dan mengirim nilai 
     writes.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
     expect(route.request().headers()['x-router-csrf']).toBe('1');
     if (statusRequests === 1) return route.fulfill({ status: 403, json: { error: { code: 'step_up_required' } } });
-    return route.fulfill({ status: 200, json: { tenantStatus: 'SUSPENDED', version: '5' } });
+    tenantStatus = 'SUSPENDED';
+    return route.fulfill({ status: 200, json: { tenantStatus, version: '5' } });
   });
   await page.route('**/admin/api/adjustments', route => {
     adjustmentRequests += 1;
@@ -175,6 +195,7 @@ test('suspend dan koreksi saldo meminta konfirmasi, step-up, dan mengirim nilai 
   await mount(page, 'admin-customers', 'CustomersPage');
   await page.getByRole('button', { name: m.customerDetails, exact: true }).click();
   const customerDetail = page.getByRole('region', { name: m.details });
+  await expect(customerDetail).not.toContainText(m.adminSuspended);
   await customerDetail.getByRole('button', { name: m.suspendCustomer, exact: true }).click();
   const suspendDialog = page.getByRole('dialog', { name: m.suspendCustomer });
   await suspendDialog.getByLabel(m.reason, { exact: true }).fill('Peninjauan operator');
@@ -184,6 +205,7 @@ test('suspend dan koreksi saldo meminta konfirmasi, step-up, dan mengirim nilai 
   await stepUpStatus.getByLabel(m.code).fill('123456');
   await stepUpStatus.getByRole('button', { name: m.verify }).click();
   await expect(stepUpStatus).not.toBeVisible();
+  await expect(customerDetail).toContainText(m.adminSuspended);
   expect(writes[0]).toMatchObject({ path: '/admin/api/customers/pelanggan/suspend', body: { expectedVersion: '4', reason: 'Peninjauan operator' } });
   await page.getByRole('tab', { name: m.balanceTab }).click();
   const adjustmentForm = page.getByRole('heading', { name: m.adjustCustomerBalance, exact: true }).locator('xpath=..');
@@ -200,6 +222,8 @@ test('suspend dan koreksi saldo meminta konfirmasi, step-up, dan mengirim nilai 
   await stepUpAdjustment.getByLabel(m.code).fill('123456');
   await stepUpAdjustment.getByRole('button', { name: m.verify }).click();
   await expect(adjustmentDialog).not.toBeVisible();
+  await expect(page.getByRole('heading', { name: m.adjustmentReceipt, exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: m.redeemed, exact: true })).toHaveCount(0);
   expect(writes[2].path).toBe('/admin/api/adjustments');
   expect(writes[2].body).toMatchObject({ username: 'pelanggan', amountMicro: '-2500000', reason: 'Koreksi uji' });
   expect(writes[2].body.idempotencyKey).toEqual(expect.any(String));

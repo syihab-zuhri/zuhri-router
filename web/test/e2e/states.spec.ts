@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { m } from '../../src/messages.ts';
 
 async function customer(page: import('@playwright/test').Page) {
   await page.route('**/api/me', route => route.fulfill({ json: { username: 'state_user', tenantStatus: 'ACTIVE', version: '1' } }));
@@ -42,8 +43,8 @@ test('secret tidak berada di URL/storage, copy gagal tetap tampil, escape memint
   await expect(page.locator('.secret')).toHaveText(secret); await page.getByRole('button', { name: 'Salin', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Tidak dapat menyalin otomatis.' })).toBeVisible();
   expect(page.url()).not.toContain(secret); expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0);
-  await page.keyboard.press('Escape'); await expect(page.getByText('Tutup tanpa menyalin? Secret tidak dapat ditampilkan lagi.')).toBeVisible();
-  await page.getByRole('button', { name: 'Tutup dan buang secret' }).click(); await expect(page.locator('.secret')).toHaveCount(0);
+  await page.keyboard.press('Escape'); await expect(page.getByRole('alert')).toContainText(m.discardSecret);
+  await page.getByRole('button', { name: m.discard, exact: true }).click(); await expect(page.locator('.secret')).toHaveCount(0);
 });
 
 test('401 pembacaan memindah ke masuk tanpa memutar ulang mutasi', async ({ page }) => {
