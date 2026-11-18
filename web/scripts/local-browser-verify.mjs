@@ -148,6 +148,7 @@ try {
   await page.getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
   await expectVisible(page.getByRole('heading', { name: username, exact: true }).last(), 'Detail pelanggan tidak terbuka');
   await page.getByRole('tab', { name: 'Saldo', exact: true }).click();
+  await expectVisible(page.getByLabel('Jumlah kredit token'), 'Form top-up tidak tampil di tab Saldo');
   await db.query("update session set auth_at=clock_timestamp()-interval '10 minutes' where user_id=$1 and kind='ADMIN'", [adminUserId]);
   await page.getByLabel('Jumlah kredit token').fill('100');
   await page.getByLabel('Referensi penjualan').fill('web-local-topup');
