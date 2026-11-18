@@ -497,6 +497,162 @@ async function navigateShell(page, path, width) {
   await waitSettled(page);
 }
 
+async function auditTabsBehavior(page, screen, width) {
+  const { owner, file } = ownerAndFile(screen);
+  const detail = page.locator('section[aria-label="Rincian"]');
+  const tablist = detail.locator('[role="tablist"]');
+  const tabs = tablist.locator('[role="tab"]');
+  const tabCount = await tabs.count();
+
+  if (tabCount < 2) {
+    recordFinding({
+      screen,
+      width,
+      problem: `Pola ARIA tabs tidak ditemukan (jumlah [role="tab"] = ${tabCount}).`,
+      wcag: 'wcag2a (4.1.2 Name, Role, Value)',
+      repro: `Buka ${screen} pada lebar ${width}px dan periksa [role="tablist"] > [role="tab"].`,
+      file,
+      owner,
+      fixSuggestion: 'Pastikan detail pelanggan merender daftar tab dengan role="tablist" dan role="tab".',
+      details: { tabCount },
+    });
+    return;
+  }
+
+  const checkAriaLinkage = async (stepLabel) => {
+    return page.evaluate((label) => {
+      const root = document.querySelector('section[aria-label="Rincian"]');
+      const list = root?.querySelector('[role="tablist"]');
+      const tabEls = list ? [...list.querySelectorAll('[role="tab"]')] : [];
+      const panels = root ? [...root.querySelectorAll('[role="tabpanel"]')] : [];
+      const selected = tabEls.filter(el => el.getAttribute('aria-selected') === 'true');
+      const issues = [];
+
+      if (selected.length !== 1) {
+        issues.push(`${label}: jumlah tab dengan aria-selected="true" harus 1, ditemukan ${selected.length}`);
+      }
+      for (const [i, tab] of tabEls.entries()) {
+        const isSel = tab.getAttribute('aria-selected') === 'true';
+        if (isSel && tab.tabIndex !== 0) issues.push(`${label}: tab aktif indeks ${i} memiliki tabIndex ${tab.tabIndex} (seharusnya 0)`);
+        if (!isSel && tab.tabIndex !== -1) issues.push(`${label}: tab nonaktif indeks ${i} memiliki tabIndex ${tab.tabIndex} (seharusnya -1)`);
+        const controlsId = tab.getAttribute('aria-controls');
+        if (!controlsId) {
+          issues.push(`${label}: tab indeks ${i} tidak memiliki aria-controls`);
+        } else {
+          const target = document.getElementById(controlsId);
+          if (!target) issues.push(`${label}: aria-controls="${controlsId}" pada tab indeks ${i} tidak menunjuk elemen yang ada`);
+        }
+      }
+      if (panels.length !== 1) {
+        issues.push(`${label}: jumlah [role="tabpanel"] harus 1, ditemukan ${panels.length}`);
+      } else {
+        const panel = panels[0];
+        const labelledBy = panel.getAttribute('aria-labelledby');
+        if (!labelledBy) {
+          issues.push(`${label}: [role="tabpanel"] tidak memiliki aria-labelledby`);
+        } else {
+          const ownerTab = document.getElementById(labelledBy);
+          if (!ownerTab) {
+            issues.push(`${label}: aria-labelledby="${labelledBy}" pada tabpanel tidak menunjuk elemen yang ada`);
+          } else if (ownerTab !== selected[0]) {
+            issues.push(`${label}: aria-labelledby="${labelledBy}" tidak menunjuk tab yang sedang aria-selected="true"`);
+          }
+        }
+      }
+      const activeIdx = selected[0] ? tabEls.indexOf(selected[0]) : -1;
+      const focusedIdx = tabEls.indexOf(document.activeElement);
+      const focusedTag = document.activeElement?.tagName?.toLowerCase() ?? 'none';
+      const focusedText = (document.activeElement?.textContent ?? '').trim().slice(0, 40);
+      return { issues, activeIdx, focusedIdx, focusedTag, focusedText, count: tabEls.length };
+    }, stepLabel);
+  };
+
+  const initial = await checkAriaLinkage('awal');
+  for (const issue of initial.issues) {
+    recordFinding({
+      screen,
+      width,
+      problem: `Pola ARIA tabs gagal — ${issue}.`,
+      wcag: 'wcag2a (4.1.2 Name, Role, Value)',
+      repro: `Buka ${screen} pada lebar ${width}px dan periksa atribut role/aria-selected/aria-controls/aria-labelledby.`,
+      file,
+      owner,
+      fixSuggestion: 'Pastikan atribut tablist/tab/tabpanel dan ID rujukan saling menunjuk elemen yang valid.',
+      details: initial,
+    });
+  }
+
+  // Mulai navigasi keyboard dari tab pertama yang aktif
+  await tabs.first().focus();
+  const keySequence = [
+    { key: 'ArrowRight', expectedIdx: 1, desc: 'ArrowRight dari tab 0 ke tab 1' },
+    { key: 'End', expectedIdx: tabCount - 1, desc: 'End ke tab terakhir' },
+    { key: 'ArrowLeft', expectedIdx: tabCount - 2, desc: 'ArrowLeft ke tab sebelumnya' },
+    { key: 'Home', expectedIdx: 0, desc: 'Home ke tab pertama' },
+    { key: 'ArrowLeft', expectedIdx: tabCount - 1, desc: 'ArrowLeft wrap dari tab pertama ke terakhir' },
+    { key: 'ArrowRight', expectedIdx: 0, desc: 'ArrowRight wrap dari tab terakhir ke pertama' },
+  ];
+
+  for (const step of keySequence) {
+    await page.keyboard.press(step.key);
+    await waitSettled(page);
+    const state = await checkAriaLinkage(step.desc);
+    for (const issue of state.issues) {
+      recordFinding({
+        screen,
+        width,
+        problem: `Pola ARIA tabs gagal — ${issue}.`,
+        wcag: 'wcag2a (4.1.2 Name, Role, Value / 2.1.1 Keyboard)',
+        repro: `Buka ${screen} (${width}px), fokus ke tab lalu tekan ${step.key}.`,
+        file,
+        owner,
+        fixSuggestion: 'Pastikan navigasi panah kiri/kanan serta Home/End memindahkan fokus dan aria-selected secara sinkron.',
+        details: { step, state },
+      });
+    }
+    if (state.activeIdx !== step.expectedIdx || state.focusedIdx !== step.expectedIdx) {
+      recordFinding({
+        screen,
+        width,
+        problem: `Navigasi keyboard tabs (${step.desc}) mendarat di active=${state.activeIdx}, focused=${state.focusedIdx} (<${state.focusedTag}> "${state.focusedText}"), seharusnya active=${step.expectedIdx} dan fokus tetap di tab.`,
+        wcag: 'wcag2a (2.1.1 Keyboard / 4.1.2 Name, Role, Value)',
+        repro: `Buka ${screen} (${width}px), fokus ke tab aktif lalu tekan ${step.key}.`,
+        file,
+        owner,
+        fixSuggestion: 'Tangani ArrowLeft/ArrowRight/Home/End dengan memindahkan fokus ke tab tujuan dan cegah RouteFocus mencuri fokus ke <h1> saat hanya parameter tab di query string yang berubah.',
+        details: { step, state },
+      });
+      await tabs.nth(state.activeIdx >= 0 ? state.activeIdx : 0).focus();
+    }
+  }
+
+  // Pastikan Tab dari tab yang sedang aktif masuk ke tabpanel (panel itu sendiri atau kontrol pertama di dalamnya)
+  await tablist.locator('[role="tab"][aria-selected="true"]').focus();
+  await page.keyboard.press('Tab');
+  const panelReached = await page.evaluate(() => {
+    const panel = document.querySelector('section[aria-label="Rincian"] [role="tabpanel"]');
+    const active = document.activeElement;
+    return {
+      ok: Boolean(panel && active && (active === panel || panel.contains(active))),
+      activeTag: active?.tagName?.toLowerCase() ?? 'none',
+      activeText: active?.textContent?.trim().slice(0, 60) ?? '',
+    };
+  });
+  if (!panelReached.ok) {
+    recordFinding({
+      screen,
+      width,
+      problem: `Menekan Tab dari tab aktif tidak memindahkan fokus ke tabpanel (fokus jatuh ke <${panelReached.activeTag}> "${panelReached.activeText}").`,
+      wcag: 'wcag2a (2.1.1 Keyboard / 2.4.3 Focus Order)',
+      repro: `Buka ${screen} (${width}px), fokus ke tab aktif, lalu tekan Tab.`,
+      file,
+      owner,
+      fixSuggestion: 'Beri tabIndex={0} pada tabpanel atau pastikan elemen fokus berikutnya berada di dalam tabpanel.',
+      details: panelReached,
+    });
+  }
+}
+
 async function auditDialogBehavior({ page, screen, width, name, open, triggerLocator, runAxe = true }) {
   const { owner, file } = ownerAndFile(screen);
   await triggerLocator.scrollIntoViewIfNeeded().catch(() => {});
@@ -557,7 +713,7 @@ async function auditDialogBehavior({ page, screen, width, name, open, triggerLoc
       problem: `Setelah dialog "${name}" ditutup dengan Escape, fokus tidak kembali ke tombol pembuka (fokus jatuh ke <${escapeState.activeTag}> "${escapeState.activeText}").`,
       wcag: 'wcag2a (2.4.3 Focus Order)',
       repro: `Pada ${screen} (${width}px), klik pemicu untuk membuka dialog "${name}" lalu tekan Escape.`,
-      file: owner === 'Antigravity' ? file : 'web/src/hooks.tsx',
+      file: name.toLowerCase().includes('step-up') ? 'web/src/hooks.tsx' : file,
       owner,
       fixSuggestion: 'Pastikan Modal hanya dibuka dari elemen yang masih terpasang atau kembalikan fokus secara eksplisit saat dialog ditutup.',
       details: { dialog: name, ...escapeState },
@@ -1003,50 +1159,92 @@ try {
 
         const custCard = adminPage.locator('.data-row').filter({ hasText: custUsername });
         await custCard.getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
-        await adminPage.getByRole('heading', { name: custUsername, exact: true }).last().waitFor({ state: 'visible', timeout: 5_000 });
-        await auditScreen({ page: adminPage, screen: '/admin/pelanggan (detail)', width, viaRouteTransition: false, emptyData: false });
+        const detailSection = adminPage.locator('section[aria-label="Rincian"]');
+        await detailSection.getByRole('heading', { name: custUsername, exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
 
-        await adminPage.getByLabel('Jumlah kredit token').fill('10');
-        await adminPage.getByLabel('Referensi penjualan').fill('AUDIT-DLG-TOPUP');
-        const topupBtn = adminPage.getByRole('button', { name: 'Tambah saldo', exact: true });
+        await auditTabsBehavior(adminPage, '/admin/pelanggan (detail)', width);
+
+        // Tab 1: Ringkasan
+        await detailSection.getByRole('tab', { name: 'Ringkasan', exact: true }).click();
+        await waitSettled(adminPage);
+        await auditScreen({ page: adminPage, screen: '/admin/pelanggan (detail: Ringkasan)', width, viaRouteTransition: false, emptyData: false });
+
+        const suspendBtn = detailSection.getByRole('button', { name: 'Tangguhkan pelanggan', exact: true });
         await auditDialogBehavior({
           page: adminPage,
-          screen: '/admin/pelanggan (detail)',
-          width,
-          name: 'Konfirmasi tambah saldo',
-          triggerLocator: topupBtn,
-          open: () => topupBtn.click(),
-        });
-
-        const suspendBtn = adminPage.getByRole('button', { name: 'Tangguhkan pelanggan', exact: true });
-        await auditDialogBehavior({
-          page: adminPage,
-          screen: '/admin/pelanggan (detail)',
+          screen: '/admin/pelanggan (detail: Ringkasan)',
           width,
           name: 'Tangguhkan pelanggan',
           triggerLocator: suspendBtn,
           open: () => suspendBtn.click(),
         });
 
-        const adjForm = adminPage.locator('form').filter({ hasText: 'Koreksi saldo (kredit token)' });
+        // Tab 2: Saldo (tambah saldo + koreksi saldo)
+        await detailSection.getByRole('tab', { name: 'Saldo', exact: true }).click();
+        await waitSettled(adminPage);
+        await auditScreen({ page: adminPage, screen: '/admin/pelanggan (detail: Saldo)', width, viaRouteTransition: false, emptyData: false });
+
+        await detailSection.getByLabel('Jumlah kredit token').fill('10');
+        await detailSection.getByLabel('Referensi penjualan').fill('AUDIT-DLG-TOPUP');
+        const topupBtn = detailSection.getByRole('button', { name: 'Tambah saldo', exact: true });
+        await auditDialogBehavior({
+          page: adminPage,
+          screen: '/admin/pelanggan (detail: Saldo)',
+          width,
+          name: 'Konfirmasi tambah saldo',
+          triggerLocator: topupBtn,
+          open: () => topupBtn.click(),
+        });
+
+        const adjForm = detailSection.locator('form').filter({ hasText: 'Koreksi saldo (kredit token)' });
         await adjForm.getByLabel('Koreksi saldo (kredit token)').fill('2,5');
         await adjForm.getByLabel('Alasan').fill('Audit dialog koreksi saldo');
         const adjBtn = adjForm.getByRole('button', { name: 'Koreksi saldo', exact: true });
         await auditDialogBehavior({
           page: adminPage,
-          screen: '/admin/pelanggan (detail)',
+          screen: '/admin/pelanggan (detail: Saldo)',
           width,
           name: 'Konfirmasi koreksi saldo',
           triggerLocator: adjBtn,
           open: () => adjBtn.click(),
         });
 
+        // Tab 3: Pemakaian
+        await detailSection.getByRole('tab', { name: 'Pemakaian', exact: true }).click();
+        await waitSettled(adminPage);
+        await auditScreen({ page: adminPage, screen: '/admin/pelanggan (detail: Pemakaian)', width, viaRouteTransition: false, emptyData: false });
+
+        // Tab 4: Transaksi
+        await detailSection.getByRole('tab', { name: 'Transaksi', exact: true }).click();
+        await waitSettled(adminPage);
+        await auditScreen({ page: adminPage, screen: '/admin/pelanggan (detail: Transaksi)', width, viaRouteTransition: false, emptyData: false });
+
+        // Tab 5: API key
+        await detailSection.getByRole('tab', { name: 'API key', exact: true }).click();
+        await waitSettled(adminPage);
+        await auditScreen({ page: adminPage, screen: '/admin/pelanggan (detail: API key)', width, viaRouteTransition: false, emptyData: false });
+
+        const revokeKeyBtn = detailSection.getByRole('button', { name: 'Cabut API key', exact: true }).first();
+        if (await revokeKeyBtn.count()) {
+          await auditDialogBehavior({
+            page: adminPage,
+            screen: '/admin/pelanggan (detail: API key)',
+            width,
+            name: 'Konfirmasi pencabutan API key',
+            triggerLocator: revokeKeyBtn,
+            open: () => revokeKeyBtn.click(),
+          });
+        }
+
+        // Kembali ke daftar pelanggan sebelum membuka detail pelanggan ditangguhkan
+        await detailSection.getByRole('button', { name: 'Kembali ke daftar pelanggan', exact: true }).click();
         const suspendedCard = adminPage.locator('.data-row').filter({ hasText: suspendedUsername });
+        await suspendedCard.waitFor({ state: 'visible', timeout: 5_000 });
         await suspendedCard.getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
-        await adminPage.getByRole('heading', { name: suspendedUsername, exact: true }).last().waitFor({ state: 'visible', timeout: 5_000 });
+        await detailSection.getByRole('heading', { name: suspendedUsername, exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
         await auditScreen({ page: adminPage, screen: '/admin/pelanggan (detail ditangguhkan)', width, viaRouteTransition: false, emptyData: false });
 
-        const restoreBtn = adminPage.getByRole('button', { name: 'Pulihkan pelanggan', exact: true });
+        const restoreBtn = detailSection.getByRole('button', { name: 'Pulihkan pelanggan', exact: true });
         await auditDialogBehavior({
           page: adminPage,
           screen: '/admin/pelanggan (detail ditangguhkan)',
@@ -1055,6 +1253,7 @@ try {
           triggerLocator: restoreBtn,
           open: () => restoreBtn.click(),
         });
+        await detailSection.getByRole('button', { name: 'Kembali ke daftar pelanggan', exact: true }).click();
       }
 
       if (r.path === '/admin/kode') {

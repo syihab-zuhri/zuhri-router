@@ -356,3 +356,97 @@ Seluruh perintah dijalankan setelah `source .antigravity-env.sh`. Bukti tersimpa
 | `npx playwright test test/e2e/return-to.spec.ts --reporter=line` | **Dijalankan**; `8` lulus / `3` gagal (menunggu perbaikan Hermes) | Exit code `1`: `8 passed`, `3 failed` (bug `returnTo` di `hooks.tsx` & `catalogue.tsx` belum diperbaiki di `origin/main`) | [`web/evidence/antigravity-return-to.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-return-to.txt) |
 | `npx playwright test --reporter=line` (seluruh suite `web/`) | **Dijalankan**; `50` lulus / `3` gagal | Exit code `1`: `50 passed` (seluruh `account-admin` `2/2`, `account-customer` `2/2`, `admin-overview` `4/4`, `upstreams` `5/5`, dll. lulus), `3 failed` hanya pada `return-to.spec.ts` | [`web/evidence/antigravity-playwright-all.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-playwright-all.txt) |
 | `node scripts/a11y-audit.mjs` (`140` kombinasi layar-lebar) | **Dijalankan**; `0` temuan layar Antigravity, `6` temuan pra-ada milik Hermes | Exit code `1`: `/admin/ringkasan`, `/akun`, dan `/admin/akun` lulus `0` temuan; `6` temuan `h1` kosong saat error `500` pada `Shell` (`app.tsx` & `admin-packs.tsx`) masih menunggu perbaikan Hermes | [`web/evidence/antigravity-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-audit.txt), [`web/evidence/antigravity-audit.json`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/antigravity-audit.json) |
+
+---
+
+## Tugas lima — Tab detail pelanggan, verify-all.mjs, dan tahan banting Ringkasan (2026-11-16 larut malam)
+
+Cabang kerja: `antigravity/akun`, diawali `git pull --ff-only origin main` (`ba49f5c..204523f`). Probe awal `git commit --allow-empty` dan koneksi PostgreSQL `127.0.0.1:55432` lulus memakai `BypassSandbox: true`.
+
+### Bagian A — Menyesuaikan dua skrip verifikasi & audit dengan tab detail pelanggan
+
+- **Status**: **Ditulis, Dijalankan & Lulus/Terkumpul Temuan**, **Di-commit** (`3605931`).
+- **Berkas diubah**:
+  - [`web/scripts/admin-customers-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-customers-local-verify.mjs): Disesuaikan dengan detail pelanggan bertab (`Ringkasan`, `Saldo`, `Pemakaian`, `Transaksi`, `API key`) dengan mengeklik tombol tab sebelum tiap langkah verifikasi (saldo `+2,5` / `-1` serta tanda terima positif & negatif di tab `Saldo`, ringkasan saldo tersedia/tercatat di `Ringkasan`, ledger di `Transaksi`, daftar kunci di `API key`), tetap menjaga pembatasan parameter query ketat.
+    - Hasil: **Dijalankan & Lulus** (`admin-customers-local-verify: PASS (invite + activate + replay reject + conflict + suspend/restore admission + adjustments +2.5/-1 + idempotency + secret hygiene)`).
+  - [`web/scripts/a11y-audit.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/a11y-audit.mjs): Memperluas audit detail `/admin/pelanggan` pada kelima tab (`Ringkasan`, `Saldo`, `Pemakaian`, `Transaksi`, `API key`), dialog `Konfirmasi pencabutan API key`, serta menambah fungsi `auditTabsBehavior` (memeriksa `aria-selected`, `tabIndex`, `aria-controls`/`aria-labelledby` ke elemen yang ada, `ArrowRight`, `End`, `ArrowLeft`, `Home`, wrap-around awal/akhir, dan `Tab` dari tab aktif menuju `[role="tabpanel"]`).
+    - Hasil: **Dijalankan** (`148` kombinasi layar-lebar diaudit); **0 temuan** pada seluruh layar milik Antigravity (`/admin/ringkasan`, `/akun`, `/admin/akun`, halaman auth); exit code `1` karena **16 temuan baru pada tab detail milik Hermes** ([`web/evidence/verify-all/a11y-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/a11y-audit.txt) — 6 temuan pra-ada pada `Shell`/`admin-packs` sudah tidak muncul lagi setelah integrasi `204523f`). Sesuai batas tugas, kode Hermes tidak disentuh.
+
+#### Temuan baru pada layar Hermes (`/admin/pelanggan` detail, `a11y-audit.mjs`)
+
+Seluruh **16 temuan** berasal dari 3 akar masalah nyata (masing-masing muncul pada lebar `360px` dan `1280px`):
+
+1. **Temuan 1–6 (`360px`) & 9–14 (`1280px`) — `RouteFocus` mencuri fokus dari tab saat navigasi `ArrowRight` / `End` / `ArrowLeft` / `Home` (WCAG 2.1.1 / 4.1.2)**:
+   - Pergantian tab memperbarui `?tab=...` pada query string; `RouteFocus` di [`web/src/app.tsx#L30`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/app.tsx#L30) memantau `[location.pathname, location.search]`, sehingga memindahkan fokus ke `<h1>Pelanggan</h1>` (`focused=-1`) setiap tombol panah/Home/End ditekan alih-alih tetap di tab aktif (`Tab` dari tab aktif ke `[role="tabpanel"]` sudah lulus).
+   - Usulan perbaikan untuk Hermes: abaikan perubahan `location.search` (atau kecualikan perubahan query `tab`) di `RouteFocus` dan pastikan fokus berpindah ke tombol tab tujuan saat navigasi keyboard tabs.
+2. **Temuan 7 (`360px`, rasio `2.04` `#0f172a` di atas `#1e40af`) & 15 (`1280px`, rasio `2.06` `#0f172a` di atas `#1f41af`) — Kontras rendah saat hover pada tab aktif (WCAG 1.4.3 AA)**:
+   - Di [`web/src/styles.css#L22-L24`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/styles.css#L22-L24), `.customer-tabs [role="tab"][aria-selected="true"]:hover` hanya menimpa `color`, sementara aturan global tombol di baris `118` memberi latar biru tua (`--color-primary-hover`).
+   - Usulan perbaikan untuk Hermes: atur `background: transparent` (atau warna latar permukaan terang) pada `.customer-tabs [role="tab"][aria-selected="true"]:hover`.
+3. **Temuan 8 (`360px`) & 16 (`1280px`) — Fokus jatuh ke `<body>` saat dialog `Konfirmasi pencabutan API key` ditutup dengan `Escape` (WCAG 2.4.3 Focus Order)**:
+   - `CustomerKeyRevokeAction` di [`web/src/admin-customers.tsx#L87`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/admin-customers.tsx#L87) menyembunyikan tombol pemicu dengan `{!confirm && <Button ...>}` selama `Modal` terbuka, sehingga saat dialog ditutup elemen pemicu sudah lepas dari DOM dan fokus hilang ke `<body>`.
+   - Usulan perbaikan untuk Hermes: pertahankan tombol pemicu tetap terpasang di DOM (misalnya disabled/tersembunyi secara visual saja atau kembalikan fokus ke tombol/kontainer baris yang stabil) saat `Modal` ditutup.
+
+---
+
+### Bagian B — Satu perintah verifikasi `web/scripts/verify-all.mjs`
+
+- **Status**: **Ditulis & Dijalankan**, **Di-commit** (`c84868a`).
+- **Berkas baru**: [`web/scripts/verify-all.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/verify-all.mjs) (tanpa mengubah `package.json`).
+- **Perilaku & Cara Pakai**:
+  - Menjalankan seluruh langkah secara berurutan (tidak paralel agar port Vite/API tidak bertabrakan) dengan membaca konfigurasi port dan `TEST_DATABASE_URL` dari environment:
+    - `typecheck-server`, `typecheck-web`, `unit`, `playwright` (`CI=1`), `test-local`, semua `*-local-verify.mjs` yang ditemukan di `web/scripts/`, lalu `a11y-audit`.
+  - Karena `local-browser-verify.mjs` (`test-local`) mensyaratkan pathname database `/router_test`, `verify-all.mjs` menyesuaikan hanya pathname URL tersebut menjadi `/router_test` khusus untuk proses anak `test-local` sambil mempertahankan host, port, dan kredensial dari `TEST_DATABASE_URL`.
+  - Menyimpan keluaran lengkap tiap langkah ke `web/evidence/verify-all/<langkah>.txt` beserta metadata perintah, durasi, dan kode keluar.
+  - Mencetak tabel ringkas (`langkah | hasil | durasi`) dan keluar dengan kode `1` bila ada langkah yang gagal (tetap menjalankan langkah berikutnya agar seluruh hasil tercatat).
+  - Contoh penggunaan dari folder `web/` (setelah `source ../.antigravity-env.sh` atau env serupa aktif):
+    - Jalankan semua: `node scripts/verify-all.mjs`
+    - Lihat daftar langkah: `node scripts/verify-all.mjs --list`
+    - Jalankan langkah tertentu saja: `node scripts/verify-all.mjs --only typecheck-web,unit` (mendukung koma maupun pengulangan `--only a --only b`)
+    - Lewati langkah tertentu: `node scripts/verify-all.mjs --skip a11y-audit`
+
+---
+
+### Bagian C — Uji tahan banting layar Ringkasan (`/admin/ringkasan`)
+
+- **Status**: **Ditulis, Dijalankan & Lulus**, **Di-commit** (`263c984`).
+- **Berkas diubah**:
+  - [`web/src/admin-overview.tsx`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/admin-overview.tsx): Menambah validasi runtime `parseOverview` (`isRecord`, `isCount`, `isMicro`, validasi tanggal `generatedAt`) sebelum mengakses field respons `GET /admin/api/overview`. Bila ada field yang hilang atau bertipe salah (mis. `negativeAccounts` string atau `customers` tidak ada), layar tidak lagi melempar pengecualian di tengah render yang menyebabkan layar putih, melainkan merender `<ErrorBox>` dengan `h1` (`PageTitle`) tetap tampil dan tombol `Coba lagi` berfungsi.
+  - [`web/test/e2e/admin-overview.spec.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/admin-overview.spec.ts): Menambah uji ke-5 yang memverifikasi payload tanpa `customers`, `balances.negativeAccounts` bertipe string, `balances.postedMicro` bertipe angka, dan `generatedAt` tidak valid — semuanya menampilkan `PageTitle` (`h1`) + `ErrorBox` (`role="alert"`) tanpa `pageerror` lalu pulih setelah klik `Coba lagi` saat respons valid diterima.
+- **Verifikasi langsung Bagian C**: `npm run typecheck` lulus (`0` error) dan `npx playwright test test/e2e/admin-overview.spec.ts --reporter=line` lulus **5 passed (8.1s)**.
+
+---
+
+### Keluaran penuh `verify-all.mjs` setelah seluruh perubahan (Part A–C)
+
+Perintah: `source .antigravity-env.sh && cd web && node scripts/verify-all.mjs` (`BypassSandbox: true`, exit code `1` karena temuan pra-ada/baru pada tab Hermes di `a11y-audit`).
+
+```text
+langkah                      | hasil |  durasi
+-----------------------------+-------+--------
+typecheck-server             | lulus |   1.00s
+typecheck-web                | lulus |   1.20s
+unit                         | lulus |   1.34s
+playwright                   | lulus | 203.19s
+test-local                   | lulus |  11.88s
+account-local-verify         | lulus |  11.98s
+admin-catalog-local-verify   | lulus |  18.77s
+admin-customers-local-verify | lulus |  16.40s
+admin-overview-local-verify  | lulus |  12.17s
+portal-local-verify          | lulus |  12.88s
+a11y-audit                   | gagal | 143.53s
+
+Total: 10/11 lulus dalam 434.39s
+```
+
+- Bukti per langkah tersimpan lengkap di [`web/evidence/verify-all`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all) (termasuk [`playwright.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/playwright.txt), [`admin-customers-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-customers-local-verify.txt), dan [`a11y-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/a11y-audit.txt)):
+  - `typecheck-server`: exit `0`
+  - `typecheck-web`: exit `0`
+  - `unit`: `5/5` uji lulus (`fail 0`)
+  - `playwright`: `59 passed (3.4m)` (seluruh suite Playwright termasuk 5/5 `admin-overview.spec.ts`)
+  - `test-local`: `local-browser-verify: PASS`
+  - `account-local-verify`: `account-local-verify: PASS`
+  - `admin-catalog-local-verify`: `admin-catalog-local-verify: PASS (packs create/edit/deactivate + voucher issue/once/revoke + model draft/preview/publish/retire + upstream base_url_rejected/route + overdraft step-up)`
+  - `admin-customers-local-verify`: `admin-customers-local-verify: PASS (invite + activate + replay reject + conflict + suspend/restore admission + adjustments +2.5/-1 + idempotency + secret hygiene)`
+  - `admin-overview-local-verify`: `admin-overview-local-verify: PASS (real server overview metrics, negative warning, 360px, links)`
+  - `portal-local-verify`: `portal-local-verify: PASS (redeem SALE + replay/wrong reject + API key secret-once & revoke 401 + usage/ledger pagination + catalogue non-archived)`
+  - `a11y-audit`: exit `1` — `148` kombinasi layar-lebar diaudit, `0` temuan di layar Antigravity, `16` temuan khusus pada 3 masalah tab/dialog di layar Hermes (`/admin/pelanggan` detail).

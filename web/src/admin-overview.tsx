@@ -20,19 +20,53 @@ type OverviewData = {
   upstreams: { PENDING: number; ELIGIBLE: number; BLOCKED: number };
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isMicro(value: unknown): value is string {
+  return typeof value === 'string' && /^-?(0|[1-9][0-9]*)$/.test(value);
+}
+
+function parseOverview(raw: unknown): OverviewData | null {
+  if (!isRecord(raw)) return null;
+  if (typeof raw.generatedAt !== 'string' || Number.isNaN(Date.parse(raw.generatedAt))) return null;
+
+  const { customers, balances, activeVouchers, requests24h, unresolved, upstreams } = raw;
+  if (!isRecord(customers) || !isRecord(balances) || !isRecord(activeVouchers)) return null;
+  if (!isRecord(requests24h) || !isRecord(unresolved) || !isRecord(upstreams)) return null;
+
+  if (!isCount(customers.ACTIVE) || !isCount(customers.SUSPENDED) || !isCount(customers.CLOSED)) return null;
+  if (!isMicro(balances.postedMicro) || !isMicro(balances.heldMicro) || !isMicro(balances.positiveMicro)) return null;
+  if (!isCount(balances.negativeAccounts) || !isMicro(balances.negativeMicro)) return null;
+  if (!isCount(activeVouchers.count) || !isMicro(activeVouchers.amountMicro)) return null;
+  if (!isCount(requests24h.total) || !isCount(requests24h.failed) || !isCount(requests24h.estimated) || !isMicro(requests24h.debitMicro)) return null;
+  if (!isCount(unresolved.count) || !isMicro(unresolved.heldMicro)) return null;
+  if (!isCount(upstreams.PENDING) || !isCount(upstreams.ELIGIBLE) || !isCount(upstreams.BLOCKED)) return null;
+
+  return raw as OverviewData;
+}
+
 function formatCount(value: number): string {
   if (!Number.isSafeInteger(value) || value < 0) throw new Error('invalid_count');
   return grouped(String(value));
 }
 
 export function AdminOverviewPage() {
-  const overview = useResource<OverviewData>('/admin/api/overview');
+  const overview = useResource<unknown>('/admin/api/overview');
   const title = <PageTitle subtitle={ov.overviewSubtitle}>{ov.overviewTitle}</PageTitle>;
 
   if (overview.isPending) return <>{title}<Pending /></>;
   if (overview.isError) return <>{title}<ErrorBox error={overview.error} retry={() => { void overview.refetch(); }} /></>;
 
-  const data = overview.data;
+  const data = parseOverview(overview.data);
+  if (!data) {
+    return <>{title}<ErrorBox error={new Error('invalid_overview_payload')} retry={() => { void overview.refetch(); }} /></>;
+  }
   const hasNegative = data.balances.negativeAccounts > 0;
   const isAllZero =
     data.customers.ACTIVE === 0 &&
