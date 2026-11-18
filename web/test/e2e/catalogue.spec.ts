@@ -9,6 +9,8 @@ const models = [
 test('katalog pelanggan menampilkan multiplier ringkas atau tarif tiap kategori dari string desimal', async ({ page }) => {
   let payload = { models };
   await page.route('**/api/me', route => route.fulfill({ json: { username: 'katalog_uji', tenantStatus: 'ACTIVE', version: '1' } }));
+  await page.route('**/api/balance', route => route.fulfill({ json: { postedMicro: '0', heldMicro: '0', availableMicro: '0', currency: 'TOKEN' } }));
+  await page.route('**/api/keys?limit=1', route => route.fulfill({ json: { keys: [] } }));
   await page.route('**/api/models', route => route.fulfill({ json: payload }));
   await page.goto('/model-harga');
   await expect(page.getByRole('heading', { name: 'Model dan Harga', exact: true })).toBeVisible();

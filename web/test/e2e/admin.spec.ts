@@ -333,9 +333,12 @@ test('model dapat diarsipkan dan dipulihkan dengan step-up, daftar arsip dikenda
   await page.getByRole('dialog', { name: m.stepUp }).getByRole('button', { name: m.verify }).click();
   await expect(page.locator('.data-row').filter({ hasText: model.id })).toBeVisible();
   expect(reads).toContain('1');
+  // Each action is refused once for step-up and sent again after it: archive twice, then restore twice.
+  await expect.poll(() => writes.length).toBe(4);
   expect(writes).toEqual([
     { id: model.id, archived: true, expectedVersion: '3' },
     { id: model.id, archived: true, expectedVersion: '3' },
+    { id: model.id, archived: false, expectedVersion: '3' },
     { id: model.id, archived: false, expectedVersion: '3' },
   ]);
 });

@@ -9,10 +9,10 @@ const errors = [
   ['401 auth_invalid', 'Periksa API key. Secret hanya terlihat saat dibuat; buat key baru bila hilang.'],
   ['401 key_revoked', 'Key sudah dicabut. Buat key pengganti dari halaman API key.'],
   ['403 tenant_suspended', 'Hubungi admin tenant untuk memulihkan akses.'],
-  ['403 service_paused', 'Layanan sedang dijeda. Request baru ditolak dan saldo tidak berubah.'],
   ['404 model_not_available', 'Periksa ID model yang tersedia dan scope API key.'],
   ['402 insufficient_balance', 'Tukar kode redeem, lalu periksa saldo.'],
   ['429 limit_exceeded', 'Tunggu selama nilai Retry-After sebelum mengirim request baru.'],
+  ['503 service_paused', 'Layanan sedang dijeda admin. Tunggu selama nilai Retry-After lalu coba lagi; request yang sudah berjalan tidak terputus dan saldo tidak berubah.'],
   ['413 request_too_large', 'Kurangi ukuran input, lalu kirim request baru.'],
   ['400 invalid_request', 'Perbaiki request sesuai protokol yang digunakan.'],
 ] as const;

@@ -4,6 +4,7 @@ import { m } from '../../src/messages.ts';
 test('pemakaian memuat cursor dan menampilkan status estimasi serta hold', async ({ page }) => {
   const queries: string[] = [];
   await page.route('**/api/me', route => route.fulfill({ json: { username: 'uji', tenantStatus: 'ACTIVE', version: '1' } }));
+  await page.route('**/api/balance', route => route.fulfill({ json: { postedMicro: '0', heldMicro: '0', availableMicro: '0', currency: 'TOKEN' } }));
   await page.route('**/api/requests?*', route => {
     const url = new URL(route.request().url()); queries.push(url.search);
     return route.fulfill({ json: url.searchParams.has('before') ? {

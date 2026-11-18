@@ -202,3 +202,16 @@ Kedua endpoint kini ada di `main` (belum terpasang di zrouter.web.id). Kontrakny
 - `GET /admin/api/requests?username=&state=&model=&before=&limit=` mengembalikan `{ requests: [...], nextBefore }` dengan field persis seperti kontrak.
 
 Antigravity dan Hermes boleh beralih dari mock ke server nyata.
+
+## 2026-11-18 malam: Tahap enam Hermes digabung
+
+Hermes mengerjakan butir 1 (daftar request lintas pelanggan di `/admin/rekonsiliasi`), 2 (Panduan), 3 (fokus sesudah login lewat `MutationObserver` di `RouteFocus`) dan 4 (mock), tetapi tidak menulis log, tidak menambah test untuk butir 1 dan 3, dan kodenya tidak lolos typecheck. Claude memperbaiki dan melengkapi:
+
+- `admin-operations.tsx`: impor `grouped` yang hilang; fungsi `requestStateLabel` yang tidak dipakai dihapus.
+- `guide.tsx`: `service_paused` adalah HTTP 503 (bukan 403), dengan `Retry-After`; request yang berjalan tidak terputus.
+- `RouteFocus`: halaman di luar `Shell` (masuk, aktivasi, 404, error) tidak punya `main#main`; kini memakai `main` pertama sebagai cadangan, sehingga judul halaman masuk tetap mendapat fokus.
+- `admin-requests.spec.ts` (baru): baris, badge, alasan, filter (termasuk `RESOLVED`), paginasi, tautan ke pelanggan, 360 px; dan fokus judul sesudah `Shell` selesai memuat serta di halaman masuk.
+- `return-to.spec.ts`: mock `GET /admin/api/requests` (halaman rekonsiliasi kini memanggilnya). `admin.spec.ts`: test arsip model menunggu kiriman ulang sesudah step-up (empat kiriman, bukan tiga); sebelumnya lulus hanya karena waktu.
+- Cache `web/node_modules/.vite` di folder utama dibersihkan: optimasi dependensi yang terputus (`deps_temp_*`) membuat Vite memuat ulang di tengah test.
+
+Bukti: typecheck, unit, Playwright 69/69 (test arsip 3/3 sesudah perbaikan), `test-local`, `test-browser`, enam skrip server nyata PASS, audit aksesibilitas 0 temuan. Belum terpasang; menunggu layar kill switch Antigravity.

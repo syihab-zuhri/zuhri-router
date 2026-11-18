@@ -30,12 +30,27 @@ function Navigation({ admin, close }: { admin: boolean; close?: () => void }) {
 function RouteFocus() {
   const location = useLocation();
   useEffect(() => {
-    const timer = requestAnimationFrame(() => {
-      // Switching tabs only changes the query string; focus stays on the tab the user moved to.
-      if (document.activeElement?.closest('[role="tablist"]')) return;
-      (document.querySelector<HTMLElement>('h1') ?? document.querySelector<HTMLElement>('main#main'))?.focus();
-    });
-    return () => cancelAnimationFrame(timer);
+    const initialFocus = document.activeElement;
+    let timer = 0;
+    const focusReadyHeading = () => {
+      const active = document.activeElement;
+      if (active?.closest('[role="tablist"]')) return true;
+      if (active !== initialFocus && active !== document.body && active !== document.documentElement) return true;
+      const main = document.querySelector<HTMLElement>('main#main') ?? document.querySelector<HTMLElement>('main');
+      const heading = main?.querySelector<HTMLElement>('h1');
+      if (!main || !heading || main.getAttribute('aria-busy') === 'true' || main.querySelector('[aria-busy="true"]')) return false;
+      heading.focus();
+      return document.activeElement === heading;
+    };
+    const tryFocus = () => {
+      timer = requestAnimationFrame(() => {
+        if (focusReadyHeading()) observer.disconnect();
+      });
+    };
+    const observer = new MutationObserver(tryFocus);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-busy'] });
+    tryFocus();
+    return () => { cancelAnimationFrame(timer); observer.disconnect(); };
   }, [location.key]);
   return null;
 }

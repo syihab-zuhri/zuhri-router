@@ -7,6 +7,8 @@ test('upstream tidak mengisi ulang key dan perubahan URL meminta key baru', asyn
   const writes: Record<string, unknown>[] = [];
   let status = 'PENDING';
   await page.route('**/admin/api/packs', route => route.fulfill({ json: { packs: [] } }));
+  await page.route('**/admin/api/models', route => route.fulfill({ json: { models: [{ id: modelId, displayName: 'Model uji', version: '1', sellable: false, draft: null, published: null }] } }));
+  await page.route('**/admin/api/routes**', route => route.fulfill({ json: { routes: [] } }));
   await page.route('**/admin/api/upstreams', route => route.fulfill({ json: { upstreams: [{ ...upstream, status }] } }));
   await page.route(`**/admin/api/upstreams/${id}`, async route => {
     writes.push(route.request().postDataJSON());

@@ -88,7 +88,11 @@ dd { margin: var(--zero) var(--zero) var(--space-2); overflow-wrap: anywhere; }
 .badge[data-status="PROMO"] { color: var(--color-accent-text); background: var(--color-accent-bg); }
 .badge[data-status="ELIGIBLE"] { color: var(--color-success-text); background: var(--color-success-bg); }
 .badge[data-status="PENDING"], .badge[data-status="DRAFT"] { color: var(--color-warning-text); background: var(--color-warning-bg); }
-.badge[data-status="BLOCKED"], .badge[data-status="RETIRED"] { color: var(--color-danger-text); background: var(--color-danger-bg); }
+.badge[data-status="BLOCKED"], .badge[data-status="RETIRED"], .badge[data-status="FAILED"], .badge[data-status="REJECTED"] { color: var(--color-danger-text); background: var(--color-danger-bg); }
+.badge[data-status="ADMITTED"], .badge[data-status="STREAMING"] { color: var(--color-info-text); background: var(--color-info-bg); }
+.badge[data-status="COMPLETED"], .badge[data-status="SETTLED"], .badge[data-status="RESOLVED"] { color: var(--color-success-text); background: var(--color-success-bg); }
+.badge[data-status="CANCELLED"] { color: var(--color-neutral-text); background: var(--color-neutral-bg); }
+.badge[data-status="SETTLED_ESTIMATED"], .badge[data-status="UNRESOLVED"] { color: var(--color-warning-text); background: var(--color-warning-bg); }
 .guide-code { font-family: var(--font-mono); overflow-wrap: anywhere; padding: var(--space-2) var(--space-3); background: var(--color-surface-muted); border-radius: var(--radius-control); }
 .protocol-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .model-multiplier { font-weight: var(--weight-bold); font-variant-numeric: tabular-nums; }

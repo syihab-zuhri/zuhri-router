@@ -98,6 +98,7 @@ async function mockAdminApi(page: Page, isSignedIn: () => boolean, onSecondFacto
     if (path === '/admin/api/routes') return route.fulfill({ json: { routes: [] } });
     if (path === '/admin/api/overview') return route.fulfill({ json: { generatedAt: '2026-11-16T00:00:00.000Z', customers: { ACTIVE: 0, SUSPENDED: 0, CLOSED: 0 }, balances: { postedMicro: '0', heldMicro: '0', positiveMicro: '0', negativeAccounts: 0, negativeMicro: '0' }, activeVouchers: { count: 0, amountMicro: '0' }, requests24h: { total: 0, failed: 0, estimated: 0, debitMicro: '0' }, unresolved: { count: 0, heldMicro: '0' }, upstreams: { PENDING: 0, ELIGIBLE: 0, BLOCKED: 0 } } });
     if (path === '/admin/api/requests/unresolved') return route.fulfill({ json: { requests: [] } });
+    if (path === '/admin/api/requests') return route.fulfill({ json: { requests: [], nextBefore: null } });
     if (path === '/admin/api/settings/overdraft') return route.fulfill({ json: { overdraftMicro: '0' } });
     if (path === '/admin/api/audit') {
       return route.fulfill({
