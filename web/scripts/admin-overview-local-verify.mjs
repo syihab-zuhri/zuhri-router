@@ -15,6 +15,7 @@ import * as upstreams from '../../server/src/upstreams.ts';
 import * as vouchers from '../../server/src/vouchers.ts';
 import { totpAt, totpStep } from '../../server/src/crypto.ts';
 import { DB_URL } from '../../server/test/helpers.ts';
+import { m, ov } from '../src/messages.ts';
 
 const apiPort = Number(process.env.VERIFY_API_PORT ?? 55491);
 const webPort = Number(process.env.VERIFY_WEB_PORT ?? 5185);
@@ -257,18 +258,18 @@ try {
 
   const step = await safeTotpStep();
   await page.goto(`${webBase}/admin/masuk`, { waitUntil: 'networkidle' });
-  await page.getByLabel('Username atau email').fill(adminUsername);
-  await page.getByLabel('Password', { exact: true }).fill(adminPassword);
-  await page.getByRole('button', { name: 'Masuk', exact: true }).click();
-  await expectVisible(page.getByLabel('Kode autentikator', { exact: true }), 'Input 2FA tidak tampil');
-  await page.getByLabel('Kode autentikator', { exact: true }).fill(totpAt(totpSeed, step));
-  await page.getByRole('button', { name: 'Verifikasi kode', exact: true }).click();
-  await expectVisible(page.getByRole('heading', { name: 'Pelanggan', exact: true }), 'Login admin gagal');
+  await page.getByLabel(m.identifier).fill(adminUsername);
+  await page.getByLabel(m.password, { exact: true }).fill(adminPassword);
+  await page.getByRole('button', { name: m.login, exact: true }).click();
+  await expectVisible(page.getByLabel(m.code, { exact: true }), 'Input 2FA tidak tampil');
+  await page.getByLabel(m.code, { exact: true }).fill(totpAt(totpSeed, step));
+  await page.getByRole('button', { name: m.verify, exact: true }).click();
+  await expectVisible(page.getByRole('heading', { name: m.customers, exact: true }), 'Login admin gagal');
 
   // Buka /admin/ringkasan lewat Menu di 360px
-  await page.getByRole('button', { name: 'Menu', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Menu' }).getByRole('link', { name: 'Ringkasan', exact: true }).click();
-  await expectVisible(page.getByRole('heading', { name: 'Ringkasan Operasi', exact: true }), 'Halaman Ringkasan Operasi tidak terbuka');
+  await page.getByRole('button', { name: m.menu, exact: true }).click();
+  await page.getByRole('dialog', { name: m.menu }).getByRole('link', { name: ov.overview, exact: true }).click();
+  await expectVisible(page.getByRole('heading', { name: ov.overviewTitle, exact: true }), 'Halaman Ringkasan Operasi tidak terbuka');
 
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Terdapat gulir horizontal di 360px');
 
@@ -293,44 +294,44 @@ try {
 
   const metricText = async (heading) => (await page.locator('section.metric', { hasText: heading }).innerText()).replace(/\s+/g, ' ').trim();
 
-  const custText = await metricText('Pelanggan');
-  assert.ok(custText.includes('Aktif 1') && custText.includes('Ditangguhkan 1') && custText.includes('Ditutup 0'), `Kartu pelanggan tidak cocok: ${custText}`);
+  const custText = await metricText(ov.customersCard);
+  assert.ok(custText.includes(`${ov.activeCustomers} 1`) && custText.includes(`${ov.suspendedCustomers} 1`) && custText.includes(`${ov.closedCustomers} 0`), `Kartu pelanggan tidak cocok: ${custText}`);
 
-  const totalText = await metricText('Total saldo tercatat');
-  assert.ok(totalText.includes('9,25') && totalText.includes('Saldo positif 9,5'), `Kartu total saldo tidak cocok: ${totalText}`);
+  const totalText = await metricText(ov.totalBalanceCard);
+  assert.ok(totalText.includes('9,25') && totalText.includes(`${ov.positiveBalanceLabel} 9,5`), `Kartu total saldo tidak cocok: ${totalText}`);
 
-  const heldText = await metricText('Saldo ditahan');
+  const heldText = await metricText(ov.heldBalanceCard);
   assert.ok(heldText.includes('0,75'), `Kartu saldo ditahan tidak cocok: ${heldText}`);
 
-  const negCard = page.locator('section.metric', { hasText: 'Akun bersaldo minus' });
+  const negCard = page.locator('section.metric', { hasText: ov.negativeAccountsCard });
   const negClass = (await negCard.getAttribute('class')) ?? '';
   assert.ok(negClass.includes('metric-warning'), 'Kartu akun bersaldo minus harus memiliki kelas peringatan');
   const negText = (await negCard.innerText()).replace(/\s+/g, ' ').trim();
-  assert.ok(negText.includes('Perlu perhatian') && negText.includes('1') && negText.includes('-0,25'), `Kartu akun minus tidak cocok: ${negText}`);
+  assert.ok(negText.includes(ov.negativeAccountsAttention) && negText.includes('1') && negText.includes('-0,25'), `Kartu akun minus tidak cocok: ${negText}`);
 
-  const voucherText = await metricText('Kode aktif belum ditukar');
-  assert.ok(voucherText.includes('1') && voucherText.includes('50 kredit token'), `Kartu kode aktif tidak cocok: ${voucherText}`);
+  const voucherText = await metricText(ov.activeVouchersCard);
+  assert.ok(voucherText.includes('1') && voucherText.includes(`50 ${m.credits}`), `Kartu kode aktif tidak cocok: ${voucherText}`);
 
-  const reqText = await metricText('Request 24 jam');
-  assert.ok(reqText.includes('0,5') && reqText.includes('Total request 3') && reqText.includes('Gagal 1') && reqText.includes('Estimasi 1'), `Kartu request 24 jam tidak cocok: ${reqText}`);
+  const reqText = await metricText(ov.requests24hCard);
+  assert.ok(reqText.includes('0,5') && reqText.includes(`${ov.requestsTotal} 3`) && reqText.includes(`${ov.requestsFailed} 1`) && reqText.includes(`${ov.requestsEstimated} 1`), `Kartu request 24 jam tidak cocok: ${reqText}`);
 
-  const unresText = await metricText('Request menunggu keputusan');
+  const unresText = await metricText(ov.unresolvedCard);
   assert.ok(unresText.includes('1') && unresText.includes('0,75'), `Kartu unresolved tidak cocok: ${unresText}`);
 
-  const upText = await metricText('Upstream aktif (non-arsip)');
-  assert.ok(upText.includes('Menunggu tinjauan 1') && upText.includes('Layak 0') && upText.includes('Diblokir 0'), `Kartu upstream tidak cocok: ${upText}`);
+  const upText = await metricText(ov.upstreamsCard);
+  assert.ok(upText.includes(`${m.stateText.PENDING} 1`) && upText.includes(`${m.stateText.ELIGIBLE} 0`) && upText.includes(`${m.stateText.BLOCKED} 0`), `Kartu upstream tidak cocok: ${upText}`);
 
-  await expectVisible(page.getByText('Angka biaya upstream, margin, dan kill switch belum tersedia dari server.'), 'Catatan biaya belum tersedia tidak tampil');
-  await expectVisible(page.getByText('Diperbarui pada:', { exact: false }), 'Waktu generatedAt tidak tampil');
+  await expectVisible(page.getByText(ov.costUnavailableNote), 'Catatan biaya belum tersedia tidak tampil');
+  await expectVisible(page.getByText(`${ov.generatedAt}:`, { exact: false }), 'Waktu generatedAt tidak tampil');
 
   // Uji tautan ke /admin/rekonsiliasi dan /admin/upstream
-  await page.getByRole('link', { name: 'Buka Request dan Rekonsiliasi', exact: true }).click();
-  await expectVisible(page.getByRole('heading', { name: 'Request belum diputuskan', exact: true }), 'Tautan ke /admin/rekonsiliasi gagal');
+  await page.getByRole('link', { name: ov.openUnresolved, exact: true }).click();
+  await expectVisible(page.getByRole('heading', { name: m.unresolved, exact: true }), 'Tautan ke /admin/rekonsiliasi gagal');
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.locator('aside.desktop-nav nav').getByRole('link', { name: 'Ringkasan', exact: true }).click();
-  await expectVisible(page.getByRole('heading', { name: 'Ringkasan Operasi', exact: true }), 'Kembali ke /admin/ringkasan gagal');
-  await page.getByRole('link', { name: 'Buka Upstream dan Route', exact: true }).click();
-  await expectVisible(page.getByRole('heading', { name: 'Upstream dan Route', exact: true }), 'Tautan ke /admin/upstream gagal');
+  await page.locator('aside.desktop-nav nav').getByRole('link', { name: ov.overview, exact: true }).click();
+  await expectVisible(page.getByRole('heading', { name: ov.overviewTitle, exact: true }), 'Kembali ke /admin/ringkasan gagal');
+  await page.getByRole('link', { name: ov.openUpstreams, exact: true }).click();
+  await expectVisible(page.getByRole('heading', { name: m.upstreams, exact: true }), 'Tautan ke /admin/upstream gagal');
 
   assert.deepEqual(pageErrors, [], `Terdapat pageerror: ${pageErrors.join('; ')}`);
   assert.deepEqual(serverErrors, [], `Terdapat server error 5xx: ${serverErrors.join('; ')}`);
