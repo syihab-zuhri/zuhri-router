@@ -76,6 +76,7 @@ Jangan mengarang props, memasang dependency yang tidak kompatibel, memakai atau 
 Nilai visual hanya dari token. Implementasikan state yang berlaku, aksesibilitas, responsive dan reduced motion. Hasil aksi keuangan tidak ditampilkan secara optimistis dan tidak lewat toast.
 Arah visual: anime editorial digabung dengan design system (`docs/DESIGN.md` section 11). Hanya aset ilustrasi yang tercatat pada daftar aset dengan hak pakai yang jelas yang boleh masuk repo. Jangan memakai, mengunduh, atau membuat tiruan karakter dari anime, game, atau karya pihak lain; `Portrait Version.jpg` di root hanya acuan gaya dan tidak ikut dibangun. Bila aset belum ada, pakai placeholder geometris.
 Laporkan bukti verifikasi dan sisa gap.
+Skill `modern-web-guidance` (Google Chrome, lisensi Apache-2.0, salinan di `.claude/skills/`, `.agents/skills/` dan `.hermes/skills/`, commit sumber terkunci di `skills-lock.json`) boleh dipakai sebagai referensi tambahan untuk API web modern dan aksesibilitas. Bila isinya bertentangan dengan dokumen proyek atau UIArc, dokumen proyek yang berlaku; skill ini bukan izin menambah dependency atau polyfill. Jalankan perintahnya dengan `DISABLE_TELEMETRY=1` dan jangan memasukkan nama produk, rute atau data proyek ke kueri pencarian.
 
 ## Stack
 
