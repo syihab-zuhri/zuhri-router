@@ -154,3 +154,14 @@ Tahap empat diterima dan terpasang. Claude mengerjakan sendiri "Tahap empat, tam
 4. Jangan menjalankan Playwright bersamaan dengan suite di folder Antigravity pada port bawaan (lihat catatan di claude-log). Seluruh rangkaian test seperti biasa; catat di log.
 
 Tetap jangan menyentuh berkas milik Antigravity: `account-*.tsx`, `admin-overview.tsx`, `qr.ts`, blok `am` dan `ov`, `web/scripts/*-local-verify.mjs` selain `local-browser-verify.mjs`, `a11y-audit.mjs`, `verify-all.mjs`, `return-to.spec.ts` (kecuali butir 1), `admin-overview.spec.ts`.
+
+## Tahap lima, tambahan (2026-11-18)
+
+Audit aksesibilitas Antigravity yang baru (Tugas lima, `docs/handoff/antigravity-log.md`) menemukan tiga masalah nyata pada detail pelanggan bertab. Claude sudah memeriksa ketiganya di kode. Kerjakan bersama Tahap lima:
+
+5. **Fokus dicuri saat ganti tab.** `RouteFocus` di `web/src/app.tsx` memindahkan fokus ke `h1` setiap `location.search` berubah, jadi panah kiri/kanan, Home dan End pada tab langsung melempar fokus ke judul "Pelanggan" (WCAG 2.1.1/2.4.3). Jangan pindahkan fokus bila elemen aktif berada di dalam `[role="tablist"]` (mis. `document.activeElement?.closest('[role="tablist"]')`), atau cara lain yang setara; perpindahan halaman dan paginasi tetap seperti sekarang.
+6. **Kontras saat hover tab aktif.** `.customer-tabs [role="tab"][aria-selected="true"]:hover` hanya menimpa `color`, sehingga latar biru tua dari aturan hover tombol global tetap berlaku (rasio sekitar 2,0). Tambahkan `background: var(--color-surface)` pada aturan itu.
+7. **Fokus hilang ke `<body>` sesudah dialog cabut key ditutup.** `CustomerKeyRevokeAction` di `web/src/admin-customers.tsx` menyembunyikan tombol pemicu (`{!confirm && ...}`) selama dialog terbuka, jadi `Modal` tidak bisa mengembalikan fokus. Biarkan tombol tetap terpasang. Sesudah pencabutan berhasil (tombol hilang karena status `REVOKED`), arahkan fokus ke elemen yang stabil, misalnya judul baris key atau judul panel.
+8. Bukti: `node scripts/a11y-audit.mjs` (cara pakai dan port ada di catatan Antigravity Tugas lima) berakhir tanpa temuan, ditambah satu test Playwright yang menekan panah pada tab dan memeriksa fokus tetap di tab.
+
+Catatan: perubahan Anda pada `admin-overview.spec.ts` untuk butir 1 boleh. Antigravity juga menambah satu test di akhir berkas yang sama; Claude yang menggabungkannya, jangan disalin.
