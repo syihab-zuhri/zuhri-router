@@ -13,6 +13,7 @@ import { systemResolver, type Resolver } from '../netguard.ts';
 import { registerStatic } from './static.ts';
 import { creditsToMicro } from '../money.ts';
 import { overview } from '../overview.ts';
+import { listAudit } from '../audit.ts';
 import { gatewayState, listAllRequests, parseGatewayChange, setGatewayPaused } from '../control.ts';
 
 export type AppDeps = { db: Db; key: Buffer; mailer: identity.Mailer; secureCookies: boolean; logger?: boolean; resolveHost?: Resolver; gateway?: Partial<GatewayDeps>;
@@ -325,10 +326,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
   app.get('/admin/api/audit', async req => {
     admin.requireAdmin(await adminSession(req));
-    const q = req.query as { before?: string };
-    const before = q.before && /^[0-9]+$/.test(q.before) ? q.before : null;
-    const rows = (await db.query('select id, actor_user, actor_kind, action, target_type, target_id, summary, created_at from audit_event where ($1::bigint is null or id < $1::bigint) order by id desc limit 50', [before])).rows;
-    return { events: rows.map(r => ({ id: String(r.id), actorUser: r.actor_user, actorKind: r.actor_kind, action: r.action, targetType: r.target_type, targetId: r.target_id, summary: r.summary, createdAt: r.created_at.toISOString() })) };
+    return listAudit(db, req.query as Record<string, unknown>);
   });
 
   if (deps.webDist) registerStatic(app, deps.webDist);

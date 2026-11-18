@@ -11,6 +11,7 @@ Source: SCR-014 (kill switch, TASK-018) dan SCR-017 (daftar request lintas tenan
 
 - Kill switch: `GET/POST /admin/api/settings/gateway`. Menjeda butuh step-up dan alasan; request baru ke tiga permukaan inference dijawab 503 `service_paused` dengan `Retry-After: 60` sesudah key diperiksa dan sebelum hold; `/v1/models` dan request yang sedang berjalan tidak terpengaruh. Audit dan pemberitahuan Telegram untuk jeda dan lanjut; `/admin/api/overview` memuat keadaannya.
 - `GET /admin/api/requests`: metadata request semua pelanggan dengan filter username, state dan model, terbaru dulu dengan kursor. Filter state menerima juga `RESOLVED` (state sesudah admin memutuskan request unresolved), yang tidak ada di daftar kontrak awal.
+- `GET /admin/api/audit` (SCR-018): filter awalan aksi, username pelaku, jenis dan ID target; tiap event kini membawa `actorUsername` dan respons membawa `nextBefore`. Test `server/test/audit.test.ts`; suite server 144/144.
 - Migrasi 014: kolom `note` pada `system_setting`, baris `gateway_paused`, indeks `request (created_at desc, id)`.
 - Bukti: `server/test/control.test.ts` (3 test) dan klasifikasi tiga rute baru di `route-matrix.test.ts`; suite server 143/143.
 
