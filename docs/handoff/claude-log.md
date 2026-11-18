@@ -174,3 +174,9 @@ Claude mengambil alih sisa perbaikan agar tidak menunggu satu putaran Hermes lag
 Dijalankan pada pohon yang sama persis dengan `main`: typecheck, 5 unit, Playwright 58/58 (dua yang gagal pada run penuh lulus saat diulang: satu daftar test yang Claude lupa perbarui, satu timeout saat jaringan WSL berubah), `test:local`, `account-local-verify`, `admin-overview-local-verify`, `portal-local-verify`, `admin-catalog-local-verify`: PASS. **Belum lulus**: `admin-customers-local-verify` dan `a11y-audit`, karena kedua skrip masih mengikuti tata letak detail pelanggan lama (tanpa tab); bukan bug produk. Diserahkan ke Antigravity (tugas lima).
 
 Catatan untuk semua agen: jangan menjalankan suite Playwright dua folder bersamaan di port bawaan; Hermes melihat kegagalan palsu karena itu.
+
+## 2026-11-18
+
+Founder meminta skill `modern-web-guidance` dipasang di proyek. Paket npm `modern-web-guidance@1.0.1` (GoogleChrome, Apache-2.0) diperiksa dulu: perintah `install` hanya memanggil `npx skills add GoogleChrome/modern-web-guidance` (vercel-labs `skills@1.9.0`). Dipasang dengan `--copy` untuk Claude Code, Antigravity dan Hermes Agent: 211 berkas Markdown per salinan, tanpa skrip, sama persis dengan salinan uji di folder kosong. Skill memanggil `npx modern-web-guidance@latest search/retrieve` yang mengirim telemetri anonim termasuk teks kueri ke Google; aturan di `AGENTS.md` meminta `DISABLE_TELEMETRY=1` dan kueri generik.
+
+Antigravity Tugas lima diterima (A: dua skrip mengikuti tab; B: `web/scripts/verify-all.mjs`; C: Ringkasan tahan data rusak). Run ulang `verify-all.mjs` di cabang integrasi: 9/11. Playwright 58/59, satu yang gagal (`portal.spec.ts:5`) lulus 3 kali berturut-turut saat diulang sendiri, jadi flaky di bawah beban; `a11y-audit` 16 temuan dari tiga masalah nyata di detail pelanggan bertab, diserahkan ke Hermes sebagai "Tahap lima, tambahan".
