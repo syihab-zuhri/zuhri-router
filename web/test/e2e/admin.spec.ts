@@ -119,6 +119,8 @@ test('terbit kode memerlukan konfirmasi dan secret hilang setelah panel ditutup'
   await expect(confirmation).toContainText('100.000.000');
   await confirmation.getByRole('button', { name: m.issueVoucher }).click();
   await expect(page.getByText(secret, { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: m.voucherSecretTitle })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: m.secretTitle })).toHaveCount(0);
   expect(issued[0]).toMatchObject({ kind: 'SALE', saleRef: 'penjualan-kode', packId: pack.id, recipientUsername: null, expiresAt: null });
   expect(issued[0].tokens).toBeUndefined();
   expect(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage, location.href]))).not.toContain(secret);

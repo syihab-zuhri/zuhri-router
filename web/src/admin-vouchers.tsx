@@ -83,7 +83,7 @@ export function VouchersPage() {
         <div className="actions"><Button type="button" className="secondary" autoFocus disabled={action.busy} onClick={close}>{m.cancel}</Button><Button className="danger-button" busy={action.busy}>{m.revokeVoucher}</Button></div>
       </form>
     </Modal>}
-    {secret && <SecretReveal secret={secret} onClose={() => setSecret(null)} />}
+    {secret && <SecretReveal kind="voucher" secret={secret} onClose={() => setSecret(null)} />}
     {action.dialog}
   </>;
 }

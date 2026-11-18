@@ -40,10 +40,15 @@ export function Modal({ title, children, onClose, busy = false }: { title: strin
   useEffect(() => { const previous = document.activeElement; const node = ref.current; node?.showModal(); return () => { node?.close(); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); }; }, []);
   return <dialog ref={ref} aria-labelledby={titleId} onCancel={e => { e.preventDefault(); if (!busy) onClose(); }}><h2 id={titleId}>{title}</h2>{children}</dialog>;
 }
-export function SecretReveal({ secret, onClose }: { secret: string; onClose: () => void }) {
+const secretCopy = {
+  key: { title: m.secretTitle, warning: m.secretWarning, discardQuestion: m.discardSecret, discard: m.discard },
+  voucher: { title: m.voucherSecretTitle, warning: m.voucherSecretWarning, discardQuestion: m.voucherDiscardSecret, discard: m.voucherDiscard },
+};
+export function SecretReveal({ secret, onClose, kind = 'key' }: { secret: string; onClose: () => void; kind?: keyof typeof secretCopy }) {
+  const copy = secretCopy[kind];
   const [feedback, setFeedback] = useState(''); const [discard, setDiscard] = useState(false); const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { ref.current?.focus(); const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); }; window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn); }, []);
-  return <Modal title={m.secretTitle} onClose={() => setDiscard(true)}><div ref={ref} tabIndex={-1}><Alert>{m.secretWarning}</Alert><pre className="secret">{secret}</pre><div className="actions"><Button onClick={async () => { try { await navigator.clipboard.writeText(secret); setFeedback(m.copied); } catch { setFeedback(m.copyFailed); } }}>{m.copy}</Button><Button className="secondary" onClick={onClose}>{m.copiedDone}</Button></div>{feedback && <Alert>{feedback}</Alert>}{discard && <Alert danger><p>{m.discardSecret}</p><Button className="secondary" onClick={() => setDiscard(false)}>{m.cancel}</Button><Button className="danger-button" onClick={onClose}>{m.discard}</Button></Alert>}</div></Modal>;
+  return <Modal title={copy.title} onClose={() => setDiscard(true)}><div ref={ref} tabIndex={-1}><Alert>{copy.warning}</Alert><pre className="secret">{secret}</pre><div className="actions"><Button onClick={async () => { try { await navigator.clipboard.writeText(secret); setFeedback(m.copied); } catch { setFeedback(m.copyFailed); } }}>{m.copy}</Button><Button className="secondary" onClick={onClose}>{m.copiedDone}</Button></div>{feedback && <Alert>{feedback}</Alert>}{discard && <Alert danger><p>{copy.discardQuestion}</p><Button className="secondary" onClick={() => setDiscard(false)}>{m.cancel}</Button><Button className="danger-button" onClick={onClose}>{copy.discard}</Button></Alert>}</div></Modal>;
 }
 export type ReceiptData = { amountMicro: string; postedMicro?: string; postedAfterMicro?: string; redemptionId?: string; entryId?: string; redeemedAt?: string; replayed?: boolean };
 export function Receipt({ value, kind = 'redeem' }: { value: ReceiptData; kind?: 'redeem' | 'topup' | 'adjustment' }) {

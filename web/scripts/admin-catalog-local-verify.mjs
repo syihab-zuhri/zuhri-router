@@ -313,7 +313,7 @@ try {
 
   await completeStepUpDialog(adminPage, totpSeed, usedSecrets, 'issue-voucher');
 
-  const voucherSecretModal = adminPage.getByRole('dialog', { name: 'Salin secret sekarang' });
+  const voucherSecretModal = adminPage.getByRole('dialog', { name: 'Salin kode redeem ini sekarang' });
   await expectVisible(voucherSecretModal, 'Modal kode redeem sekali tampil tidak terbuka');
   const rawVoucherCode = (await voucherSecretModal.locator('pre.secret').textContent())?.trim() ?? '';
   assert.match(rawVoucherCode, /^ZR-[A-Z0-9]{5}-[A-Z0-9]{7}-[A-Z0-9]{7}-[A-Z0-9]{7}$/, 'Format kode redeem tidak valid');
@@ -477,7 +477,7 @@ try {
   await adminPage.locator('aside.desktop-nav nav').getByRole('link', { name: 'Batas lebih-pakai', exact: true }).click();
   await expectVisible(adminPage.getByRole('heading', { name: 'Batas lebih-pakai', exact: true }), 'Halaman Batas lebih-pakai gagal terbuka');
 
-  await adminPage.getByLabel('Batas lebih-pakai dalam token').fill('125');
+  await adminPage.getByLabel('Batas lebih-pakai (kredit token)').fill('125');
   await adminPage.locator('main form').getByRole('button', { name: 'Simpan', exact: true }).click();
   const overdraftDialog = adminPage.getByRole('dialog', { name: 'Konfirmasi batas lebih-pakai' });
   await expectVisible(overdraftDialog, 'Dialog konfirmasi batas lebih-pakai tidak tampil');

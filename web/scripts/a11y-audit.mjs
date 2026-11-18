@@ -1332,7 +1332,7 @@ try {
       }
 
       if (r.path === '/admin/batas-lebih-pakai') {
-        await adminPage.getByLabel('Batas lebih-pakai dalam token').fill('500000');
+        await adminPage.getByLabel('Batas lebih-pakai (kredit token)').fill('500000');
         const submitOverdraft = adminPage.locator('main form').getByRole('button', { name: 'Simpan', exact: true });
         await auditDialogBehavior({
           page: adminPage,

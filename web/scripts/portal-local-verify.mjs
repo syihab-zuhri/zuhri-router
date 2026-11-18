@@ -327,7 +327,7 @@ try {
 
   await page1.getByLabel('Nama key').fill('Key Portal Dicabut');
   await page1.getByRole('button', { name: 'Buat API key', exact: true }).click();
-  const secretDialog = page1.getByRole('dialog', { name: 'Salin secret sekarang' });
+  const secretDialog = page1.getByRole('dialog', { name: 'Salin API key ini sekarang' });
   await expectVisible(secretDialog, 'Dialog secret API key tidak tampil');
   const firstKeySecret = (await secretDialog.locator('pre.secret').textContent())?.trim() ?? '';
   assert.match(firstKeySecret, /^rtr_[A-Za-z0-9_-]{43}$/, 'Format secret API key tidak sesuai');
@@ -370,7 +370,7 @@ try {
   // Buat key kedua untuk men-seed 55 request selesai tanpa upstream
   await page1.getByLabel('Nama key').fill('Key Pemakaian Seed');
   await page1.getByRole('button', { name: 'Buat API key', exact: true }).click();
-  const secretDialog2 = page1.getByRole('dialog', { name: 'Salin secret sekarang' });
+  const secretDialog2 = page1.getByRole('dialog', { name: 'Salin API key ini sekarang' });
   await expectVisible(secretDialog2, 'Dialog secret key kedua tidak tampil');
   const secondKeySecret = (await secretDialog2.locator('pre.secret').textContent())?.trim() ?? '';
   secrets.push(secondKeySecret);
