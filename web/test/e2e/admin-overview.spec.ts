@@ -237,3 +237,50 @@ test('ringkasan operasi 360px tanpa gulir horizontal, dapat dipakai keyboard saj
   await expect(page.getByRole('heading', { name: m.unresolved, exact: true })).toBeVisible();
   await expect(page.getByText(m.loading)).toHaveCount(0);
 });
+
+test('ringkasan operasi menampilkan ErrorBox dengan judul tetap ada saat respons server tidak lengkap atau bertipe salah', async ({ page }) => {
+  const { customers: _missingCustomers, ...withoutCustomers } = sampleOverview;
+  const malformedPayloads: unknown[] = [
+    withoutCustomers,
+    {
+      ...sampleOverview,
+      balances: { ...sampleOverview.balances, negativeAccounts: '1' },
+    },
+    {
+      ...sampleOverview,
+      balances: { ...sampleOverview.balances, postedMicro: 15250000 },
+    },
+    {
+      ...sampleOverview,
+      generatedAt: 'bukan-tanggal',
+    },
+    sampleOverview,
+  ];
+  let callIndex = 0;
+
+  await setupAdminMocks(page, async () => {
+    const payload = malformedPayloads[Math.min(callIndex, malformedPayloads.length - 1)];
+    callIndex += 1;
+    return { json: payload };
+  });
+
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => {
+    pageErrors.push(error.message);
+  });
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/admin/ringkasan');
+
+  for (let i = 0; i < malformedPayloads.length - 1; i += 1) {
+    await expect(page.getByRole('heading', { name: ov.overviewTitle, exact: true })).toBeVisible();
+    await expect(page.getByRole('alert')).toContainText(m.failed);
+    await expect(page.getByRole('region', { name: ov.customersCard })).toHaveCount(0);
+    await page.getByRole('button', { name: m.retry, exact: true }).click();
+  }
+
+  await expect(page.getByRole('heading', { name: ov.overviewTitle, exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: ov.customersCard })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
+});
