@@ -165,3 +165,17 @@ Audit aksesibilitas Antigravity yang baru (Tugas lima, `docs/handoff/antigravity
 8. Bukti: `node scripts/a11y-audit.mjs` (cara pakai dan port ada di catatan Antigravity Tugas lima) berakhir tanpa temuan, ditambah satu test Playwright yang menekan panah pada tab dan memeriksa fokus tetap di tab.
 
 Catatan: perubahan Anda pada `admin-overview.spec.ts` untuk butir 1 boleh. Antigravity juga menambah satu test di akhir berkas yang sama; Claude yang menggabungkannya, jangan disalin.
+
+## Tahap enam (2026-11-18 siang)
+
+Tahap lima diterima dan terpasang (`zrouter:r11181828`). Butir 5 sampai 8 dikerjakan Claude; baca `docs/handoff/claude-log.md` bagian "2026-11-18 siang" dulu dan jangan mengulanginya. Dua hal dari perubahan Anda yang Claude perbaiki dan perlu Anda ketahui: panel sekali tampil dipakai juga untuk kode redeem, jadi teksnya kini dibedakan lewat `SecretReveal kind`; dan skrip Antigravity bergantung pada teks Anda, jadi sebut perubahan teks yang terlihat di log.
+
+1. **Daftar request lintas pelanggan (SCR-017)** di `/admin/rekonsiliasi`, di samping antrean unresolved yang sudah ada. Claude sedang membuat endpoint-nya; kontrak tetap, mulai dengan mock:
+   `GET /admin/api/requests?username=&state=&model=&before=&limit=` (admin) menjawab `{ requests: [{ id, username, keyName, model, protocol, stream, state, outcome, final, heldMicro, debitMicro, estimated, usage, createdAt }], nextBefore }`. `username` dicocokkan persis; `state` salah satu dari `ADMITTED, STREAMING, COMPLETED, FAILED, CANCELLED, SETTLED, SETTLED_ESTIMATED, UNRESOLVED, REJECTED` (nilai lain 400); urut terbaru dulu; `before` adalah `createdAt` baris terakhir; `limit` 1 sampai 100, bawaan 50. Hanya metadata, tanpa isi prompt.
+   Layar: filter username, state dan model; paginasi; tiap baris waktu, username (tautan ke detail pelanggan), key, model, protokol dan stream, badge state, hold atau debit, penanda estimasi dan alasan (`outcome`) dalam bahasa admin. Keadaan loading, kosong, tanpa hasil, gagal. 360 px dan keyboard seperti layar lain.
+2. **Panduan**: tambahkan error `service_paused` (HTTP 503, header `Retry-After`) ke referensi error: layanan sedang dijeda admin, coba lagi nanti; request yang sudah berjalan tidak terputus.
+3. **Fokus sesudah login**: `RouteFocus` berjalan saat `Shell` masih memuat, sehingga sesudah login fokus tidak sampai ke judul halaman. Pastikan fokus berpindah ke `h1` begitu isi halaman tampil, tanpa mencuri fokus dari elemen yang sudah dipilih pengguna. Test di aplikasi penuh (lihat `customer-tabs-focus.spec.ts`).
+4. **Kebisingan test**: request yang tidak di-mock memunculkan `[vite] http proxy error` di setiap run (daftar di `docs/handoff/antigravity-log.md` Tugas enam bagian D butir 4). Tambahkan mock-nya.
+5. Seluruh rangkaian test seperti biasa; jangan menjalankan Playwright bersamaan dengan Antigravity.
+
+Tetap jangan menyentuh berkas Antigravity: `account-*.tsx`, `admin-overview.tsx`, `qr.ts`, blok `am` dan `ov`, `web/scripts/*-local-verify.mjs` selain `local-browser-verify.mjs`, `a11y-audit.mjs`, `verify-all.mjs`, `admin-overview.spec.ts`, `account-*.spec.ts`.

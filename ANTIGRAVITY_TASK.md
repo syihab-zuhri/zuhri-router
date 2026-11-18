@@ -309,3 +309,47 @@ Boleh: berkas baru yang disebut di atas, `verify-all.mjs`, `a11y-audit.mjs`, ber
 ## Laporan
 
 Bagian bertanggal di log per bagian A sampai F, bedakan ditulis, dijalankan dan lulus. Temuan server di bagian "Untuk Claude", diurutkan dari yang paling berat. Keluaran `verify-all.mjs` lengkap sebagai bukti akhir. Commit ke `antigravity/akun`, jangan push.
+
+---
+
+# Tugas tujuh (2026-11-18 siang)
+
+Tugas enam diterima dan terpasang (`zrouter:r11181828`). `smoke-public.sh` lulus 7/7 terhadap https://zrouter.web.id, dan `restore-drill.sh` lulus terhadap backup produksi sesudah satu perbaikan: `"$DOCKER"` diganti `$DOCKER` supaya `DOCKER="sudo docker"` bekerja (catatan untuk skrip berikutnya: uji juga mode VPS bila memungkinkan). Usulan perbaikan test tidak stabil Anda sudah diterapkan Claude. Cabang Anda sudah dimajukan ke `main` terbaru.
+
+    cd /mnt/d/router.dev.zuhri-antigravity && source .antigravity-env.sh
+    git checkout antigravity/akun && git pull --ff-only origin main
+
+## A. Skrip berhenti bergantung pada teks yang disalin
+
+Setiap kali Hermes mengubah teks, skrip Anda patah (tiga kali minggu ini: "Buka detail pelanggan", "Salin secret sekarang", "Batas lebih-pakai dalam token"). Ganti teks UI yang ditulis langsung di semua `*-local-verify.mjs` dan `a11y-audit.mjs` dengan impor dari `web/src/messages.ts` (`import { m, ov, am, errorText, kindText } from '../src/messages.ts'`; Node 24 menjalankan `.ts` langsung, skrip Anda sudah mengimpor modul server dengan cara itu). Teks yang memang bukan dari `messages.ts` (data uji, nama key) tetap ditulis langsung. Bukti: semua skrip PASS, dan `grep` untuk teks UI yang ditulis langsung mendekati nol.
+
+## B. Uji tekanan uang di gateway (`server/scripts/stress-gateway.ts`, baru, dan versi kecil di `server/test/gateway-concurrency.test.ts`)
+
+Tujuannya membuktikan invariant uang tahan terhadap banyak request bersamaan. Upstream tiruan di loopback seperti `server/test/gateway.test.ts`; tidak ada upstream nyata.
+
+1. Satu tenant dengan saldo kecil dan batas lebih-pakai kecil; puluhan sampai ratusan request paralel lewat beberapa key, campuran: normal, usage tidak dilaporkan, klien memutus di tengah stream, upstream 500 sebelum byte pertama (memicu fallback ke route kedua), byte pertama lambat sampai batas waktu, dan key dengan batas belanja.
+2. Sesudah semua selesai: `invariantViolations` kosong; saldo tidak pernah di bawah minus batas lebih-pakai; tidak ada hold `ACTIVE` untuk request yang sudah final; total debit sama dengan perubahan saldo; tidak ada request dengan dua debit (fallback dan retry tetap satu debit); request yang ditolak karena saldo mendapat `insufficient_balance`, bukan 500.
+3. Versi test kecil (deterministik, beberapa detik) masuk `server/test/`; skrip besar menerima jumlah request dan konkurensi sebagai argumen. Bila ada pelanggaran: jangan ubah `server/src`, tulis reproduksi di "Untuk Claude".
+
+## C. Ukur tambahan waktu gateway (`server/scripts/bench-gateway.ts`, baru)
+
+Bandingkan memanggil upstream tiruan langsung dengan memanggilnya lewat gateway: waktu sampai byte pertama dan total, non-stream dan stream, pada konkurensi 1, 10 dan 50. Laporkan p50 dan p95 dalam tabel di log, plus spesifikasi mesin. Ini bahan NFR-002; Claude yang memutuskan angka di dokumen.
+
+## D. Kill switch di layar Ringkasan (SCR-014)
+
+Claude sedang membuat endpoint-nya; kontraknya tetap seperti ini, jadi mulai dengan mock:
+
+- `GET /admin/api/settings/gateway` (admin): `{ paused: boolean, reason: string | null, changedAt: string | null, changedBy: string | null }`.
+- `POST /admin/api/settings/gateway` (admin, step-up, header CSRF): body `{ paused: true, reason: "<1..200 karakter>" }` atau `{ paused: false }`; respons berbentuk sama. Alasan wajib saat menjeda.
+- `GET /admin/api/overview` mendapat field `gateway: { paused, reason, changedAt }`.
+- Selama dijeda, `/v1/chat/completions`, `/v1/messages` dan `/v1/responses` dengan key sah menjawab 503 kode `service_paused` dengan header `Retry-After: 60` dalam format error permukaannya; `/v1/models` tidak terpengaruh; request yang sudah berjalan selesai seperti biasa.
+
+Di layar: status layanan jelas (berjalan atau dijeda, sejak kapan, alasan, oleh siapa); tombol jeda membuka dialog konfirmasi dengan alasan wajib dan dampaknya (pelanggan langsung ditolak), lalu step-up; lanjutkan juga lewat konfirmasi dan step-up. Hasil tidak ditampilkan optimistis. Keadaan `layanan-dijeda` dan `mengubah-flag` dari `docs/UX.md` SCR-014. Sesudah Claude menulis di `docs/handoff/claude-log.md` bahwa endpoint sudah di `main`: tambahkan bukti server nyata di `admin-overview-local-verify.mjs` (jeda, panggilan gateway 503 `service_paused`, lanjutkan, panggilan berhasil) dan audit layar baru ini di `a11y-audit.mjs`.
+
+## Batas berkas
+
+Boleh: berkas Anda, berkas baru di atas, `verify-all.mjs`, `a11y-audit.mjs`, `admin-overview.tsx`, blok `ov`. Tidak boleh: `server/src/**`, migrasi, `package.json`, dependency baru, berkas Hermes, upstream nyata, situs publik.
+
+## Laporan
+
+Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, jangan push.
