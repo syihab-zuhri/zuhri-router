@@ -180,3 +180,16 @@ Catatan untuk semua agen: jangan menjalankan suite Playwright dua folder bersama
 Founder meminta skill `modern-web-guidance` dipasang di proyek. Paket npm `modern-web-guidance@1.0.1` (GoogleChrome, Apache-2.0) diperiksa dulu: perintah `install` hanya memanggil `npx skills add GoogleChrome/modern-web-guidance` (vercel-labs `skills@1.9.0`). Dipasang dengan `--copy` untuk Claude Code, Antigravity dan Hermes Agent: 211 berkas Markdown per salinan, tanpa skrip, sama persis dengan salinan uji di folder kosong. Skill memanggil `npx modern-web-guidance@latest search/retrieve` yang mengirim telemetri anonim termasuk teks kueri ke Google; aturan di `AGENTS.md` meminta `DISABLE_TELEMETRY=1` dan kueri generik.
 
 Antigravity Tugas lima diterima (A: dua skrip mengikuti tab; B: `web/scripts/verify-all.mjs`; C: Ringkasan tahan data rusak). Run ulang `verify-all.mjs` di cabang integrasi: 9/11. Playwright 58/59, satu yang gagal (`portal.spec.ts:5`) lulus 3 kali berturut-turut saat diulang sendiri, jadi flaky di bawah beban; `a11y-audit` 16 temuan dari tiga masalah nyata di detail pelanggan bertab, diserahkan ke Hermes sebagai "Tahap lima, tambahan".
+
+## 2026-11-18 siang: Tahap lima Hermes, Tugas lima dan enam Antigravity, terpasang `r11181828`
+
+Digabung: Tahap lima Hermes (beranda admin Ringkasan, teks D.2, penanda panduan), Tugas lima dan enam Antigravity (verify-all, matriks rute, restore drill, golden path, smoke publik). Butir 5 sampai 8 tambahan Hermes dikerjakan Claude karena Hermes berhenti sesudah butir 4:
+
+- `RouteFocus` tidak mencuri fokus dari tab, dan kini berjalan pada setiap navigasi (`location.key`), termasuk memilih halaman yang sedang dibuka dari menu.
+- Hover tab aktif berkontras penuh; fokus kembali ke tombol cabut sesudah dialog ditutup, dan ke judul panel sesudah key dicabut.
+- `web/test/e2e/customer-tabs-focus.spec.ts` (baru) berjalan di aplikasi penuh; tiga test gagal pada kode lama dan lulus sesudahnya.
+- Temuan sendiri: Hermes mengganti judul panel sekali tampil menjadi "Salin API key ini sekarang", padahal panel yang sama dipakai untuk kode redeem. `SecretReveal` kini punya `kind` (`key`/`voucher`) dengan teks masing-masing.
+- Usulan perbaikan test tidak stabil dari Antigravity diterapkan di berkas Hermes (`admin-models.tsx` urutan refetch, `upstreams.spec.ts`, `portal.spec.ts`). Skrip Antigravity disesuaikan dengan teks baru Hermes.
+- Dokumen disamakan dengan kode (CHANGELOG 0.38.0): `SETTLED_ESTIMATED` di tabel state; daftar voucher tanpa step-up.
+
+Bukti: `verify-all.mjs` 14/14 (server 140/140, Playwright 67/67, audit aksesibilitas 0 temuan, semua skrip server nyata PASS). Terpasang `zrouter:r11181828` sesudah backup `zrouter-20261118T112950Z.dump`; `smoke-public.sh https://zrouter.web.id` PASS 7/7; `restore-drill.sh` terhadap backup produksi itu PASS (invariant kosong, migrasi 13=13, database drill terhapus). `restore-drill.sh` diperbaiki: `$DOCKER` tidak boleh dikutip agar `DOCKER="sudo docker"` bekerja.

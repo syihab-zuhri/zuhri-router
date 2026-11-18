@@ -69,13 +69,13 @@ fi
 
 compose_exec() {
   if [ -n "${COMPOSE_PROJECT:-}" ] && [ -n "$RESOLVED_ENV_FILE" ]; then
-    "$DOCKER" compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE_EFF" --env-file "$RESOLVED_ENV_FILE" exec -T "$@"
+    $DOCKER compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE_EFF" --env-file "$RESOLVED_ENV_FILE" exec -T "$@"
   elif [ -n "${COMPOSE_PROJECT:-}" ]; then
-    "$DOCKER" compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE_EFF" exec -T "$@"
+    $DOCKER compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE_EFF" exec -T "$@"
   elif [ -n "$RESOLVED_ENV_FILE" ]; then
-    "$DOCKER" compose -f "$COMPOSE_FILE_EFF" --env-file "$RESOLVED_ENV_FILE" exec -T "$@"
+    $DOCKER compose -f "$COMPOSE_FILE_EFF" --env-file "$RESOLVED_ENV_FILE" exec -T "$@"
   else
-    "$DOCKER" compose -f "$COMPOSE_FILE_EFF" exec -T "$@"
+    $DOCKER compose -f "$COMPOSE_FILE_EFF" exec -T "$@"
   fi
 }
 
@@ -85,7 +85,7 @@ run_psql() {
   if [ "$MODE" = "compose" ]; then
     compose_exec db psql -U "$PGUSER_EFF" -d "$TARGET_DB" -v ON_ERROR_STOP=1 "$@"
   else
-    "$DOCKER" exec -i "$DB_CONTAINER_EFF" psql -U "$PGUSER_EFF" -d "$TARGET_DB" -v ON_ERROR_STOP=1 "$@"
+    $DOCKER exec -i "$DB_CONTAINER_EFF" psql -U "$PGUSER_EFF" -d "$TARGET_DB" -v ON_ERROR_STOP=1 "$@"
   fi
 }
 
@@ -107,7 +107,7 @@ echo "restore-drill: running pg_restore --no-owner --exit-on-error ..."
 if [ "$MODE" = "compose" ]; then
   compose_exec db pg_restore -U "$PGUSER_EFF" -d "$DRILL_DB" --no-owner --exit-on-error < "$FILE"
 else
-  "$DOCKER" exec -i "$DB_CONTAINER_EFF" pg_restore -U "$PGUSER_EFF" -d "$DRILL_DB" --no-owner --exit-on-error < "$FILE"
+  $DOCKER exec -i "$DB_CONTAINER_EFF" pg_restore -U "$PGUSER_EFF" -d "$DRILL_DB" --no-owner --exit-on-error < "$FILE"
 fi
 
 echo "restore-drill: running check-invariants.ts ..."
