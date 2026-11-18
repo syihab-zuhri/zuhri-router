@@ -30,7 +30,11 @@ function Navigation({ admin, close }: { admin: boolean; close?: () => void }) {
 function RouteFocus() {
   const location = useLocation();
   useEffect(() => {
-    const timer = requestAnimationFrame(() => (document.querySelector<HTMLElement>('h1') ?? document.querySelector<HTMLElement>('main#main'))?.focus());
+    const timer = requestAnimationFrame(() => {
+      // Switching tabs only changes the query string; focus stays on the tab the user moved to.
+      if (document.activeElement?.closest('[role="tablist"]')) return;
+      (document.querySelector<HTMLElement>('h1') ?? document.querySelector<HTMLElement>('main#main'))?.focus();
+    });
     return () => cancelAnimationFrame(timer);
   }, [location.pathname, location.search]);
   return null;

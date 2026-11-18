@@ -329,7 +329,7 @@ try {
   await listSection.getByRole('button', { name: 'Muat ulang', exact: true }).click();
   const customerRow = adminPage.locator('.customer-list-row').filter({ hasText: customerUsername });
   await expectVisible(customerRow, 'Baris pelanggan baru tidak muncul di daftar pelanggan');
-  await customerRow.getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
+  await customerRow.getByRole('button', { name: 'Buka rincian pelanggan', exact: true }).click();
   const detailSection = adminPage.locator('section[aria-label="Rincian"]');
   await expectVisible(detailSection.getByRole('heading', { name: customerUsername, exact: true }), 'Panel rincian pelanggan tidak tampil');
   assert.equal(
@@ -423,12 +423,12 @@ try {
 
   // Pindah ke tab Saldo lewat tombol tab sebelum koreksi +2,5
   await detailSection.getByRole('tab', { name: 'Saldo', exact: true }).click();
-  const adjustmentForm = detailSection.locator('form').filter({ hasText: 'Koreksi saldo (kredit token)' });
+  const adjustmentForm = detailSection.locator('form').filter({ hasText: 'Nominal koreksi (kredit token)' });
   await expectVisible(adjustmentForm, 'Form koreksi saldo pada tab Saldo tidak tampil');
 
   // 3a. Koreksi +2,5 kredit (+2_500_000 mikro-kredit) dengan step-up
   await expireAdminStepUp(db, adminBoot.userId);
-  await adjustmentForm.getByLabel('Koreksi saldo (kredit token)').fill('2,5');
+  await adjustmentForm.getByLabel('Nominal koreksi (kredit token)').fill('2,5');
   await adjustmentForm.getByLabel('Alasan').fill('Koreksi tambah dua koma lima kredit');
   await adjustmentForm.getByRole('button', { name: 'Koreksi saldo', exact: true }).click();
 
@@ -493,7 +493,7 @@ try {
 
   // 3b. Koreksi -1 kredit (-1_000_000 mikro-kredit) dengan step-up
   await expireAdminStepUp(db, adminBoot.userId);
-  await adjustmentForm.getByLabel('Koreksi saldo (kredit token)').fill('-1');
+  await adjustmentForm.getByLabel('Nominal koreksi (kredit token)').fill('-1');
   await adjustmentForm.getByLabel('Alasan').fill('Koreksi kurang satu kredit');
   await adjustmentForm.getByRole('button', { name: 'Koreksi saldo', exact: true }).click();
 
