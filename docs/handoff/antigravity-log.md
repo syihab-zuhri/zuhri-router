@@ -450,3 +450,173 @@ Total: 10/11 lulus dalam 434.39s
   - `admin-overview-local-verify`: `admin-overview-local-verify: PASS (real server overview metrics, negative warning, 360px, links)`
   - `portal-local-verify`: `portal-local-verify: PASS (redeem SALE + replay/wrong reject + API key secret-once & revoke 401 + usage/ledger pagination + catalogue non-archived)`
   - `a11y-audit`: exit `1` — `148` kombinasi layar-lebar diaudit, `0` temuan di layar Antigravity, `16` temuan khusus pada 3 masalah tab/dialog di layar Hermes (`/admin/pelanggan` detail).
+
+---
+
+## Tugas enam — Matriks rute, restore drill, golden path, hunt test tidak stabil, verify-all, dan smoke publik (2026-11-18)
+
+Cabang kerja: `antigravity/akun`, sinkron dengan `origin/main` (`cf2800a` / merge commit `6903f80`, `git pull --ff-only origin main` menjawab `Already up to date.`).
+
+### Bagian A — Matriks otorisasi semua rute ([`server/test/route-matrix.test.ts`](file:///mnt/d/router.dev.zuhri-antigravity/server/test/route-matrix.test.ts))
+
+- **Status**: **Ditulis, Dijalankan & Lulus**, **Di-commit** (`e42a264`).
+- **Yang dibangun**:
+  - Mengurai pohon rute hidup `app.printRoutes({ commonPrefix: false })` secara dinamis ke dalam `ROUTE_MATRIX` berklasifikasi `public`, `customer`, `admin`, `admin-stepup`, `apikey`, dan memverifikasi layanan `static` via `setNotFoundHandler` (`webDist`). Gagal dua arah bila ada rute baru belum diklasifikasikan atau entri lama tidak ada lagi di aplikasi.
+  - Menguji pada seluruh **71 rute** terdaftar (`9` `public`, `16` `customer`, `21` `admin`, `21` `admin-stepup`, `4` `apikey`):
+    - Tanpa cookie pada seluruh `customer`/`admin`/`admin-stepup`: wajib HTTP `401` (bukan `200`, `404`, `500`).
+    - Salah peran cookie (`customer` vs `admin`, baik nama cookie normal maupun token tertukar nama cookie `sid`/`asid`): wajib HTTP `401`.
+    - Sesi admin pasca-password sebelum TOTP (`/admin/api/second-factor` dikecualikan): wajib `401 second_factor_required`.
+    - Seluruh mutasi `POST` non-`/v1/*` tanpa header `x-router-csrf: 1`: ditolak dengan **HTTP `403`, kode error `'csrf'`**.
+    - Seluruh **21 rute `admin-stepup`** dengan sesi admin `auth_at` 6 menit (> `300` detik) memakai payload & entitas nyata: wajib `401 step_up_required` dengan **0 mutasi** di seluruh tabel (`app_user`, `admin_credential`, `admin_recovery_code`, `tenant`, `api_key`, `ledger_account`, `ledger_entry`, `hold`, `request`, `public_model`, `price_version`, `voucher`, `upstream`, `route`, `system_setting`, `audit_event`).
+    - Seluruh **4 rute `apikey` (`/v1/*`)**: tanpa key (`auth_invalid`), key salah (`auth_invalid`), dan key dicabut (`key_revoked`) menghasilkan `401` sesuai format error permukaan masing-masing (`{ error: { code, type, message } }` untuk Chat/Responses/Models; `{ type: 'error', error: { type, message } }` untuk Anthropic `x-api-key` dan `Bearer`).
+    - Isolasi tenant pada rute pelanggan berparameter `:id` (`GET /api/keys/:id`, `POST /api/keys/:id/limits`, `POST /api/keys/:id/revoke`, `POST /api/account/sessions/:id/revoke`) serta kursor paginasi (`after`/`before`): ID milik tenant A dari sesi tenant B selalu membalas identik dengan UUID tidak ada (`404 not_found`), resource tenant A tetap utuh, dan `invariantViolations` kosong.
+- **Verifikasi**: `cd server && npm run typecheck` lulus; `node --test test/route-matrix.test.ts` lulus (`5/5` pass); masuk dalam `server-test` pada `verify-all.mjs` (`140/140` pass).
+
+---
+
+### Bagian B — Uji restore cadangan tanpa merusak apa pun ([`deploy/restore-drill.sh`](file:///mnt/d/router.dev.zuhri-antigravity/deploy/restore-drill.sh))
+
+- **Status**: **Ditulis, Dijalankan & Lulus (uji positif maupun uji rusak negatif)**, **Di-commit** (`bb7deb3`).
+- **Cara kerja & keamanan**:
+  - Menolak berjalan bila `DRILL_DB` tidak berawalan `zrouter_drill_` atau mengandung karakter di luar `[A-Za-z0-9_]`.
+  - Mendukung dua lingkungan: container lokal `router-spike-pg` (port `55432`, default saat `COMPOSE_FILE`/`COMPOSE_PROJECT`/`deploy/.env` tidak aktif) dan Compose di VPS (`DOCKER`, `COMPOSE_FILE`, `COMPOSE_PROJECT`, `ENV_FILE`, menjalankan `psql`/`pg_restore` di `db` dan `check-invariants.ts` di container `app`).
+  - Memasang `trap cleanup EXIT HUP INT TERM` untuk selalu menjatuhkan database drill (`DROP DATABASE IF EXISTS ... WITH (FORCE)`).
+  - Memulihkan dengan `pg_restore --no-owner --exit-on-error`, menjalankan `server/scripts/check-invariants.ts`, mencetak jumlah baris penting, membandingkan jumlah migrasi `schema_migration` vs berkas `*.sql` di `server/migrations/`, lalu keluar `1` jika restore, invariant, atau jumlah migrasi tidak cocok.
+- **Bukti eksekusi lokal** (tanpa mengubah container `router-spike-pg`):
+  - Penjaga nama DB (`DRILL_DB=router_test sh deploy/restore-drill.sh ...`): ditolak langsung (exit `1`).
+  - **Uji lulus** dari dump custom `router_test_antigravity` (berisi ledger, voucher, request dari eksekusi test): database sementara `zrouter_drill_20261118T023701Z_132985` menghasilkan `{"violations":[],"accounts":"2","entries":"2","vouchers":"1","redemptions":"1","requests":"1","open_holds":"0","posted":"24999000","migrations":"13"}`, `tenants=2 users=3 accounts=2 entries=2 vouchers=1 redemptions=1 requests=1 active_holds=0 audit_events=17`, `migrations db=13 repo=13`, `PASS`, exit `0`, dan database drill otomatis terhapus.
+  - **Uji gagal (sengaja dirusak)** pada salinan database sekali pakai (`posted = posted + 12345` lalu dump): database sementara `zrouter_drill_20261118T024027Z_135806` keluar `1` dengan output `{"violations":[{"accountId":"4696af48-aac1-4d16-9cdd-d42c9850494b","problem":"posted_differs_from_entries"}],...}` dan tetap terhapus bersih (`0` database `zrouter_drill_*` tersisa).
+
+---
+
+### Bagian C — Alur penuh pelanggan sampai gateway ([`web/scripts/golden-path-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/golden-path-local-verify.mjs))
+
+- **Status**: **Ditulis, Dijalankan & Lulus**, **Di-commit** (`7103921`).
+- **Cakupan end-to-end (server nyata, PostgreSQL schema temporer, upstream tiruan loopback, Vite + Chromium)**:
+  1. Persiapan admin lewat API HTTP (upstream tiruan loopback disisipkan ke DB dengan `seal()` sesuai pola `server/test/gateway.test.ts` lalu di-`ELIGIBLE`-kan via API karena `/admin/api/upstreams` menolak HTTP non-publik; model `gp/model-15x` berharga terbit pengali `1.5`, route `CHAT` & `ANTHROPIC`, paket `100` token + voucher SALE, dan undangan pelanggan via API).
+  2. Pelanggan lewat UI: login, menukar voucher di `/isi-saldo` (`100 kredit token`), membuat `Key Golden Path` di `/api-key`, mengambil secret sekali tampil tanpa bocor ke URL/storage/konsol/DOM.
+  3. Tiga panggilan gateway nyata (`/v1/chat/completions` non-stream, `/v1/chat/completions` stream SSE, `/v1/messages` Anthropic):
+     - Field `usage` pada ketiga respons HTTP/SSE sama persis dengan output mentah upstream tiruan (tidak dikalikan pengali `1.5`), sedangkan upstream tidak pernah menerima secret API key pelanggan.
+     - Debit mikro-kredit integer cocok persis dengan `debitMicro(usage, price)`: `277_500n`, `375_000n`, dan `234_750n` (total `887_250n` / `0,88725 kredit token`), menurunkan saldo tepat dari `100_000_000n` menjadi `99_112_750n` mikro-kredit.
+  4. Sebelum panggilan ke-4: UI pelanggan `/pemakaian` menampilkan 3 request beserta debitnya (`0,2775`, `0,375`, `0,23475` kredit token), `/transaksi` menampilkan 1 entri redeem + 3 entri `Pemakaian API`, dan UI admin `/admin/ringkasan` menampilkan `requests24h.total = 3` dan `debitMicro = '887250'` (`0,88725`).
+  5. Stream ke-4 yang diputus klien (`AbortController`) setelah potongan SSE pertama (`"Potongan pertama"`): upstream mencatat pembatalan (`aborts >= 1`), request terselesaikan ke `state=SETTLED_ESTIMATED`, `estimated=true`, `outcome=cancelled_mid_stream`, `debitMicro=399000`, `holdStatus=CAPTURED`, dan **0 hold `ACTIVE` tersisa**.
+  6. Key dicabut lewat UI (`/api-key`), panggilan berikutnya ke `/v1/chat/completions` dan `/v1/messages` ditolak `401 key_revoked`, prompt marker tidak tersimpan di DB/audit, `invariantViolations(db)` kosong (`[]`), serta `0` `pageerror`/`5xx`.
+- **Verifikasi**: `golden-path-local-verify: PASS` (juga lulus di `verify-all.mjs` dalam `10.93s`).
+
+---
+
+### Bagian D — Berburu test yang tidak stabil
+
+- **Status**: **Investigasi Selesai, Berkas Antigravity Diperkeras & Lulus (`27/27` pada `--repeat-each=3`), Usulan Diff Hermes Dicatat**, **Di-commit** (`de06b77`).
+- **Hasil eksekusi berulang (`npx playwright test --repeat-each=3 --reporter=line`, `177` eksekusi)**: `175 passed`, **`2 failed`** (+ `1 failed` tambahan di `upstreams.spec.ts` pada run penuh sandbox berikutnya; `portal.spec.ts` sendiri dijalankan `10x` berturut-turut dan spek Antigravity `3x` = `60/60` lulus):
+  1. **[`web/test/e2e/upstreams.spec.ts#L96`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/upstreams.spec.ts#L96) & [`#L154`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/upstreams.spec.ts#L154) (GAGAL 2x di pengamatan terpisah — timeout 30s menunggu elemen `UpstreamsPage`)**:
+     - **Sebab**: Helper `mount()` di `upstreams.spec.ts#L4-L24` memanggil `await page.goto('/__admin-test')` **tanpa** mencegat `**/__admin-test` (berbeda dengan [`admin.spec.ts#L6-L9`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/admin.spec.ts#L6-L9)). Akibatnya `/__admin-test` memuat `index.html` nyata + `/src/bootstrap.ts` (`<App />`), sehingga `createRoot(#root).render(<App />)` berlomba dan dapat menimpa hasil `createRoot(#root).render(<UpstreamsPage />)` dari `page.addScriptTag`, membuat halaman berubah menjadi `<NotFoundPage />` / `/admin/masuk`.
+  2. **[`web/test/e2e/admin.spec.ts#L213`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/admin.spec.ts#L213) (GAGAL 1x dari 3x — `usage.input: 0`, bukan `3000000`)**:
+     - **Sebab**: Di [`web/src/admin-models.tsx#L80`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/admin-models.tsx#L80), callback `refresh` memanggil `setSaved(true)` **sebelum** `await model.refetch()`. Test mengisi `3000000` segera setelah `m.success` muncul, lalu ketika `model.refetch()` selesai belakangan dan mengganti `key={`${model.data.id}-${model.data.version}`}` (`'2'` → `'3'`), `<ModelForms>` me-remount sehingga state `usage.input` kembali `'0'` sesaat sebelum klik Preview.
+  3. **[`web/test/e2e/portal.spec.ts#L5`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/portal.spec.ts#L5) (riwayat gagal intermiten di run penuh; 10/10 lulus di isolasi)**:
+     - **Sebab**: `RouteFocus` ([`web/src/app.tsx#L30-L36`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/app.tsx#L30-L36)) menjadwalkan `requestAnimationFrame(() => h1.focus())` saat perpindahan rute. Pada `portal.spec.ts#L19` (`Username.focus()` → ketik/Tab) dan `#L24` (`Menu.focus()` → `Enter` → `Escape` → `expect(Menu).toBeFocused()`), `requestAnimationFrame` dari `RouteFocus` yang terlambat di bawah beban mencuri fokus ke `<h1>` di tengah aksi keyboard.
+  4. **Permintaan tidak di-mock yang selalu memicu `[vite] http proxy error` ke `127.0.0.1:55490` pada setiap run penuh**:
+     - [`web/test/e2e/portal.spec.ts#L87-L92`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/portal.spec.ts#L87-L92): `/beranda` memanggil `/api/keys?limit=1` (`FirstUseChecklist`) tanpa mock.
+     - [`web/test/e2e/catalogue.spec.ts#L11-L12`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/catalogue.spec.ts#L11-L12), [`guide.spec.ts#L4-L6`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/guide.spec.ts#L4-L6), [`usage.spec.ts#L4-L7`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/usage.spec.ts#L4-L7): semuanya berada di dalam `<Shell>` yang memanggil `GET /api/balance` (`ShellBalance`), belum di-mock di ketiga berkas tersebut.
+     - [`web/test/e2e/upstream.spec.ts#L6-L17`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/upstream.spec.ts#L6-L17): `/admin/upstream` memanggil `/admin/api/models` dan `/admin/api/routes`, belum di-mock pada test pertama.
+- **Perbaikan di berkas Antigravity (`de06b77`)**:
+  - Memperkuat penantian `requestAnimationFrame` + `expect(...).toBeFocused()` sebelum `keyboard.press('Enter')` di [`account-admin.spec.ts#L210-L216`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/account-admin.spec.ts#L210-L216), [`account-customer.spec.ts#L196-L201`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/account-customer.spec.ts#L196-L201), dan [`admin-overview.spec.ts#L233-L238`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/admin-overview.spec.ts#L233-L238). Verifikasi `--repeat-each=3` pada ketiga spek lulus **27/27**.
+- **Usulan diff tepat untuk berkas Hermes (tidak diterapkan karena di luar batas berkas)**:
+  1. `web/src/admin-models.tsx`:
+     ```diff
+     -    <ModelForms key={`${model.data.id}-${model.data.version}`} model={model.data} refresh={async () => { setSaved(true); await model.refetch(); await refreshList(); }} />
+     +    <ModelForms key={`${model.data.id}-${model.data.version}`} model={model.data} refresh={async () => { await model.refetch(); await refreshList(); setSaved(true); }} />
+     ```
+  2. `web/test/e2e/upstreams.spec.ts`:
+     ```diff
+     +test.beforeEach(async ({ page }) => {
+     +  await page.route('**/admin/api/**', route => route.fulfill({ status: 404, json: { error: { code: 'not_found' } } }));
+     +  await page.route('**/__admin-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html lang="id"><body><div id="root"></div></body></html>' }));
+     +});
+     ```
+  3. `web/test/e2e/portal.spec.ts`:
+     ```diff
+      await page.goto('/masuk');
+      await expect(page.getByRole('heading', { name: 'Masuk', exact: true })).toBeVisible();
+     +await expect(page.getByRole('heading', { name: 'Masuk', exact: true })).toBeFocused();
+      await page.getByLabel('Username atau email').focus();
+     ...
+      await expect(page.getByText('9.223.372.036.854,775807', { exact: false }).first()).toBeVisible();
+     +await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await page.getByRole('button', { name: 'Menu', exact: true }).focus(); await page.keyboard.press('Enter');
+     ...
+      await page.route('**/api/balance', route => route.fulfill({ json: { postedMicro: '0', heldMicro: '0', availableMicro: '0', currency: 'TOKEN' } }));
+      await page.route('**/api/packs', route => route.fulfill({ json: { packs: [] } }));
+     +await page.route('**/api/keys?*', route => route.fulfill({ json: { keys: [] } }));
+     ```
+  4. `web/test/e2e/catalogue.spec.ts`, `web/test/e2e/guide.spec.ts`, `web/test/e2e/usage.spec.ts`, dan `web/test/e2e/upstream.spec.ts`:
+     - Tambahkan `await page.route('**/api/balance', route => route.fulfill({ json: { postedMicro: '0', heldMicro: '0', availableMicro: '0', currency: 'TOKEN' } }));` di `catalogue.spec.ts`, `guide.spec.ts`, dan `usage.spec.ts`.
+     - Tambahkan `await page.route('**/admin/api/models', ...)` dan `await page.route('**/admin/api/routes**', ...)` pada test pertama di `upstream.spec.ts`.
+
+---
+
+### Bagian E — Melengkapi [`web/scripts/verify-all.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/verify-all.mjs)
+
+- **Status**: **Ditulis, Dijalankan & Lulus** (`13/14` langkah; `a11y-audit` exit `1` karena 16 temuan Hermes), **Di-commit** (`8b43997`).
+- **Penambahan**:
+  - `server-test` (`npm test` di `server/`) disertai preflight wajib: menolak langsung tanpa menyentuh DB bila `TEST_DATABASE_URL` kosong, tidak valid, mengarah ke `router_test`, atau nama databasenya tidak mengandung `test` (diuji negatif untuk ketiganya -> semua ditolak dengan exit `1`).
+  - `test-browser` (`npm run test:browser`, yakni `npm run build` lalu `node scripts/dist-browser-verify.mjs`) memakai `VERIFY_DIST_PORT` dari env dan menyesuaikan pathname `/router_test` untuk schema sementara `web_dist_*`.
+  - Penemuan otomatis `*-local-verify.mjs` kini ikut menjalankan `golden-path-local-verify`.
+
+---
+
+### Bagian F — Pemeriksaan publik hanya-baca ([`deploy/smoke-public.sh`](file:///mnt/d/router.dev.zuhri-antigravity/deploy/smoke-public.sh))
+
+- **Status**: **Ditulis, Dijalankan terhadap server dist lokal & Lulus**, **Di-commit** (`24812ac`).
+- **Cakupan & Verifikasi**:
+  - Hanya mengirim `GET` tanpa cookie/kredensial; memeriksa `/readyz` (`200`, `{"ok":true}`, `no-store`, `nosniff`), halaman `/`, `/masuk`, `/admin/masuk` (`200`, HTML app shell `id="root"` + `<script`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Content-Security-Policy` mengandung `default-src 'self'` dan `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Cache-Control: no-cache`, serta HSTS untuk `https://` atau `REQUIRE_HSTS=1`), dan `/api/me`, `/admin/api/overview`, `/v1/models` tanpa kredensial (`401` JSON + `no-store`, bukan HTML).
+  - Diuji lokal terhadap `buildApp({ ..., secureCookies: true, webDist: '../web/dist' })` pada `http://127.0.0.1:55492` (`VERIFY_DIST_PORT`) dengan `REQUIRE_HSTS=1`: semua 7 endpoint `OK` -> `smoke-public: PASS (http://127.0.0.1:55492)` (`exit 0`). Tidak dijalankan ke `zrouter.web.id`.
+
+---
+
+### Untuk Claude (temuan server & deployment, diurutkan dari paling berat)
+
+1. **[Sedang — Kesesuaian Dokumen §2 vs Gateway]** [`server/src/gateway.ts#L273`](file:///mnt/d/router.dev.zuhri-antigravity/server/src/gateway.ts#L273) vs [`docs/ARCHITECTURE.md`](file:///mnt/d/router.dev.zuhri-antigravity/docs/ARCHITECTURE.md) §2:
+   - Pada Bagian C, ketika klien memutus stream `/v1/chat/completions` setelah potongan pertama (`req_5b92e409-e127-4ee5-b1ef-d56ec4f24242`), server langsung menulis `state = 'SETTLED_ESTIMATED'`, `estimated = true`, `outcome = 'cancelled_mid_stream'`, `debitMicro = '399000'`, `holdStatus = 'CAPTURED'`, dan `0` hold `ACTIVE` tersisa (memenuhi §3 & nol pelanggaran invariant). Namun tabel siklus hidup di `docs/ARCHITECTURE.md` §2 mendeskripsikan kasus usage hilang setelah konten diteruskan melalui transisi `UNRESOLVED` -> `SETTLED` daripada state langsung `SETTLED_ESTIMATED`. Disarankan menyelaraskan tabel state di `docs/ARCHITECTURE.md` §2 (atau meninjau apakah pemutusan klien sengaja diselesaikan seketika sebagai `SETTLED_ESTIMATED`).
+2. **[Rendah — Kesesuaian Dokumen Peran]** [`server/src/http/app.ts#L274`](file:///mnt/d/router.dev.zuhri-antigravity/server/src/http/app.ts#L274) vs [`docs/SECURITY.md#L39`](file:///mnt/d/router.dev.zuhri-antigravity/docs/SECURITY.md#L39):
+   - `GET /admin/api/vouchers` memerlukan MFA admin (`requireAdmin`), tetapi tidak mewajibkan `stepUp: true` (hanya `POST /admin/api/vouchers` dan `POST /admin/api/vouchers/:id/revoke` yang memakai step-up), sedangkan `docs/SECURITY.md` baris 39 menulis `Terbit, cabut, daftar voucher | Ya, step-up`. Tidak ada secret yang terbuka (hanya prefix tersamar); disarankan memperbarui `docs/SECURITY.md` §2 untuk membedakan baca daftar (`ADMIN`) dan aksi terbit/cabut (`ADMIN, step-up`).
+3. **[Status Pemeriksaan Otorisasi Rute]** `route-matrix.test.ts` membuktikan **0 celah** pada seluruh `71` rute server (`public: 9`, `customer: 16`, `admin: 21`, `admin-stepup: 21`, `apikey: 4`): semua rute `customer`/`admin`/`admin-stepup` menolak tanpa cookie (`401`) dan salah peran cookie (`401`); semua mutasi non-`/v1/*` tanpa `x-router-csrf: 1` ditolak `403 csrf`; seluruh `21` rute `admin-stepup` menolak sesi kedaluwarsa (`401 step_up_required`) tanpa menyentuh DB; semua rute `/v1/*` mengembalikan error `401` sesuai permukaan protokol; isolasi tenant pada rute `:id` & pagination terbukti seragam (`404 not_found`).
+4. **[Siap untuk Operasi Claude]** [`deploy/restore-drill.sh`](file:///mnt/d/router.dev.zuhri-antigravity/deploy/restore-drill.sh) (uji cadangan produksi via compose) dan [`deploy/smoke-public.sh`](file:///mnt/d/router.dev.zuhri-antigravity/deploy/smoke-public.sh) (uji `https://zrouter.web.id` sesudah deploy) sudah terverifikasi lokal dan siap dijalankan Claude di lingkungan target.
+
+---
+
+### Keluaran penuh `verify-all.mjs` sebagai bukti akhir
+
+Perintah: `source .antigravity-env.sh && cd web && node scripts/verify-all.mjs` (`BypassSandbox: true`, dijalankan sesudah seluruh berkas kode/test Tugas enam selesai):
+
+```text
+langkah                      | hasil |  durasi
+-----------------------------+-------+--------
+typecheck-server             | lulus |   0.97s
+typecheck-web                | lulus |   1.25s
+server-test                  | lulus | 142.36s
+unit                         | lulus |   1.35s
+playwright                   | lulus | 201.91s
+test-local                   | lulus |  11.95s
+test-browser                 | lulus |   9.87s
+account-local-verify         | lulus |  13.20s
+admin-catalog-local-verify   | lulus |  15.57s
+admin-customers-local-verify | lulus |  19.90s
+admin-overview-local-verify  | lulus |  12.80s
+golden-path-local-verify     | lulus |  10.93s
+portal-local-verify          | lulus |  15.03s
+a11y-audit                   | gagal | 136.31s
+
+Total: 13/14 lulus dalam 593.49s
+```
+
+- Rincian utama bukti akhir di [`web/evidence/verify-all`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all):
+  - `typecheck-server`: exit `0`
+  - `typecheck-web`: exit `0`
+  - [`server-test.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/server-test.txt): `140` passed, `0` failed (termasuk `5/5` pada `route-matrix.test.ts`)
+  - [`unit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/unit.txt): `5` passed, `0` failed
+  - [`playwright.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/playwright.txt): `59 passed (3.3m)`
+  - [`test-local.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/test-local.txt): `local-browser-verify: PASS`
+  - [`test-browser.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/test-browser.txt): `built in 718ms` + `same-origin-dist-verify: PASS`
+  - `account-local-verify`, `admin-catalog-local-verify`, `admin-customers-local-verify`, `admin-overview-local-verify`, [`golden-path-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/golden-path-local-verify.txt), `portal-local-verify`: semuanya `PASS` (exit `0`)
+  - [`a11y-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/a11y-audit.txt): exit `1` — `148` kombinasi diaudit, `0` temuan layar Antigravity, `16` temuan khusus pada tab/dialog detail `/admin/pelanggan` milik Hermes.
