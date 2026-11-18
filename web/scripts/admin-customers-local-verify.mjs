@@ -57,8 +57,8 @@ function base32Decode(value) {
 }
 
 function expectVisible(locator, message) {
-  return locator.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {
-    throw new Error(message);
+  return locator.waitFor({ state: 'visible', timeout: 10_000 }).catch(err => {
+    throw new Error(`${message}: ${err instanceof Error ? err.message : String(err)}`);
   });
 }
 
@@ -332,6 +332,11 @@ try {
   await customerRow.getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
   const detailSection = adminPage.locator('section[aria-label="Rincian"]');
   await expectVisible(detailSection.getByRole('heading', { name: customerUsername, exact: true }), 'Panel rincian pelanggan tidak tampil');
+  assert.equal(
+    await detailSection.getByRole('tab', { name: 'Ringkasan', exact: true }).getAttribute('aria-selected'),
+    'true',
+    'Tab awal detail pelanggan harus Ringkasan',
+  );
 
   // ---- 2. Admin menangguhkan pelanggan (dengan step-up) -> API key ditolak; dipulihkan (dengan step-up) -> API key diterima kembali ----
   await expireAdminStepUp(db, adminBoot.userId);
@@ -405,7 +410,6 @@ try {
   assert.ok(tenantRow?.tenant_id, 'Tenant pelanggan baru harus ada di database');
   const tenantId = tenantRow.tenant_id;
 
-  const adjustmentForm = adminPage.locator('form').filter({ hasText: 'Koreksi saldo (kredit token)' });
   const interceptedAdjustmentBodies = [];
   adminPage.on('request', req => {
     if (req.method() === 'POST' && new URL(req.url()).pathname === '/admin/api/adjustments') {
@@ -416,6 +420,11 @@ try {
       }
     }
   });
+
+  // Pindah ke tab Saldo lewat tombol tab sebelum koreksi +2,5
+  await detailSection.getByRole('tab', { name: 'Saldo', exact: true }).click();
+  const adjustmentForm = detailSection.locator('form').filter({ hasText: 'Koreksi saldo (kredit token)' });
+  await expectVisible(adjustmentForm, 'Form koreksi saldo pada tab Saldo tidak tampil');
 
   // 3a. Koreksi +2,5 kredit (+2_500_000 mikro-kredit) dengan step-up
   await expireAdminStepUp(db, adminBoot.userId);
@@ -429,6 +438,12 @@ try {
   await adjustConfirmPlus.getByRole('button', { name: 'Terapkan koreksi', exact: true }).click();
 
   await completeStepUpDialog(adminPage, totpSeed, usedSecrets, 'adjustment-plus-2.5');
+  const plusReceipt = detailSection.locator('.receipt').filter({ hasText: 'Saldo berhasil ditambah' });
+  await expectVisible(plusReceipt, 'Struk koreksi +2,5 pada tab Saldo tidak tampil');
+  assert.equal(await plusReceipt.getByText('2,5 kredit token', { exact: true }).count(), 2, 'Struk +2,5 harus menampilkan nominal dan saldo sesudahnya 2,5 kredit token');
+
+  // Pindah ke tab Ringkasan lewat tombol tab untuk memeriksa angka saldo
+  await detailSection.getByRole('tab', { name: 'Ringkasan', exact: true }).click();
   await expectVisible(
     detailSection.locator('.metric').filter({ hasText: 'Saldo tersedia' }).getByText('2,5 kredit token', { exact: true }),
     'Saldo tersedia di layar tidak berubah menjadi 2,5 kredit token',
@@ -437,7 +452,10 @@ try {
     detailSection.locator('.metric').filter({ hasText: 'Saldo tercatat' }).getByText('2,5 kredit token', { exact: true }),
     'Saldo tercatat di layar tidak berubah menjadi 2,5 kredit token',
   );
-  const ledgerSection = adminPage.locator('section.panel').filter({ hasText: 'Transaksi' });
+
+  // Pindah ke tab Transaksi lewat tombol tab untuk memeriksa entri ledger
+  await detailSection.getByRole('tab', { name: 'Transaksi', exact: true }).click();
+  const ledgerSection = detailSection.locator('section.panel').filter({ hasText: 'Transaksi' });
   await expectVisible(
     ledgerSection.locator('.data-row').filter({ hasText: 'Koreksi kredit' }).getByText('2,5 kredit token', { exact: true }),
     'Entri buku besar Koreksi kredit 2,5 kredit token tidak tampil di layar',
@@ -469,6 +487,10 @@ try {
   assert.equal((await ledger.listEntries(db, tenantId)).length, 1, 'Replay tidak boleh menambah entri ledger baru');
   assert.equal((await ledger.getBalance(db, tenantId)).posted, 2_500_000n, 'Replay tidak boleh mengubah saldo posted');
 
+  // Pindah ke tab Saldo lewat tombol tab sebelum koreksi -1
+  await detailSection.getByRole('tab', { name: 'Saldo', exact: true }).click();
+  await expectVisible(adjustmentForm, 'Form koreksi saldo pada tab Saldo tidak tampil untuk koreksi -1');
+
   // 3b. Koreksi -1 kredit (-1_000_000 mikro-kredit) dengan step-up
   await expireAdminStepUp(db, adminBoot.userId);
   await adjustmentForm.getByLabel('Koreksi saldo (kredit token)').fill('-1');
@@ -482,6 +504,13 @@ try {
 
   await completeStepUpDialog(adminPage, totpSeed, usedSecrets, 'adjustment-minus-1');
   await expectVisible(
+    detailSection.locator('.receipt').filter({ hasText: 'Saldo berhasil dikurangi' }).getByText('-1 kredit token', { exact: true }),
+    'Struk koreksi -1 pada tab Saldo tidak tampil',
+  );
+
+  // Pindah ke tab Ringkasan lewat tombol tab untuk memeriksa saldo 1,5 kredit token
+  await detailSection.getByRole('tab', { name: 'Ringkasan', exact: true }).click();
+  await expectVisible(
     detailSection.locator('.metric').filter({ hasText: 'Saldo tersedia' }).getByText('1,5 kredit token', { exact: true }),
     'Saldo tersedia di layar tidak berubah menjadi 1,5 kredit token setelah koreksi -1',
   );
@@ -489,10 +518,17 @@ try {
     detailSection.locator('.metric').filter({ hasText: 'Saldo tercatat' }).getByText('1,5 kredit token', { exact: true }),
     'Saldo tercatat di layar tidak berubah menjadi 1,5 kredit token setelah koreksi -1',
   );
+
+  // Pindah ke tab Transaksi lewat tombol tab untuk memeriksa entri Koreksi debit -1
+  await detailSection.getByRole('tab', { name: 'Transaksi', exact: true }).click();
   await expectVisible(
     ledgerSection.locator('.data-row').filter({ hasText: 'Koreksi debit' }).getByText('-1 kredit token', { exact: true }),
     'Entri buku besar Koreksi debit -1 kredit token tidak tampil di layar',
   );
+
+  // Pindah ke tab API key lewat tombol tab untuk memastikan key tampil tersamar
+  await detailSection.getByRole('tab', { name: 'API key', exact: true }).click();
+  await expectVisible(detailSection.getByText('Key Uji Penangguhan', { exact: true }), 'Key pelanggan pada tab API key tidak tampil');
 
   const balanceAfterMinus = await ledger.getBalance(db, tenantId);
   assert.equal(balanceAfterMinus.posted, 1_500_000n, 'Saldo posted di DB harus tepat 1_500_000 mikro-kredit');
