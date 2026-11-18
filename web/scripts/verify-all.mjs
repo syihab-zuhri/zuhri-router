@@ -26,8 +26,8 @@ function discoverLocalVerifySteps() {
     });
 }
 
-/** Build `TEST_DATABASE_URL` with `/router_test` pathname for `local-browser-verify.mjs`. */
-function localBrowserTestEnv() {
+/** Build `TEST_DATABASE_URL` with `/router_test` pathname for `local-browser-verify.mjs` and `dist-browser-verify.mjs`. */
+function localBrowserTestEnv(stepName) {
   const rawUrl = process.env.TEST_DATABASE_URL;
   if (!rawUrl) {
     return { env: {}, note: null };
@@ -40,12 +40,40 @@ function localBrowserTestEnv() {
   parsed.pathname = '/router_test';
   return {
     env: { TEST_DATABASE_URL: parsed.toString() },
-    note: `[verify-all] test-local: TEST_DATABASE_URL pathname disesuaikan ${previousPath} -> /router_test (host/port/kredensial tetap dari env)`
+    note: `[verify-all] ${stepName}: TEST_DATABASE_URL pathname disesuaikan ${previousPath} -> /router_test (host/port/kredensial tetap dari env)`
   };
 }
 
+/** Refuse destructive server schema tests unless TEST_DATABASE_URL targets a dedicated `*test*` database other than `router_test`. */
+function serverTestPreflight() {
+  const rawUrl = process.env.TEST_DATABASE_URL;
+  if (!rawUrl) {
+    return {
+      ok: false,
+      message: 'server-test ditolak: TEST_DATABASE_URL wajib diisi dan tidak boleh mengarah ke router_test (test server menghapus dan membuat ulang skema).\n'
+    };
+  }
+  let dbName = '';
+  try {
+    dbName = new URL(rawUrl).pathname.replace(/^\/+/, '');
+  } catch {
+    return {
+      ok: false,
+      message: 'server-test ditolak: TEST_DATABASE_URL tidak dapat diurai sebagai URL PostgreSQL yang valid.\n'
+    };
+  }
+  if (!dbName || dbName === 'router_test' || !dbName.includes('test')) {
+    return {
+      ok: false,
+      message: `server-test ditolak: nama database '${dbName || '(kosong)'}' tidak diizinkan (dilarang 'router_test' dan wajib mengandung 'test', karena test server menghapus ulang skema).\n`
+    };
+  }
+  return { ok: true, message: null };
+}
+
 function buildSteps() {
-  const localEnv = localBrowserTestEnv();
+  const localEnv = localBrowserTestEnv('test-local');
+  const distEnv = localBrowserTestEnv('test-browser');
   return [
     {
       name: 'typecheck-server',
@@ -53,7 +81,8 @@ function buildSteps() {
       command: 'npm',
       args: ['run', 'typecheck'],
       envOverrides: {},
-      note: null
+      note: null,
+      preflight: null
     },
     {
       name: 'typecheck-web',
@@ -61,7 +90,17 @@ function buildSteps() {
       command: 'npm',
       args: ['run', 'typecheck'],
       envOverrides: {},
-      note: null
+      note: null,
+      preflight: null
+    },
+    {
+      name: 'server-test',
+      cwd: serverDir,
+      command: 'npm',
+      args: ['test'],
+      envOverrides: {},
+      note: null,
+      preflight: serverTestPreflight
     },
     {
       name: 'unit',
@@ -69,7 +108,8 @@ function buildSteps() {
       command: 'npm',
       args: ['test'],
       envOverrides: {},
-      note: null
+      note: null,
+      preflight: null
     },
     {
       name: 'playwright',
@@ -77,7 +117,8 @@ function buildSteps() {
       command: 'npm',
       args: ['run', 'test:e2e', '--', '--reporter=line'],
       envOverrides: { CI: process.env.CI || '1' },
-      note: null
+      note: null,
+      preflight: null
     },
     {
       name: 'test-local',
@@ -85,7 +126,17 @@ function buildSteps() {
       command: process.execPath,
       args: [join('scripts', 'local-browser-verify.mjs')],
       envOverrides: localEnv.env,
-      note: localEnv.note
+      note: localEnv.note,
+      preflight: null
+    },
+    {
+      name: 'test-browser',
+      cwd: webDir,
+      command: 'npm',
+      args: ['run', 'test:browser'],
+      envOverrides: distEnv.env,
+      note: distEnv.note,
+      preflight: null
     },
     ...discoverLocalVerifySteps(),
     {
@@ -94,7 +145,8 @@ function buildSteps() {
       command: process.execPath,
       args: [join('scripts', 'a11y-audit.mjs')],
       envOverrides: {},
-      note: null
+      note: null,
+      preflight: null
     }
   ];
 }
@@ -174,10 +226,22 @@ function runStep(step) {
   return new Promise((resolveStep) => {
     const startedAt = new Date();
     const startMs = performance.now();
-    const env = { ...process.env, ...step.envOverrides };
     const chunks = [];
     if (step.note) chunks.push(`${step.note}\n`);
 
+    if (typeof step.preflight === 'function') {
+      const check = step.preflight();
+      if (!check.ok) {
+        const durationMs = performance.now() - startMs;
+        chunks.push(check.message);
+        writeStepLog(step, startedAt, 1, durationMs, chunks.join(''));
+        process.stderr.write(check.message);
+        resolveStep({ name: step.name, passed: false, exitCode: 1, durationMs });
+        return;
+      }
+    }
+
+    const env = { ...process.env, ...step.envOverrides };
     const child = spawn(step.command, step.args, {
       cwd: step.cwd,
       env,
