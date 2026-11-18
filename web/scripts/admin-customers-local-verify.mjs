@@ -243,7 +243,10 @@ try {
   await expectVisible(adminPage.getByLabel('Kode autentikator', { exact: true }), 'Input 2FA login admin tidak tampil');
   await adminPage.getByLabel('Kode autentikator', { exact: true }).fill(loginTotp);
   await adminPage.getByRole('button', { name: 'Verifikasi kode', exact: true }).click();
-  await expectVisible(adminPage.getByRole('heading', { name: 'Pelanggan', exact: true }), 'Halaman /admin/pelanggan tidak tampil setelah login');
+  // Since stage five the admin lands on Ringkasan after login; open the customer list from the navigation.
+  await expectVisible(adminPage.getByRole('heading', { name: 'Ringkasan Operasi', exact: true }), 'Halaman /admin/ringkasan tidak tampil setelah login');
+  await adminPage.getByRole('navigation', { name: 'Backoffice' }).first().getByRole('link', { name: 'Pelanggan', exact: true }).click();
+  await expectVisible(adminPage.getByRole('heading', { name: 'Pelanggan', exact: true, level: 1 }), 'Halaman /admin/pelanggan tidak tampil');
   await assertCleanSecretHygiene(adminPage, usedSecrets, 'admin-after-login');
 
   const inviteForm = adminPage.locator('form').filter({ hasText: 'Undang pelanggan' });
@@ -292,7 +295,7 @@ try {
   await expectVisible(custPage.getByRole('heading', { name: 'API key', exact: true }), 'Halaman /api-key tidak tampil');
   await custPage.getByLabel('Nama key').fill('Key Uji Penangguhan');
   await custPage.getByRole('button', { name: 'Buat API key', exact: true }).click();
-  const secretDialog = custPage.getByRole('dialog', { name: 'Salin secret sekarang' });
+  const secretDialog = custPage.getByRole('dialog', { name: 'Salin API key ini sekarang' });
   await expectVisible(secretDialog, 'Dialog secret API key tidak tampil');
   const customerApiKey = (await secretDialog.locator('pre.secret').textContent())?.trim() ?? '';
   assert.match(customerApiKey, /^rtr_[A-Za-z0-9_-]{43}$/, 'Format secret API key pelanggan tidak valid');
@@ -329,7 +332,7 @@ try {
   await listSection.getByRole('button', { name: 'Muat ulang', exact: true }).click();
   const customerRow = adminPage.locator('.customer-list-row').filter({ hasText: customerUsername });
   await expectVisible(customerRow, 'Baris pelanggan baru tidak muncul di daftar pelanggan');
-  await customerRow.getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
+  await customerRow.getByRole('button', { name: 'Buka rincian pelanggan', exact: true }).click();
   const detailSection = adminPage.locator('section[aria-label="Rincian"]');
   await expectVisible(detailSection.getByRole('heading', { name: customerUsername, exact: true }), 'Panel rincian pelanggan tidak tampil');
   assert.equal(
@@ -423,12 +426,12 @@ try {
 
   // Pindah ke tab Saldo lewat tombol tab sebelum koreksi +2,5
   await detailSection.getByRole('tab', { name: 'Saldo', exact: true }).click();
-  const adjustmentForm = detailSection.locator('form').filter({ hasText: 'Koreksi saldo (kredit token)' });
+  const adjustmentForm = detailSection.locator('form').filter({ hasText: 'Nominal koreksi (kredit token)' });
   await expectVisible(adjustmentForm, 'Form koreksi saldo pada tab Saldo tidak tampil');
 
   // 3a. Koreksi +2,5 kredit (+2_500_000 mikro-kredit) dengan step-up
   await expireAdminStepUp(db, adminBoot.userId);
-  await adjustmentForm.getByLabel('Koreksi saldo (kredit token)').fill('2,5');
+  await adjustmentForm.getByLabel('Nominal koreksi (kredit token)').fill('2,5');
   await adjustmentForm.getByLabel('Alasan').fill('Koreksi tambah dua koma lima kredit');
   await adjustmentForm.getByRole('button', { name: 'Koreksi saldo', exact: true }).click();
 
@@ -438,7 +441,7 @@ try {
   await adjustConfirmPlus.getByRole('button', { name: 'Terapkan koreksi', exact: true }).click();
 
   await completeStepUpDialog(adminPage, totpSeed, usedSecrets, 'adjustment-plus-2.5');
-  const plusReceipt = detailSection.locator('.receipt').filter({ hasText: 'Saldo berhasil ditambah' });
+  const plusReceipt = detailSection.locator('.receipt').filter({ hasText: 'Koreksi saldo tercatat' });
   await expectVisible(plusReceipt, 'Struk koreksi +2,5 pada tab Saldo tidak tampil');
   assert.equal(await plusReceipt.getByText('2,5 kredit token', { exact: true }).count(), 2, 'Struk +2,5 harus menampilkan nominal dan saldo sesudahnya 2,5 kredit token');
 
@@ -457,7 +460,7 @@ try {
   await detailSection.getByRole('tab', { name: 'Transaksi', exact: true }).click();
   const ledgerSection = detailSection.locator('section.panel').filter({ hasText: 'Transaksi' });
   await expectVisible(
-    ledgerSection.locator('.data-row').filter({ hasText: 'Koreksi kredit' }).getByText('2,5 kredit token', { exact: true }),
+    ledgerSection.locator('.data-row').filter({ hasText: 'Koreksi tambah saldo' }).getByText('2,5 kredit token', { exact: true }),
     'Entri buku besar Koreksi kredit 2,5 kredit token tidak tampil di layar',
   );
 
@@ -493,7 +496,7 @@ try {
 
   // 3b. Koreksi -1 kredit (-1_000_000 mikro-kredit) dengan step-up
   await expireAdminStepUp(db, adminBoot.userId);
-  await adjustmentForm.getByLabel('Koreksi saldo (kredit token)').fill('-1');
+  await adjustmentForm.getByLabel('Nominal koreksi (kredit token)').fill('-1');
   await adjustmentForm.getByLabel('Alasan').fill('Koreksi kurang satu kredit');
   await adjustmentForm.getByRole('button', { name: 'Koreksi saldo', exact: true }).click();
 
@@ -504,7 +507,7 @@ try {
 
   await completeStepUpDialog(adminPage, totpSeed, usedSecrets, 'adjustment-minus-1');
   await expectVisible(
-    detailSection.locator('.receipt').filter({ hasText: 'Saldo berhasil dikurangi' }).getByText('-1 kredit token', { exact: true }),
+    detailSection.locator('.receipt').filter({ hasText: 'Koreksi saldo tercatat' }).getByText('-1 kredit token', { exact: true }),
     'Struk koreksi -1 pada tab Saldo tidak tampil',
   );
 
@@ -522,7 +525,7 @@ try {
   // Pindah ke tab Transaksi lewat tombol tab untuk memeriksa entri Koreksi debit -1
   await detailSection.getByRole('tab', { name: 'Transaksi', exact: true }).click();
   await expectVisible(
-    ledgerSection.locator('.data-row').filter({ hasText: 'Koreksi debit' }).getByText('-1 kredit token', { exact: true }),
+    ledgerSection.locator('.data-row').filter({ hasText: 'Koreksi pengurangan saldo' }).getByText('-1 kredit token', { exact: true }),
     'Entri buku besar Koreksi debit -1 kredit token tidak tampil di layar',
   );
 

@@ -21,7 +21,7 @@ a { color: var(--color-primary); text-underline-offset: var(--space-1); overflow
 .customer-tabs { display: flex; gap: var(--space-2); min-width: var(--zero); overflow-x: auto; border-bottom: var(--border-width) solid var(--color-border-control); }
 .customer-tabs [role="tab"] { flex: 0 0 auto; min-height: var(--control-size); color: var(--color-primary); background: var(--color-surface); border-color: transparent; border-bottom-color: var(--color-border-control); }
 .customer-tabs [role="tab"][aria-selected="true"] { color: var(--color-text); border-color: var(--color-primary); border-bottom-width: var(--focus-width); }
-.customer-tabs [role="tab"]:hover:not([aria-selected="true"]) { color: var(--color-primary-hover); background: var(--color-info-bg); } .customer-tabs [role="tab"][aria-selected="true"]:hover { color: var(--color-text); }
+.customer-tabs [role="tab"]:hover:not([aria-selected="true"]) { color: var(--color-primary-hover); background: var(--color-info-bg); } .customer-tabs [role="tab"][aria-selected="true"]:hover { color: var(--color-text); background: var(--color-surface); }
 [role="tabpanel"] { min-width: var(--zero); }
 .onboarding-checklist { display: grid; gap: var(--space-4); }
 .onboarding-step { display: grid; gap: var(--space-2); padding: var(--space-4); border-left: var(--space-1) solid var(--color-border-control); background: var(--color-surface); }

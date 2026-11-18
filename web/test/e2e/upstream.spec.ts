@@ -45,13 +45,13 @@ test('route hanya menawarkan protokol upstream dan dikirim ulang sekali setelah 
   });
   await page.route('**/admin/api/second-factor', route => route.fulfill({ json: { ok: true } }));
   await page.goto('/admin/upstream');
-  await page.getByRole('button', { name: m.createRoute }).click();
-  const dialog = page.getByRole('dialog', { name: m.createRoute });
+  await page.getByRole('button', { name: m.addRoute }).click();
+  const dialog = page.getByRole('dialog', { name: m.addRoute });
   await dialog.locator('#route-model').selectOption(modelId);
   await dialog.locator('#route-upstream').selectOption(id);
   expect(await dialog.getByLabel(m.protocol).locator('option').allTextContents()).toEqual(['CHAT']);
   await dialog.getByLabel(m.upstreamModel).fill('provider/model');
-  await dialog.getByRole('button', { name: m.createRoute }).click();
+  await dialog.getByRole('button', { name: m.addRoute }).click();
   await expect(page.getByRole('dialog', { name: m.stepUp })).toBeVisible();
   await page.getByRole('dialog', { name: m.stepUp }).getByLabel(m.code).fill('123456');
   await page.getByRole('dialog', { name: m.stepUp }).getByRole('button', { name: m.verify }).click();

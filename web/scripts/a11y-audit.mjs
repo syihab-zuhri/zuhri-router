@@ -1158,7 +1158,7 @@ try {
         await auditScreen({ page: adminPage, screen: '/admin/pelanggan (hasil undangan)', width, viaRouteTransition: false, emptyData: false });
 
         const custCard = adminPage.locator('.data-row').filter({ hasText: custUsername });
-        await custCard.getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
+        await custCard.getByRole('button', { name: 'Buka rincian pelanggan', exact: true }).click();
         const detailSection = adminPage.locator('section[aria-label="Rincian"]');
         await detailSection.getByRole('heading', { name: custUsername, exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
 
@@ -1196,8 +1196,8 @@ try {
           open: () => topupBtn.click(),
         });
 
-        const adjForm = detailSection.locator('form').filter({ hasText: 'Koreksi saldo (kredit token)' });
-        await adjForm.getByLabel('Koreksi saldo (kredit token)').fill('2,5');
+        const adjForm = detailSection.locator('form').filter({ hasText: 'Nominal koreksi (kredit token)' });
+        await adjForm.getByLabel('Nominal koreksi (kredit token)').fill('2,5');
         await adjForm.getByLabel('Alasan').fill('Audit dialog koreksi saldo');
         const adjBtn = adjForm.getByRole('button', { name: 'Koreksi saldo', exact: true });
         await auditDialogBehavior({
@@ -1240,7 +1240,7 @@ try {
         await detailSection.getByRole('button', { name: 'Kembali ke daftar pelanggan', exact: true }).click();
         const suspendedCard = adminPage.locator('.data-row').filter({ hasText: suspendedUsername });
         await suspendedCard.waitFor({ state: 'visible', timeout: 5_000 });
-        await suspendedCard.getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
+        await suspendedCard.getByRole('button', { name: 'Buka rincian pelanggan', exact: true }).click();
         await detailSection.getByRole('heading', { name: suspendedUsername, exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
         await auditScreen({ page: adminPage, screen: '/admin/pelanggan (detail ditangguhkan)', width, viaRouteTransition: false, emptyData: false });
 
@@ -1332,7 +1332,7 @@ try {
       }
 
       if (r.path === '/admin/batas-lebih-pakai') {
-        await adminPage.getByLabel('Batas lebih-pakai dalam token').fill('500000');
+        await adminPage.getByLabel('Batas lebih-pakai (kredit token)').fill('500000');
         const submitOverdraft = adminPage.locator('main form').getByRole('button', { name: 'Simpan', exact: true });
         await auditDialogBehavior({
           page: adminPage,
@@ -1500,7 +1500,7 @@ try {
       // Detail pelanggan & detail harga saat 500
       await navigateShell(errAdminPage, '/admin/pelanggan', width);
       await errAdminPage.route(customerDetailMatch, respond500);
-      await errAdminPage.locator('.data-row').filter({ hasText: custUsername }).getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
+      await errAdminPage.locator('.data-row').filter({ hasText: custUsername }).getByRole('button', { name: 'Buka rincian pelanggan', exact: true }).click();
       await errAdminPage.getByRole('alert').first().waitFor({ state: 'visible', timeout: 10_000 });
       await auditScreen({ page: errAdminPage, screen: '/admin/pelanggan (detail error 500)', width, viaRouteTransition: false, emptyData: false });
       await errAdminPage.unroute(customerDetailMatch);

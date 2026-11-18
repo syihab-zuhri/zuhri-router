@@ -7,6 +7,6 @@ export function NotFoundPage() {
   return <main className="standalone not-found">
     <PageTitle>{m.notFound}</PageTitle>
     <p>{m.notFoundHelp}</p>
-    <Link to={admin ? '/admin/pelanggan' : '/beranda'}>{admin ? m.goAdminHome : m.goHome}</Link>
+    <Link to={admin ? '/admin/ringkasan' : '/beranda'}>{admin ? m.goAdminHome : m.goHome}</Link>
   </main>;
 }

@@ -84,7 +84,7 @@ function CustomerKeyRevokeAction({ username, keyRecord, onRevoked }: { username:
   const action = useAdminAction();
   const [confirm, setConfirm] = useState(false);
   return <>
-    {!confirm && <Button className="secondary" onClick={() => { action.setError(null); setConfirm(true); }}>{m.revokeKey}</Button>}
+    <Button className="secondary" onClick={() => { action.setError(null); setConfirm(true); }}>{m.revokeKey}</Button>
     {confirm && <Modal title={m.revokeConfirm} busy={action.busy} onClose={() => setConfirm(false)}>
       <p>{m.customerKeyRevokeImpact}</p>
       <dl><dt>{m.username}</dt><dd>{username}</dd><dt>{m.keyName}</dt><dd>{keyRecord.name}</dd><dt>{m.id}</dt><dd className="mono">{keyRecord.id}</dd><dt>{m.version}</dt><dd>{keyRecord.version}</dd></dl>
@@ -103,8 +103,10 @@ function CustomerKeysPanel({ username }: { username: string }) {
   const after = params.get('keyAfter');
   const path = `/admin/api/customers/${encodeURIComponent(username)}/keys?limit=50${after ? `&after=${encodeURIComponent(after)}` : ''}`;
   const result = useResource<CustomerKeysResult>(path);
+  // The revoked row loses its button; move focus to a stable heading instead of letting it fall to <body>.
+  const heading = useRef<HTMLHeadingElement>(null);
   return <section className="panel stack" aria-label={m.apiKeys}>
-    <h2>{m.apiKeys}</h2><p>{m.customerKeysHelp}</p>
+    <h2 ref={heading} tabIndex={-1}>{m.apiKeys}</h2><p>{m.customerKeysHelp}</p>
     {result.isPending ? <Pending /> : result.isError ? <ErrorBox error={result.error} retry={() => void result.refetch()} /> : result.data.keys.length === 0 ? <Empty title={m.customerKeysEmpty} /> : <DataList caption={m.apiKeys}>{result.data.keys.map(key => <article className="data-row" key={key.id}>
       <div className="request-heading"><h3>{key.name}</h3><Badge status={key.status} /></div>
       <p className="mono">{key.maskedKey}</p>
@@ -115,7 +117,7 @@ function CustomerKeysPanel({ username }: { username: string }) {
         <dt>{m.createdAt}</dt><dd>{formatDate(key.createdAt)}</dd>
         {key.expiresAt && <><dt>{m.expiry}</dt><dd>{formatDate(key.expiresAt)}</dd></>}
       </dl>
-      {key.status === 'ACTIVE' && <CustomerKeyRevokeAction username={username} keyRecord={key} onRevoked={() => result.refetch().then(() => undefined)} />}
+      {key.status === 'ACTIVE' && <CustomerKeyRevokeAction username={username} keyRecord={key} onRevoked={() => result.refetch().then(() => { heading.current?.focus(); })} />}
     </article>)}</DataList>}
     {result.isSuccess && <nav className="pagination" aria-label={m.apiKeys}>
       {after && <Button className="secondary" disabled={result.isFetching} onClick={() => { const next = new URLSearchParams(params); next.delete('keyAfter'); setParams(next); }}>{m.first}</Button>}
@@ -283,8 +285,8 @@ function CustomerDetail({ username }: { username: string }) {
   const usageTabPanel = <div className="stack">{usagePanel}</div>;
   const ledgerPanel = <section className="panel stack"><h2>{m.ledger}</h2>{value.entries.length === 0 ? <Empty /> : <DataList caption={m.ledger}>{value.entries.map(entry => <article className="data-row" key={entry.id}><dl><dt>{m.transactionId}</dt><dd className="mono">{entry.id}</dd><dt>{m.kind}</dt><dd>{kindText[entry.kind] ?? entry.kind}</dd><dt>{m.amount}</dt><dd className="number">{formatCredits(entry.amount)} {m.credits}</dd><dt>{m.time}</dt><dd>{formatDate(entry.createdAt)}</dd></dl></article>)}</DataList>}</section>;
   const tabContent: Record<CustomerTab, ReactNode> = {
-    summary: <section className="panel stack"><div className="actions"><Button className="secondary" busy={customer.isFetching} onClick={() => void customer.refetch()}>{m.refresh}</Button></div><dl className="metrics">{([[m.available, value.availableMicro], [m.posted, value.postedMicro], [m.held, value.heldMicro]] as const).map(([label, micro]) => <div className="metric" key={label}><dt>{label}</dt><dd className="number">{formatCredits(micro)} {m.credits}</dd></div>)}</dl>{value.tenantStatus === 'SUSPENDED' && <Alert danger>{m.suspended}</Alert>}<Button className={value.tenantStatus === 'SUSPENDED' ? 'secondary' : 'danger-button'} onClick={() => { setConfirmationReason(''); setFinancialConfirmation({ action: value.tenantStatus === 'SUSPENDED' ? 'restore' : 'suspend', username: value.username, expectedVersion: value.version, reason: '' }); statusAction.setError(null); }}>{value.tenantStatus === 'SUSPENDED' ? m.restoreCustomer : m.suspendCustomer}</Button></section>,
-    balance: <div className="stack">{topupForm}{receipt && <Receipt value={receipt} />}{!confirmation && action.error && <ErrorBox error={action.error} />}{adjustmentForm}{adjustmentReceipt && <Receipt value={adjustmentReceipt} />}</div>,
+    summary: <section className="panel stack"><div className="actions"><Button className="secondary" busy={customer.isFetching} onClick={() => void customer.refetch()}>{m.refresh}</Button></div><dl className="metrics">{([[m.available, value.availableMicro], [m.posted, value.postedMicro], [m.held, value.heldMicro]] as const).map(([label, micro]) => <div className="metric" key={label}><dt>{label}</dt><dd className="number">{formatCredits(micro)} {m.credits}</dd></div>)}</dl>{value.tenantStatus === 'SUSPENDED' && <Alert danger>{m.adminSuspended}</Alert>}<Button className={value.tenantStatus === 'SUSPENDED' ? 'secondary' : 'danger-button'} onClick={() => { setConfirmationReason(''); setFinancialConfirmation({ action: value.tenantStatus === 'SUSPENDED' ? 'restore' : 'suspend', username: value.username, expectedVersion: value.version, reason: '' }); statusAction.setError(null); }}>{value.tenantStatus === 'SUSPENDED' ? m.restoreCustomer : m.suspendCustomer}</Button></section>,
+    balance: <div className="stack">{topupForm}{receipt && <Receipt value={receipt} kind="topup" />}{!confirmation && action.error && <ErrorBox error={action.error} />}{adjustmentForm}{adjustmentReceipt && <Receipt value={adjustmentReceipt} kind="adjustment" />}</div>,
     usage: usageTabPanel,
     ledger: ledgerPanel,
     keys: <CustomerKeysPanel username={value.username} />,

@@ -25,7 +25,7 @@ export function VouchersPage() {
   const [lost, setLost] = useState(false); const [revoked, setRevoked] = useState(false);
   const close = () => { setConfirmation(null); setRevoking(null); action.setError(null); };
   return <>
-    <PageTitle subtitle={m.voucherHelp}>{m.vouchers}</PageTitle>
+    <PageTitle subtitle={kind === 'SALE' ? m.voucherHelp : m.voucherPromoHelp}>{m.vouchers}</PageTitle>
     <form className="panel stack" onSubmit={e => {
       e.preventDefault(); action.setError(null); setIssued(null); setLost(false); setRevoked(false);
       const selected = packs.data?.packs.find(pack => pack.id === packId);
@@ -43,7 +43,7 @@ export function VouchersPage() {
       <div className="field"><label htmlFor="voucher-pack">{m.pack}</label><select id="voucher-pack" value={packId} onChange={e => setPackId(e.target.value)} disabled={packs.isPending}><option value="">{m.manualAmount}</option>{packs.data?.packs.filter(pack => pack.active).map(pack => <option key={pack.id} value={pack.id}>{pack.name} ({grouped(pack.tokens)} {m.credits})</option>)}</select></div>
       {packs.isPending && <Pending />}{packs.error && <ErrorBox error={packs.error} retry={() => { void packs.refetch(); }} />}
       {!packId && <Field label={m.tokens} inputMode="numeric" value={tokens} onChange={e => setTokens(e.target.value)} pattern="[1-9][0-9]{0,11}" maxLength={12} required />}
-      <Field label={kind === 'SALE' ? m.saleRef : m.promoReason} value={saleRef} onChange={e => setSaleRef(e.target.value)} pattern=".*\S.*" maxLength={200} required />
+      <Field label={kind === 'SALE' ? m.saleRef : m.promoReasonLabel} value={saleRef} onChange={e => setSaleRef(e.target.value)} pattern=".*\S.*" maxLength={200} required />
       <Field label={m.recipient} value={recipient} onChange={e => setRecipient(e.target.value)} pattern="[a-z0-9_]{3,24}" maxLength={24} autoComplete="off" />
       <Field label={m.expiry} type="datetime-local" value={expires} onChange={e => setExpires(e.target.value)} />
       <div className="actions"><Button busy={action.busy}>{m.issueVoucher}</Button></div>
@@ -63,8 +63,8 @@ export function VouchersPage() {
       <div className="actions"><Button className="secondary" disabled={!before || action.busy} onClick={() => setParams({})}>{m.first}</Button><Button className="secondary" disabled={!vouchers.data.nextBefore || action.busy} onClick={() => { if (vouchers.data.nextBefore) setParams({ before: vouchers.data.nextBefore }); }}>{m.next}</Button></div>
     </>}
     {confirmation && <Modal title={m.issueVoucher} onClose={close} busy={action.busy}>
-      <p>{m.financialConfirm}</p><p>{m.voucherHelp}</p>
-      <dl><dt>{m.voucherKind}</dt><dd>{confirmation.payload.kind === 'SALE' ? m.sale : m.promoReason}</dd><dt>{m.tokens}</dt><dd>{formatCredits(confirmation.amountMicro)} {m.credits}</dd><dt>{m.saleRef}</dt><dd>{confirmation.payload.saleRef}</dd>{confirmation.packName && <><dt>{m.pack}</dt><dd>{confirmation.packName}</dd><dt>{m.priceIdr}</dt><dd>{grouped(confirmation.priceIdr!)}</dd></>}{confirmation.payload.recipientUsername && <><dt>{m.recipient}</dt><dd>{confirmation.payload.recipientUsername}</dd></>}{confirmation.payload.expiresAt && <><dt>{m.expiry}</dt><dd>{formatDate(confirmation.payload.expiresAt)}</dd></>}</dl>
+      <p>{m.financialConfirm}</p><p>{confirmation.payload.kind === 'SALE' ? m.voucherHelp : m.voucherPromoHelp}</p>
+      <dl><dt>{m.voucherKind}</dt><dd>{confirmation.payload.kind === 'SALE' ? m.sale : m.promoReason}</dd><dt>{m.tokens}</dt><dd>{formatCredits(confirmation.amountMicro)} {m.credits}</dd><dt>{confirmation.payload.kind === 'SALE' ? m.saleRef : m.promoReasonLabel}</dt><dd>{confirmation.payload.saleRef}</dd>{confirmation.packName && <><dt>{m.pack}</dt><dd>{confirmation.packName}</dd><dt>{m.priceIdr}</dt><dd>{grouped(confirmation.priceIdr!)}</dd></>}{confirmation.payload.recipientUsername && <><dt>{m.recipient}</dt><dd>{confirmation.payload.recipientUsername}</dd></>}{confirmation.payload.expiresAt && <><dt>{m.expiry}</dt><dd>{formatDate(confirmation.payload.expiresAt)}</dd></>}</dl>
       {action.error && <ErrorBox error={action.error} />}{action.busy && <Alert>{m.saving}</Alert>}
       <div className="actions"><Button className="secondary" autoFocus disabled={action.busy} onClick={close}>{m.cancel}</Button><Button busy={action.busy} onClick={() => {
         const payload = confirmation.payload;
@@ -83,7 +83,7 @@ export function VouchersPage() {
         <div className="actions"><Button type="button" className="secondary" autoFocus disabled={action.busy} onClick={close}>{m.cancel}</Button><Button className="danger-button" busy={action.busy}>{m.revokeVoucher}</Button></div>
       </form>
     </Modal>}
-    {secret && <SecretReveal secret={secret} onClose={() => setSecret(null)} />}
+    {secret && <SecretReveal kind="voucher" secret={secret} onClose={() => setSecret(null)} />}
     {action.dialog}
   </>;
 }

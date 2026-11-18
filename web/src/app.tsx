@@ -30,7 +30,11 @@ function Navigation({ admin, close }: { admin: boolean; close?: () => void }) {
 function RouteFocus() {
   const location = useLocation();
   useEffect(() => {
-    const timer = requestAnimationFrame(() => (document.querySelector<HTMLElement>('h1') ?? document.querySelector<HTMLElement>('main#main'))?.focus());
+    const timer = requestAnimationFrame(() => {
+      // Switching tabs only changes the query string; focus stays on the tab the user moved to.
+      if (document.activeElement?.closest('[role="tablist"]')) return;
+      (document.querySelector<HTMLElement>('h1') ?? document.querySelector<HTMLElement>('main#main'))?.focus();
+    });
     return () => cancelAnimationFrame(timer);
   }, [location.pathname, location.search]);
   return null;
@@ -60,6 +64,6 @@ export function App({ takeToken }: { takeToken: () => string | null }) {
   return <><RouteFocus /><Routes><Route path="/masuk" element={<LoginPage />} /><Route path="/admin/masuk" element={<LoginPage admin />} /><Route path="/aktivasi" element={<TokenPage kind="activate" takeToken={takeToken} />} /><Route path="/atur-ulang" element={<TokenPage kind="reset" takeToken={takeToken} />} /><Route path="/lupa-password" element={<RequestResetPage />} />
     <Route element={<Shell />}><Route path="/beranda" element={<HomePage />} /><Route path="/isi-saldo" element={<RedeemPage />} /><Route path="/api-key" element={<KeysPage />} /><Route path="/model-harga" element={<CataloguePage />} /><Route path="/pemakaian" element={<UsagePage />} /><Route path="/panduan" element={<GuidePage />} /><Route path="/transaksi" element={<LedgerPage />} /><Route path="/akun" element={<CustomerAccountPage />} /></Route>
     <Route element={<Shell admin />}><Route path="/admin/ringkasan" element={<AdminOverviewPage />} /><Route path="/admin/pelanggan" element={<CustomersPage />} /><Route path="/admin/paket" element={<PacksPage />} /><Route path="/admin/kode" element={<VouchersPage />} /><Route path="/admin/harga" element={<ModelsPage />} /><Route path="/admin/upstream" element={<UpstreamsPage />} /><Route path="/admin/rekonsiliasi" element={<UnresolvedPage />} /><Route path="/admin/batas-lebih-pakai" element={<OverdraftPage />} /><Route path="/admin/audit" element={<AuditPage />} /><Route path="/admin/akun" element={<AdminAccountPage />} /></Route>
-    <Route path="/" element={<Navigate to="/beranda" replace />} /><Route path="/admin" element={<Navigate to="/admin/pelanggan" replace />} /><Route path="*" element={<NotFoundPage />} />
+    <Route path="/" element={<Navigate to="/beranda" replace />} /><Route path="/admin" element={<Navigate to="/admin/ringkasan" replace />} /><Route path="*" element={<NotFoundPage />} />
   </Routes></>;
 }

@@ -67,7 +67,14 @@ async function setupAdminMocks(page: Page, overviewHandler: () => Promise<{ stat
   });
 }
 
-test('ringkasan operasi menampilkan seluruh metrik, penanda akun minus, tautan tujuan, dan catatan biaya belum tersedia', async ({ page }) => {
+test('rute /admin dan login admin menuju ringkasan operasi', async ({ page }) => {
+  await setupAdminMocks(page, async () => ({ json: sampleOverview }));
+  await page.goto('/admin');
+  await expect(page).toHaveURL(/\/admin\/ringkasan$/);
+  await expect(page.getByRole('heading', { name: ov.overviewTitle, exact: true })).toBeVisible();
+});
+
+test('rute /admin membuka ringkasan operasi dengan metrik, penanda akun minus, dan tautan tujuan', async ({ page }) => {
   let calls = 0;
   await setupAdminMocks(page, async () => {
     calls++;
@@ -82,10 +89,7 @@ test('ringkasan operasi menampilkan seluruh metrik, penanda akun minus, tautan t
   });
 
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/admin/pelanggan');
-  await expect(page.getByRole('heading', { name: m.customers, exact: true })).toBeVisible();
-
-  await page.locator('aside.desktop-nav nav').getByRole('link', { name: ov.overview, exact: true }).click();
+  await page.goto('/admin');
   await expect(page).toHaveURL(/\/admin\/ringkasan$/);
   await expect(page.getByRole('heading', { name: ov.overviewTitle, exact: true })).toBeVisible();
 

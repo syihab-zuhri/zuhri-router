@@ -16,8 +16,15 @@ test('masuk keyboard, CSRF, shell 360px dan fokus navigasi', async ({ page }) =>
   await page.setViewportSize({ width: 360, height: 640 });
   await page.goto('/masuk');
   await expect(page.getByRole('heading', { name: 'Masuk', exact: true })).toBeVisible();
-  await page.getByLabel('Username atau email').focus();
-  await page.keyboard.type('uji'); await page.keyboard.press('Tab'); await page.keyboard.type('customer-password-1');
+  const identifier = page.getByLabel(m.identifier, { exact: true });
+  const password = page.getByLabel(m.password, { exact: true });
+  await identifier.focus();
+  await page.keyboard.type('uji');
+  await expect(identifier).toHaveValue('uji');
+  await page.keyboard.press('Tab');
+  await expect(password).toBeFocused();
+  await page.keyboard.type('customer-password-1');
+  await expect(password).toHaveValue('customer-password-1');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'Beranda', exact: true })).toBeVisible();
   await expect(page.getByText('9.223.372.036.854,775807', { exact: false }).first()).toBeVisible();
@@ -57,6 +64,22 @@ test('checklist first-use memakai saldo dan daftar key dari API lalu hilang saat
   await expect(page.locator('.onboarding-checklist')).toHaveCount(0);
 });
 
+test('membuka panduan langsung menandai langkah baca pada checklist', async ({ page }) => {
+  await page.route('**/api/me', route => route.fulfill({ json: { username: 'panduan_langsung', tenantStatus: 'ACTIVE', version: '1' } }));
+  await page.route('**/api/balance', route => route.fulfill({ json: { currency: 'TOKEN', postedMicro: '0', heldMicro: '0', availableMicro: '0' } }));
+  await page.route('**/api/packs', route => route.fulfill({ json: { packs: [] } }));
+  await page.route('**/api/keys?*', route => route.fulfill({ json: { keys: [] } }));
+  await page.goto('/beranda');
+  const checklist = page.getByRole('region', { name: m.firstUseTitle });
+  await expect(checklist).toContainText('0 dari 3 selesai');
+  await page.goto('/panduan');
+  await expect(page.getByRole('heading', { name: m.guide, exact: true })).toBeVisible();
+  await expect(page.locator('.onboarding-checklist')).toHaveCount(0);
+  await page.goto('/beranda');
+  await expect(checklist).toContainText('1 dari 3 selesai');
+  await expect(checklist.locator('.onboarding-step').filter({ hasText: m.firstUseGuide })).toContainText(m.completed);
+});
+
 test('halaman aktivasi tanpa token memberi bantuan dan link kembali', async ({ page }) => {
   await page.goto('/aktivasi');
   await expect(page.getByText(m.activationHelpMissing, { exact: true })).toBeVisible();
@@ -91,6 +114,7 @@ test('kebijakan token terbaca dengan kontras dan tautan tidak meluber di 360 px'
   await page.route('**/api/packs', route => route.fulfill({ json: { packs: [] } }));
   await page.goto('/beranda');
   await expect(page.getByText(m.refundPolicy, { exact: true })).toBeVisible();
+  await expect(page.getByText('Pembelian kredit token', { exact: false })).toBeVisible();
   const contrast = await page.locator('.refund-policy').evaluate(element => {
     const luminance = (value: string) => {
       const channels = value.slice(value.indexOf('(') + 1, value.indexOf(')')).split(',').slice(0, 3).map(Number);
@@ -115,7 +139,7 @@ test('halaman tidak ditemukan menampilkan arah kembali dan menerima fokus', asyn
   await expect(page.getByRole('link', { name: m.goHome, exact: true })).toHaveAttribute('href', '/beranda');
   await expect(page.getByRole('heading', { name: m.notFound, exact: true })).toBeFocused();
   await page.goto('/admin/rute-tidak-ada');
-  await expect(page.getByRole('link', { name: m.goAdminHome, exact: true })).toHaveAttribute('href', '/admin/pelanggan');
+  await expect(page.getByRole('link', { name: m.goAdminHome, exact: true })).toHaveAttribute('href', '/admin/ringkasan');
   await expect(page.getByRole('heading', { name: m.notFound, exact: true })).toBeFocused();
   await page.setViewportSize({ width: 360, height: 800 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();

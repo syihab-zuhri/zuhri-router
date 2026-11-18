@@ -10,7 +10,7 @@ export function LoginPage({ admin = false }: { admin?: boolean }) {
   const [identifier, setIdentifier] = useState(''); const [password, setPassword] = useState(''); const [code, setCode] = useState(''); const [second, setSecond] = useState(false);
   const { run, busy, error } = useAction(admin); const navigate = useNavigate(); const cache = useQueryClient(); const location = useLocation();
   const returnTo: unknown = location.state?.returnTo;
-  const destination = typeof returnTo === 'string' && (admin ? /^\/admin\/(ringkasan|pelanggan|paket|kode|harga|upstream|rekonsiliasi|batas-lebih-pakai|audit|akun)(\?[^#]*)?$/ : /^\/(beranda|isi-saldo|api-key|model-harga|pemakaian|panduan|transaksi|akun)(\?[^#]*)?$/).test(returnTo) ? returnTo : admin ? '/admin/pelanggan' : '/beranda';
+  const destination = typeof returnTo === 'string' && (admin ? /^\/admin\/(ringkasan|pelanggan|paket|kode|harga|upstream|rekonsiliasi|batas-lebih-pakai|audit|akun)(\?[^#]*)?$/ : /^\/(beranda|isi-saldo|api-key|model-harga|pemakaian|panduan|transaksi|akun)(\?[^#]*)?$/).test(returnTo) ? returnTo : admin ? '/admin/ringkasan' : '/beranda';
   return <div className="auth-layout"><Brand /><main className="auth-form"><PageTitle>{second ? m.secondFactor : admin ? m.adminLogin : m.login}</PageTitle>{location.state?.expired && <Alert>{m.sessionExpired}</Alert>}
     <form onSubmit={e => { e.preventDefault(); void run(async () => {
       if (admin && !second) { await post('/admin/api/login', { identifier, password }); setPassword(''); setSecond(true); return; }

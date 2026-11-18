@@ -140,12 +140,14 @@ try {
   await page.getByRole('button', { name: 'Masuk', exact: true }).click();
   await page.getByLabel('Kode autentikator', { exact: true }).fill(code());
   await page.getByRole('button', { name: 'Verifikasi kode' }).click();
-  await expectVisible(page.getByRole('heading', { name: 'Pelanggan', exact: true }), 'Login admin tidak selesai');
+  await expectVisible(page.getByRole('heading', { name: 'Ringkasan Operasi', exact: true }), 'Login admin tidak membuka ringkasan operasi');
+  await page.goto(`http://127.0.0.1:${webPort}/admin/pelanggan`);
+  await expectVisible(page.getByRole('heading', { name: 'Pelanggan', exact: true }), 'Daftar pelanggan tidak terbuka');
 
   await page.getByLabel('Awalan username', { exact: true }).fill(username);
   await page.getByRole('button', { name: 'Cari', exact: true }).click();
   await expectVisible(page.getByRole('heading', { name: username, exact: true }).first(), 'Pelanggan tidak ditemukan');
-  await page.getByRole('button', { name: 'Buka detail pelanggan', exact: true }).click();
+  await page.getByRole('button', { name: 'Buka rincian pelanggan', exact: true }).click();
   await expectVisible(page.getByRole('heading', { name: username, exact: true }).last(), 'Detail pelanggan tidak terbuka');
   await page.getByRole('tab', { name: 'Saldo', exact: true }).click();
   await expectVisible(page.getByLabel('Jumlah kredit token'), 'Form top-up tidak tampil di tab Saldo');
@@ -222,8 +224,8 @@ try {
   await expectVisible(page.getByText('Saldo berhasil ditambah'), 'Redeem tidak menghasilkan receipt');
   await page.getByLabel('Kode redeem', { exact: true }).fill(voucherCode);
   await page.getByRole('button', { name: 'Tukar kode' }).click();
-  await expectVisible(page.getByText('Tidak ada penambahan kedua'), 'Replay redeem tidak dijelaskan');
-  await expectVisible(page.getByText('Saldo tercatat saat jawaban ini diterima'), 'Saldo replay tidak diberi label saldo terkini');
+  await expectVisible(page.getByText('Penukaran kode sudah tercatat. Tidak ada penambahan kedua.'), 'Replay redeem tidak dijelaskan');
+  await expectVisible(page.getByText('Saldo tercatat saat respons diterima dari server'), 'Saldo replay tidak diberi label saldo terkini');
   await page.goto(`http://127.0.0.1:${webPort}/transaksi`);
   await expectVisible(page.getByText('Penukaran kode', { exact: true }), 'Ledger tidak memuat penukaran');
   await assertReflow(page);
