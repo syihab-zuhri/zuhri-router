@@ -209,7 +209,9 @@ test('akun admin: keyboard, reduced motion, dan 360px tanpa gulir horizontal', a
 
   const startBtn = page.getByRole('button', { name: am.startRotation });
   expect(await startBtn.evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0s');
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await startBtn.focus();
+  await expect(startBtn).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByText('JBSW Y3DP EHPK 3PXP JBSW Y3DP EHPK 3PXP')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();

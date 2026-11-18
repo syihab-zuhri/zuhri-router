@@ -231,7 +231,9 @@ test('ringkasan operasi 360px tanpa gulir horizontal, dapat dipakai keyboard saj
   expect(visitedTargets).toContain(`a:${ov.openUpstreams}`);
 
   const unresolvedLink = page.getByRole('link', { name: ov.openUnresolved, exact: true });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await unresolvedLink.focus();
+  await expect(unresolvedLink).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/admin\/rekonsiliasi$/);
   await expect(page.getByRole('heading', { name: m.unresolved, exact: true })).toBeVisible();

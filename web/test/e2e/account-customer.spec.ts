@@ -195,7 +195,9 @@ test('cabut sesi saat ini mengarahkan ke masuk; loading/error, keyboard, 360px, 
 
   // Alur keyboard saja: fokus tombol cabut sesi -> Enter -> Tab ke tombol cabut -> Enter -> keluar ke /masuk
   const revokeBtn = page.getByRole('button', { name: am.revokeSession });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await revokeBtn.focus();
+  await expect(revokeBtn).toBeFocused();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: am.revokeCurrentSessionTitle });
   await expect(dialog.getByRole('button', { name: m.cancel })).toBeFocused();
