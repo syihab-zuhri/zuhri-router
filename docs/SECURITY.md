@@ -1,9 +1,9 @@
 # Security, Permission dan Anti-abuse: Router AI Komersial
 
-Version: 0.3.1
+Version: 0.3.2
 Status: Draft, PROPOSED; rencana kontrol, bukan hasil audit atau klaim compliance
 Owner keputusan: founder
-Updated: 2026-11-13, Asia/Jakarta
+Updated: 2026-11-18, Asia/Jakarta
 Dependencies: PLANNING.md; ARCHITECTURE.md; BILLING_REDEEM.md
 Evidence: E1. Tidak ada pengujian keamanan yang dijalankan.
 
@@ -36,7 +36,8 @@ Peran support dan anggota tim: DEFERRED ke P1. Default seluruh operasi adalah to
 | Biaya modal, multiplier mentah, cost profile | – | Tidak | Tidak | Ya | Baca |
 | Saldo, request, ledger tenant sendiri | – | Baca | – | Baca semua tenant | Tulis lewat settlement |
 | Redeem kode | – | Ya | – | Tidak | – |
-| Terbit, cabut, daftar voucher | – | Tidak | – | Ya, step-up | – |
+| Terbit dan cabut voucher | – | Tidak | – | Ya, step-up | – |
+| Daftar voucher (kode tersamar, tanpa kode mentah) | – | Tidak | – | Ya | – |
 | Adjustment saldo; top-up langsung lewat username | – | Tidak | – | Ya, step-up | – |
 | Pemakaian per pelanggan (metadata, tanpa isi prompt) | – | Miliknya | – | Ya, semua tenant | – |
 | Tenant: undang, suspend, restore | – | Tidak | – | Ya | – |

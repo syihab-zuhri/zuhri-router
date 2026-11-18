@@ -1,9 +1,17 @@
 # Changelog: Router AI Komersial
 
-Version: 0.37.0
+Version: 0.38.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
-Updated: 2026-11-15, Asia/Jakarta
+Updated: 2026-11-18, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.38.0: Dokumen disamakan dengan kode (DRIFT)
+
+Source: matriks otorisasi dan uji alur penuh Antigravity (Tugas enam, `docs/handoff/antigravity-log.md`). Perilaku tidak berubah; hanya dokumen. Founder dapat meminta sebaliknya.
+
+- `ARCHITECTURE.md` section 2: state `SETTLED_ESTIMATED` ditambahkan ke tabel. Kode menyelesaikan request yang kontennya sudah terkirim tanpa usage dari upstream (termasuk klien memutus di tengah stream) langsung dengan hitungan lokal yang ditandai estimasi, sesuai isi CR-006, tanpa singgah di `UNRESOLVED`.
+- `SECURITY.md` section 2: melihat daftar voucher cukup sesi admin dengan faktor kedua; step-up tetap wajib untuk terbit dan cabut. Daftar hanya memuat kode tersamar.
+- Bukti pendukung: `server/test/route-matrix.test.ts` memeriksa 71 rute (tanpa sesi, salah peran, tanpa CSRF, step-up kedaluwarsa tanpa perubahan data, key salah atau dicabut, isolasi tenant); tidak ada celah ditemukan.
 
 ## 0.37.0: Tidak ada pengembalian saldo
 

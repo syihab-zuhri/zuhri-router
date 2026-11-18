@@ -1,9 +1,9 @@
 # Architecture, Data dan Interface: Router AI Komersial
 
-Version: 0.7.0
+Version: 0.7.1
 Status: Draft; stack disetujui, API M1 lokal diimplementasikan; gateway dan UI belum
 Owner keputusan: founder
-Updated: 2026-11-14, Asia/Jakarta
+Updated: 2026-11-18, Asia/Jakarta
 Dependencies: PLANNING.md; BILLING_REDEEM.md; SECURITY.md
 Evidence: E3 untuk test API M1 dan spike yang cakupannya tercatat di README masing-masing; kontrak fitur lain tetap rencana.
 
@@ -35,17 +35,18 @@ Pemisahan data/control adalah batas modul. Keduanya boleh berada pada satu prose
 | ADMITTED | Snapshot harga diambil dan hold dibuat secara atomik | DISPATCHED, FAILED |
 | DISPATCHED | Minimal satu attempt dikirim ke upstream | STREAMING, COMPLETED, FAILED, CANCELLED |
 | STREAMING | Byte pertama sudah dikirim ke klien | COMPLETED, FAILED, CANCELLED |
-| COMPLETED | Upstream selesai normal | SETTLED, UNRESOLVED |
-| FAILED | Gagal; sebagian output mungkin sudah terkirim | SETTLED, UNRESOLVED |
-| CANCELLED | Klien memutus atau pembatalan diminta | SETTLED, UNRESOLVED |
+| COMPLETED | Upstream selesai normal | SETTLED, SETTLED_ESTIMATED, UNRESOLVED |
+| FAILED | Gagal; sebagian output mungkin sudah terkirim | SETTLED, SETTLED_ESTIMATED, UNRESOLVED |
+| CANCELLED | Klien memutus atau pembatalan diminta | SETTLED, SETTLED_ESTIMATED, UNRESOLVED |
 | SETTLED | Usage final dicatat, debit dibuat, sisa hold dilepas | Terminal |
+| SETTLED_ESTIMATED | Konten sudah diteruskan tetapi usage dari upstream tidak ada; debit dari hitungan lokal gateway, ditandai estimasi, sisa hold dilepas | Terminal; koreksi lewat adjustment admin |
 | UNRESOLVED | Usage tidak lengkap atau tidak diketahui; hold dipertahankan | SETTLED lewat rekonsiliasi |
 
 Aturan:
 - Hold tidak dilepas oleh TTL semata. Worker memeriksa pemilik dan state attempt sebelum bertindak.
 - Settlement dikunci oleh request ID; pemanggilan ulang tidak menambah entri.
 - Usage nol (CONFIRMED founder, CR-004): bila usage final nol token input dan nol token output, settlement bernilai nol, hold dilepas seluruhnya, dan alasan dicatat. Berlaku untuk upstream yang melaporkan nol dan untuk request yang gagal sebelum ada byte konten diteruskan ke klien.
-- Usage hilang (CONFIRMED founder mengikuti rekomendasi, CR-006): bila konten sudah diteruskan ke klien tetapi upstream tidak melaporkan usage, request menjadi UNRESOLVED lalu di-settle dari hitungan lokal gateway atas konten yang diteruskan dan input yang diterima, ditandai estimasi dan dapat dikoreksi admin. Request seperti ini tidak diperlakukan sebagai usage nol.
+- Usage hilang (CONFIRMED founder mengikuti rekomendasi, CR-006): bila konten sudah diteruskan ke klien tetapi upstream tidak melaporkan usage, request di-settle dari hitungan lokal gateway atas konten yang diteruskan dan input yang diterima, ditandai estimasi dan dapat dikoreksi admin. Implementasi menyelesaikannya langsung ke SETTLED_ESTIMATED (alasan `usage_missing`, atau `cancelled_mid_stream` bila klien memutus) tanpa singgah di UNRESOLVED; UNRESOLVED dipakai bila settlement itu sendiri gagal, dan hold tetap terbuka sampai rekonsiliasi. Request seperti ini tidak diperlakukan sebagai usage nol.
 - Biaya upstream untuk request yang tidak didebit tetap dicatat pada attempt sebagai biaya usaha dan masuk laporan selisih.
 - Retry antar-route hanya dari DISPATCHED sebelum STREAMING, paling banyak sejumlah batas konfigurasi.
 
