@@ -443,7 +443,7 @@ try {
   await custPage.getByLabel('Nama key').fill('Key Golden Path');
   await custPage.getByRole('button', { name: 'Buat API key', exact: true }).click();
 
-  const secretDialog = custPage.getByRole('dialog', { name: 'Salin secret sekarang' });
+  const secretDialog = custPage.getByRole('dialog', { name: 'Salin API key ini sekarang' });
   await expectVisible(secretDialog, 'Dialog secret API key tidak tampil');
   const apiKeySecret = (await secretDialog.locator('pre.secret').textContent())?.trim() ?? '';
   assert.match(apiKeySecret, /^rtr_[A-Za-z0-9_-]{43}$/);
