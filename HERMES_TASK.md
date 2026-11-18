@@ -179,3 +179,17 @@ Tahap lima diterima dan terpasang (`zrouter:r11181828`). Butir 5 sampai 8 dikerj
 5. Seluruh rangkaian test seperti biasa; jangan menjalankan Playwright bersamaan dengan Antigravity.
 
 Tetap jangan menyentuh berkas Antigravity: `account-*.tsx`, `admin-overview.tsx`, `qr.ts`, blok `am` dan `ov`, `web/scripts/*-local-verify.mjs` selain `local-browser-verify.mjs`, `a11y-audit.mjs`, `verify-all.mjs`, `admin-overview.spec.ts`, `account-*.spec.ts`.
+
+## Tahap tujuh (2026-11-18 malam)
+
+Tahap enam digabung; baca `docs/handoff/claude-log.md` bagian "2026-11-18 malam" dulu. **Penting:** versi Anda tidak lolos typecheck (`grouped` tidak diimpor), `service_paused` tertulis 403 padahal 503, fokus judul hilang di halaman tanpa `main#main`, dan tidak ada test maupun log. Claude sudah memperbaikinya. Mulai tahap ini, tahap dianggap selesai hanya bila semua ini terpenuhi dan tercatat di log Anda:
+
+- `npm run typecheck`, `npm test`, `npm run test:e2e` penuh, `npm run test:local` dan `npm run test:browser` lulus, dengan jumlah test yang ditulis di log.
+- Setiap butir punya test baru yang gagal tanpa perubahan Anda.
+- Setiap teks yang terlihat dan berubah disebut di log (skrip Antigravity bergantung padanya).
+
+1. **Tab Request di detail pelanggan (SCR-015)**. `docs/UX.md` meminta tab Request. Tampilkan request pelanggan itu dari `GET /admin/api/requests?username=<username>` (kontrak di `docs/ARCHITECTURE.md` section 5.7). Pakai ulang komponen daftar dari `admin-operations.tsx` (pindahkan ke komponen bersama dengan username tetap) daripada menyalinnya. Urutan tab, ARIA tabs dan query `tab` mengikuti pola yang ada; jangan merusak `customer-tabs-focus.spec.ts`.
+2. **Filter audit (SCR-018)**. Server kini menerima `GET /admin/api/audit?action=&actor=&targetType=&targetId=&before=` dan mengembalikan `actorUsername` serta `nextBefore` (section 5.7). Di layar Audit: filter awalan aksi (pilihan untuk kelompok umum seperti `setting.`, `voucher.`, `customer.`, `key.`, `request.`, plus isian bebas), username pelaku dan target; tampilkan username pelaku, bukan UUID; nama aksi dalam bahasa admin dengan nama mentah sebagai cadangan untuk aksi yang belum dikenal; paginasi memakai `nextBefore`. Keadaan loading, kosong, tanpa hasil.
+3. Jangan menjalankan Playwright bersamaan dengan Antigravity.
+
+Tetap jangan menyentuh berkas Antigravity (daftar di Tahap enam).
