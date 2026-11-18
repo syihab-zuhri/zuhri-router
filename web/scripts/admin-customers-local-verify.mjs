@@ -351,7 +351,7 @@ try {
 
   await completeStepUpDialog(adminPage, totpSeed, usedSecrets, 'suspend-customer');
   await expectVisible(
-    detailSection.getByText('Akun ditangguhkan. Saldo dan riwayat tetap dapat dilihat; hubungi admin untuk akses API.'),
+    detailSection.getByText('Akun pelanggan ini sedang ditangguhkan. Saldo dan riwayat tetap dapat dilihat.'),
     'Status penangguhan pelanggan tidak tampil setelah step-up',
   );
   await assertCleanSecretHygiene(adminPage, usedSecrets, 'admin-after-suspend');

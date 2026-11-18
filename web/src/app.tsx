@@ -36,7 +36,7 @@ function RouteFocus() {
       (document.querySelector<HTMLElement>('h1') ?? document.querySelector<HTMLElement>('main#main'))?.focus();
     });
     return () => cancelAnimationFrame(timer);
-  }, [location.pathname, location.search]);
+  }, [location.key]);
   return null;
 }
 function Shell({ admin = false }: { admin?: boolean }) {

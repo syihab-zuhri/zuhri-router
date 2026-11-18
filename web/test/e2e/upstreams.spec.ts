@@ -1,6 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 import { m } from '../../src/messages.ts';
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/__admin-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html lang="id"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>' }));
+});
+
 async function mount(page: Page, module: string, name: string) {
   const hooks = await (await page.request.get('/src/hooks.tsx')).text();
   const app = await (await page.request.get('/src/app.tsx')).text();

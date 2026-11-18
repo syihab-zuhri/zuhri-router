@@ -15,7 +15,7 @@ test('masuk keyboard, CSRF, shell 360px dan fokus navigasi', async ({ page }) =>
   });
   await page.setViewportSize({ width: 360, height: 640 });
   await page.goto('/masuk');
-  await expect(page.getByRole('heading', { name: 'Masuk', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Masuk', exact: true })).toBeFocused();
   const identifier = page.getByLabel(m.identifier, { exact: true });
   const password = page.getByLabel(m.password, { exact: true });
   await identifier.focus();
@@ -28,6 +28,8 @@ test('masuk keyboard, CSRF, shell 360px dan fokus navigasi', async ({ page }) =>
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'Beranda', exact: true })).toBeVisible();
   await expect(page.getByText('9.223.372.036.854,775807', { exact: false }).first()).toBeVisible();
+  // Let the route focus from the login navigation run before driving the menu with the keyboard.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.getByRole('button', { name: 'Menu', exact: true }).focus(); await page.keyboard.press('Enter');
   const modal = page.getByRole('dialog'); await expect(modal).toBeVisible();
   await page.keyboard.press('Escape'); await expect(modal).not.toBeVisible();

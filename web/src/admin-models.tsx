@@ -77,7 +77,7 @@ function ModelDetail({ id, refreshList }: { id: string; refreshList: () => Promi
     {model.data.published && <PriceDetails title={m.published} price={model.data.published} />}
     {model.data.draft && <PriceDetails title={m.draftStatus} price={model.data.draft} />}
     {saved && <Alert>{m.success}</Alert>}
-    <ModelForms key={`${model.data.id}-${model.data.version}`} model={model.data} refresh={async () => { setSaved(true); await model.refetch(); await refreshList(); }} />
+    <ModelForms key={`${model.data.id}-${model.data.version}`} model={model.data} refresh={async () => { await model.refetch(); await refreshList(); setSaved(true); }} />
   </section>;
 }
 

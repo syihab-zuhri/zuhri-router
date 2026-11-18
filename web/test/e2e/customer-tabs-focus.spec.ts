@@ -93,3 +93,15 @@ test('fokus kembali ke tombol cabut saat dialog ditutup dan ke judul panel sesud
   await expect(panel.getByRole('button', { name: m.revokeKey, exact: true })).toHaveCount(0);
   await expect(panel.getByRole('heading', { name: m.apiKeys, level: 2 })).toBeFocused();
 });
+
+test('memilih halaman yang sedang dibuka dari menu 360px tetap memindahkan fokus ke judul halaman', async ({ page }) => {
+  await mockAdmin(page);
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto('/admin/pelanggan');
+  await expect(page.getByRole('heading', { name: m.customers, level: 1 })).toBeVisible();
+  await page.getByRole('button', { name: m.menu, exact: true }).click();
+  await page.getByRole('dialog').getByRole('link', { name: m.customers, exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await afterRouteFocus(page);
+  await expect(page.getByRole('heading', { name: m.customers, level: 1 })).toBeFocused();
+});
