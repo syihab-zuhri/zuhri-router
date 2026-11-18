@@ -38,6 +38,8 @@ const LABEL: Record<string, (s: any) => string> = {
   'price.publish': s => `Harga model terbit: ${s.after}`,
   'price.retire': s => `Harga model ditarik. Alasan: ${s.reason}`,
   'setting.overdraft': s => `Batas lebih-pakai diubah: ${credits(s.beforeMicro)} -> ${credits(s.afterMicro)}`,
+  'setting.gateway_pause': s => `LAYANAN DIJEDA: request baru pelanggan ditolak (503). Alasan: ${s.reason}`,
+  'setting.gateway_resume': () => 'Layanan dilanjutkan: request baru pelanggan diterima kembali',
   'request.mark_unresolved': () => 'Request terputus di tengah stream: MENUNGGU KEPUTUSAN admin',
   'request.recover_release': () => 'Request terputus sebelum jawaban: dana dilepas otomatis',
   'request.resolve': s => `Request diputuskan admin: ${credits(s.debitMicro)}. Alasan: ${s.reason}`,
@@ -59,11 +61,13 @@ export async function statusReport(db: Db): Promise<string> {
     (select count(*) from ledger_account where posted < 0) negative,
     (select coalesce(sum(a.posted),0) from ledger_account a join tenant t on t.id=a.tenant_id where t.status <> 'CLOSED') balances,
     (select coalesce(sum(a.posted),0) from ledger_account a join tenant t on t.id=a.tenant_id where t.status = 'CLOSED') closed_balances,
-    (select coalesce(sum(amount),0) from voucher where status='ACTIVE' and (expires_at is null or expires_at > now())) vouchers`);
+    (select coalesce(sum(amount),0) from voucher where status='ACTIVE' and (expires_at is null or expires_at > now())) vouchers,
+    (select value from system_setting where name='gateway_paused') paused, (select note from system_setting where name='gateway_paused') pause_note`);
   const ups = await q("select name, status, key_enc is not null as key from upstream order by name");
   const bad = (await invariantViolations(db)).length;
   return [
     `Status ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`,
+    String(r.paused ?? '1') !== '0' ? `LAYANAN DIJEDA: request baru ditolak. Alasan: ${r.pause_note ?? '-'}` : 'Layanan berjalan',
     `Request 1 jam: ${r.req_1h} (berhasil ${r.ok_1h}, gagal ${r.fail_1h})`,
     `Tagihan 24 jam: ${credits(r.debit_24h)}; estimasi ${r.est_24h} request; input tidak ditagih ${Number(r.unbilled_24h).toLocaleString('id-ID')} token`,
     `Menunggu keputusan: ${r.unresolved}; dana tertahan aktif: ${r.open_holds} request`,

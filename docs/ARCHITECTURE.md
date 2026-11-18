@@ -1,6 +1,6 @@
 # Architecture, Data dan Interface: Router AI Komersial
 
-Version: 0.7.1
+Version: 0.8.0
 Status: Draft; stack disetujui, API M1 lokal diimplementasikan; gateway dan UI belum
 Owner keputusan: founder
 Updated: 2026-11-18, Asia/Jakarta
@@ -194,6 +194,19 @@ Policy awal implementasi: maksimum 10 key aktif belum kedaluwarsa per tenant, 10
 Primitif ledger.placeKeyHold dipanggil dengan withTx. Autentikasi awal bukan admission: status tenant dan key, scope, expiry, spent+held+hold baru dicek ulang di bawah lock tenant -> ledger account -> key. Counter key dan akun, last-used kasar (maksimum sekali per menit), serta hold dikomit atomik. ledger.settleHold mengurangi held dan menambah spent dari usage final tepat sekali walaupun key sudah dicabut/akun ditutup. Debit yang melampaui hold tetap dicatat dan boundExceeded=true sesuai section 3; cap admission bukan jaminan tagihan final bila estimator kelak melanggar bound. Pemeriksa invariant mencocokkan held/spent per key dengan hold/settlement; composite foreign key mencegah link tenant silang.
 
 Data plane HTTP belum dibuat. TEST-009 memverifikasi autentikasi/admission/settlement lokal dan API kontrol; kompatibilitas protokol/header inference menjadi TASK-012/025/026. Tidak ada request upstream nyata atau klaim gateway siap.
+
+### 5.7 TASK-018 dan SCR-017: kill switch dan daftar request lintas pelanggan (API-039, API-037)
+
+Kode di ../server/src/control.ts, migrasi 014; test di ../server/test/control.test.ts.
+
+| Endpoint | Principal / input | Hasil |
+|---|---|---|
+| GET /admin/api/settings/gateway | Admin + MFA | `{ paused, reason, changedAt, changedBy }`; `changedAt`/`changedBy` null bila belum pernah diubah; `changedBy` adalah username admin |
+| POST /admin/api/settings/gateway | Admin + MFA + step-up + CSRF; `{ paused: true, reason }` (alasan 1..200 karakter sesudah trim) atau `{ paused: false }` | 200 dengan bentuk yang sama; body lain 400 `invalid_request`; keadaan sama (dan alasan sama) tidak menulis audit kedua; audit `setting.gateway_pause` (alasan) atau `setting.gateway_resume` (alasan sebelumnya); bot Telegram mengirim keduanya dan `/status` menyebut keadaan layanan |
+| GET /admin/api/overview | Admin + MFA | Field tambahan `gateway: { paused, reason, changedAt }` |
+| GET /admin/api/requests | Admin + MFA; `username`, `state`, `model` (persis), `before` (createdAt ISO), `limit` 1..100 bawaan 50 | `{ requests: [{ id, username, keyName, model, protocol, stream, state, outcome, final, heldMicro, debitMicro, estimated, usage, createdAt }], nextBefore }`, terbaru dulu, metadata saja; username tidak dikenal menghasilkan daftar kosong; `state` di luar `ADMITTED, STREAMING, COMPLETED, FAILED, CANCELLED, SETTLED, SETTLED_ESTIMATED, UNRESOLVED, RESOLVED, REJECTED` atau filter berulang 400 |
+
+Selama dijeda, `/v1/chat/completions`, `/v1/messages` dan `/v1/responses` memeriksa key lebih dulu (key salah tetap 401, jadi orang luar tidak tahu layanan dijeda), lalu menjawab 503 `service_paused` dengan `Retry-After: 60` dalam bentuk error permukaannya, sebelum hold dibuat. `/v1/models` tidak terpengaruh. Request yang sudah admitted berjalan dan di-settle seperti biasa. Flag dibaca dari database pada setiap request; bila barisnya hilang, gateway menolak (`internal_error`), tidak meloloskan.
 
 ## 6. Provider eligibility register
 

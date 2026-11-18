@@ -21,6 +21,7 @@ test('overview is admin-only and reads as zeros on an empty system', async () =>
   assert.deepEqual(o.requests24h, { total: 0, failed: 0, estimated: 0, debitMicro: '0' });
   assert.deepEqual(o.unresolved, { count: 0, heldMicro: '0' });
   assert.deepEqual(o.upstreams, { PENDING: 0, ELIGIBLE: 0, BLOCKED: 0 });
+  assert.deepEqual(o.gateway, { paused: false, reason: null, changedAt: null }, 'the gateway runs until an admin pauses it');
   assert.ok(!Number.isNaN(Date.parse(o.generatedAt)));
 });
 

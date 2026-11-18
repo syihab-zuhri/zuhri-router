@@ -13,6 +13,7 @@ import { systemResolver, type Resolver } from '../netguard.ts';
 import { registerStatic } from './static.ts';
 import { creditsToMicro } from '../money.ts';
 import { overview } from '../overview.ts';
+import { gatewayState, listAllRequests, parseGatewayChange, setGatewayPaused } from '../control.ts';
 
 export type AppDeps = { db: Db; key: Buffer; mailer: identity.Mailer; secureCookies: boolean; logger?: boolean; resolveHost?: Resolver; gateway?: Partial<GatewayDeps>;
   /** Folder with the built web app; when set it is served from this origin. */ webDist?: string;
@@ -300,6 +301,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   // ---- Requests waiting for a decision (API-037, FR-015) ----
   app.get('/admin/api/overview', async req => { admin.requireAdmin(await adminSession(req)); return overview(db); });
+  app.get('/admin/api/requests', async req => { admin.requireAdmin(await adminSession(req)); return listAllRequests(db, req.query as Record<string, unknown>); });
   app.get('/admin/api/requests/unresolved', async req => { admin.requireAdmin(await adminSession(req)); return listUnresolved(db); });
   app.post('/admin/api/requests/:id/resolve', async req => { const p = admin.requireAdmin(await adminSession(req), { stepUp: true }); return resolveRequest(db, (req.params as { id: string }).id, body(req), p.userId); });
 
@@ -313,6 +315,13 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const micro = creditsSafe(body(req).tokens);
     await withTx(db, tx => ledger.setOverdraft(tx, { micro, actorUser: p.userId }));
     return { overdraftMicro: String(micro) };
+  });
+  // ---- Kill switch (TASK-018): pausing refuses new gateway requests for every customer, so it needs step-up and a reason. ----
+  app.get('/admin/api/settings/gateway', async req => { admin.requireAdmin(await adminSession(req)); return gatewayState(db); });
+  app.post('/admin/api/settings/gateway', async req => {
+    const p = admin.requireAdmin(await adminSession(req), { stepUp: true });
+    const change = parseGatewayChange(body(req));
+    return withTx(db, async tx => { await setGatewayPaused(tx, { ...change, actorUser: p.userId }); return gatewayState(tx); });
   });
   app.get('/admin/api/audit', async req => {
     admin.requireAdmin(await adminSession(req));

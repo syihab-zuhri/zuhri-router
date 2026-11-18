@@ -77,8 +77,10 @@ const ROUTE_MATRIX: Record<string, RouteCategory> = {
   'GET /admin/api/upstreams/:id/models': 'admin',
   'GET /admin/api/routes': 'admin',
   'GET /admin/api/overview': 'admin',
+  'GET /admin/api/requests': 'admin',
   'GET /admin/api/requests/unresolved': 'admin',
   'GET /admin/api/settings/overdraft': 'admin',
+  'GET /admin/api/settings/gateway': 'admin',
   'GET /admin/api/audit': 'admin',
 
   // admin-stepup (financial, credential rotation, upstream/route, customer suspend/restore/key-revoke, price publish/retire/archive)
@@ -103,6 +105,7 @@ const ROUTE_MATRIX: Record<string, RouteCategory> = {
   'POST /admin/api/routes/:id': 'admin-stepup',
   'POST /admin/api/requests/:id/resolve': 'admin-stepup',
   'POST /admin/api/settings/overdraft': 'admin-stepup',
+  'POST /admin/api/settings/gateway': 'admin-stepup',
 
   // apikey (data plane /v1/*)
   'POST /v1/chat/completions': 'apikey',
@@ -525,6 +528,7 @@ test('semua rute admin-stepup menolak sesi dengan auth_at kedaluwarsa menggunaka
     upstreams: (await db.query('select id, status, archived, version from upstream order by id')).rows,
     routes: (await db.query('select id, enabled, priority, version from route order by id')).rows,
     overdraft: (await db.query("select value from system_setting where name='overdraft_micro'")).rows[0].value,
+    gateway: (await db.query("select value, note, updated_by from system_setting where name='gateway_paused'")).rows[0],
     auditCount: (await db.query('select count(*) c from audit_event')).rows[0].c,
   });
 
@@ -614,6 +618,10 @@ test('semua rute admin-stepup menolak sesi dengan auth_at kedaluwarsa menggunaka
     'POST /admin/api/settings/overdraft': {
       url: '/admin/api/settings/overdraft',
       payload: { tokens: '25' },
+    },
+    'POST /admin/api/settings/gateway': {
+      url: '/admin/api/settings/gateway',
+      payload: { paused: true, reason: 'stale stepup pause' },
     },
   };
 

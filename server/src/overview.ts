@@ -1,11 +1,12 @@
 import type { Db } from './db/pool.ts';
+import { gatewayState } from './control.ts';
 
 /**
  * Operations overview for the admin (SCR-014). Read-only aggregates; no customer content.
  * All money values are micro-credit integer strings. Upstream cost is not tracked yet (TASK-003), so there is no spend or margin figure here.
  */
 export async function overview(db: Db) {
-  const [tenants, balances, vouchers, requests, unresolved, upstreams] = await Promise.all([
+  const [tenants, balances, vouchers, requests, unresolved, upstreams, gateway] = await Promise.all([
     db.query("select status, count(*)::int as n from tenant group by status"),
     db.query(`select coalesce(sum(a.posted), 0)::text as posted, coalesce(sum(a.held), 0)::text as held,
       coalesce(sum(a.posted) filter (where a.posted > 0), 0)::text as positive,
@@ -18,6 +19,7 @@ export async function overview(db: Db) {
       from request where created_at > now() - interval '24 hours'`),
     db.query("select count(*)::int as n, coalesce(sum(hold), 0)::text as held from request where state = 'UNRESOLVED'"),
     db.query("select status, count(*)::int as n from upstream where not archived group by status"),
+    gatewayState(db),
   ]);
   const byStatus = (rows: { status: string; n: number }[], keys: string[]) =>
     Object.fromEntries(keys.map(k => [k, rows.find(r => r.status === k)?.n ?? 0]));
@@ -30,5 +32,6 @@ export async function overview(db: Db) {
     requests24h: { total: r.total, failed: r.failed, estimated: r.estimated, debitMicro: r.debit },
     unresolved: { count: u.n, heldMicro: u.held },
     upstreams: byStatus(upstreams.rows, ['PENDING', 'ELIGIBLE', 'BLOCKED']),
+    gateway: { paused: gateway.paused, reason: gateway.reason, changedAt: gateway.changedAt },
   };
 }

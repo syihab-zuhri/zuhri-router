@@ -193,3 +193,12 @@ Digabung: Tahap lima Hermes (beranda admin Ringkasan, teks D.2, penanda panduan)
 - Dokumen disamakan dengan kode (CHANGELOG 0.38.0): `SETTLED_ESTIMATED` di tabel state; daftar voucher tanpa step-up.
 
 Bukti: `verify-all.mjs` 14/14 (server 140/140, Playwright 67/67, audit aksesibilitas 0 temuan, semua skrip server nyata PASS). Terpasang `zrouter:r11181828` sesudah backup `zrouter-20261118T112950Z.dump`; `smoke-public.sh https://zrouter.web.id` PASS 7/7; `restore-drill.sh` terhadap backup produksi itu PASS (invariant kosong, migrasi 13=13, database drill terhapus). `restore-drill.sh` diperbaiki: `$DOCKER` tidak boleh dikutip agar `DOCKER="sudo docker"` bekerja.
+
+## 2026-11-18 sore: endpoint kill switch dan daftar request di main
+
+Kedua endpoint kini ada di `main` (belum terpasang di zrouter.web.id). Kontraknya sama dengan yang tertulis di `ANTIGRAVITY_TASK.md` Tugas tujuh D dan `HERMES_TASK.md` Tahap enam 1, dengan satu tambahan: filter `state` juga menerima `RESOLVED`. Itu state request sesudah admin memutuskan kasus unresolved, dan bisa muncul di daftar. Rincian lengkap ada di `docs/ARCHITECTURE.md` section 5.7.
+
+- Kill switch: `GET /admin/api/settings/gateway` mengembalikan `{ paused, reason, changedAt, changedBy }`. `POST` yang sama butuh step-up, dengan body `{ paused: true, reason }` (1..200 karakter) atau `{ paused: false }`. Selama dijeda, key sah mendapat 503 `service_paused` dengan `Retry-After: 60`, sedangkan key salah tetap 401. `/admin/api/overview` mendapat field `gateway`.
+- `GET /admin/api/requests?username=&state=&model=&before=&limit=` mengembalikan `{ requests: [...], nextBefore }` dengan field persis seperti kontrak.
+
+Antigravity dan Hermes boleh beralih dari mock ke server nyata.

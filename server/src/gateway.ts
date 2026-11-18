@@ -14,6 +14,7 @@ import * as upstreams from './upstreams.ts';
 import { debitMicro, holdMicro, type Price, type Usage } from './money.ts';
 import { assertSafeUpstreamUrl, type Resolver } from './netguard.ts';
 import { gatewayEvents } from './monitor.ts';
+import { gatewayPaused } from './control.ts';
 
 export type GatewayDeps = { db: Db; key: Buffer; resolveHost: Resolver; firstByteTimeoutMs?: number; idleTimeoutMs?: number; maxTotalMs?: number; maxAttempts?: number;
   /** Abuse limits (ABU-004), per process. */ requestsPerMinutePerKey?: number; concurrentPerTenant?: number; authFailuresPerMinutePerIp?: number;
@@ -150,6 +151,9 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
     let tenantId: string;
     try { tenantId = (await keys.authenticate(db, secret)).tenantId; }
     catch (e) { if (e instanceof AppError && (e.code === 'auth_invalid' || e.code === 'key_revoked')) overLimit('fail:' + req.ip, perIpFail, true); return failApp(reply, s, e); }
+    // Kill switch: checked after the key so strangers learn nothing, before any hold. Requests already admitted are not affected.
+    try { if (await gatewayPaused(db)) return fail(reply, s, 503, 'service_paused', 'The service is paused by the operator. Try again later.', undefined, 60); }
+    catch (e) { return failApp(reply, s, e); }
     wait = overLimit('key:' + tokenHash(secret), perKey, true);
     if (wait) return fail(reply, s, 429, 'limit_exceeded', 'Request rate limit reached for this API key', undefined, wait);
     const running = active.get(tenantId) ?? 0;

@@ -1,9 +1,18 @@
 # Changelog: Router AI Komersial
 
-Version: 0.38.0
+Version: 0.39.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-18, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.39.0: Kill switch dan daftar request lintas pelanggan (server)
+
+Source: SCR-014 (kill switch, TASK-018) dan SCR-017 (daftar request lintas tenant, API-037) di `docs/UX.md`; kontrak ditetapkan Claude di `ANTIGRAVITY_TASK.md` Tugas tujuh D dan `HERMES_TASK.md` Tahap enam 1. Belum terpasang di zrouter.web.id.
+
+- Kill switch: `GET/POST /admin/api/settings/gateway`. Menjeda butuh step-up dan alasan; request baru ke tiga permukaan inference dijawab 503 `service_paused` dengan `Retry-After: 60` sesudah key diperiksa dan sebelum hold; `/v1/models` dan request yang sedang berjalan tidak terpengaruh. Audit dan pemberitahuan Telegram untuk jeda dan lanjut; `/admin/api/overview` memuat keadaannya.
+- `GET /admin/api/requests`: metadata request semua pelanggan dengan filter username, state dan model, terbaru dulu dengan kursor. Filter state menerima juga `RESOLVED` (state sesudah admin memutuskan request unresolved), yang tidak ada di daftar kontrak awal.
+- Migrasi 014: kolom `note` pada `system_setting`, baris `gateway_paused`, indeks `request (created_at desc, id)`.
+- Bukti: `server/test/control.test.ts` (3 test) dan klasifikasi tiga rute baru di `route-matrix.test.ts`; suite server 143/143.
 
 ## 0.38.0: Dokumen disamakan dengan kode (DRIFT)
 
