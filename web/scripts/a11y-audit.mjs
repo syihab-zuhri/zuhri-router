@@ -14,9 +14,10 @@ import * as ledger from '../../server/src/ledger.ts';
 import * as pricing from '../../server/src/pricing.ts';
 import * as upstreams from '../../server/src/upstreams.ts';
 import * as vouchers from '../../server/src/vouchers.ts';
+import * as control from '../../server/src/control.ts';
 import { totpAt, totpStep } from '../../server/src/crypto.ts';
 import { DB_URL } from '../../server/test/helpers.ts';
-import { am, m } from '../src/messages.ts';
+import { am, m, ov } from '../src/messages.ts';
 
 const apiPort = Number(process.env.VERIFY_API_PORT ?? 55491);
 const webPort = Number(process.env.VERIFY_WEB_PORT ?? 5185);
@@ -1151,6 +1152,41 @@ try {
     for (const r of adminRoutes) {
       await navigateShell(adminPage, r.path, width);
       await auditScreen({ page: adminPage, screen: r.path, width, viaRouteTransition: true, emptyData: r.empty });
+
+      if (r.path === '/admin/ringkasan') {
+        const pauseBtn = adminPage.getByRole('button', { name: ov.pauseGateway, exact: true });
+        await auditDialogBehavior({
+          page: adminPage,
+          screen: '/admin/ringkasan',
+          width,
+          name: ov.pauseDialogTitle,
+          triggerLocator: pauseBtn,
+          open: () => pauseBtn.click(),
+        });
+
+        await withTx(db, tx => control.setGatewayPaused(tx, {
+          paused: true,
+          reason: 'Audit aksesibilitas layanan dijeda pada ringkasan operasi',
+          actorUser: admin.userId,
+        }));
+        await adminPage.getByRole('button', { name: m.refresh, exact: true }).click();
+        await adminPage.getByText(ov.gatewayPaused, { exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
+        await auditScreen({ page: adminPage, screen: '/admin/ringkasan (layanan-dijeda)', width, viaRouteTransition: false, emptyData: false });
+
+        const resumeBtn = adminPage.getByRole('button', { name: ov.resumeGateway, exact: true });
+        await auditDialogBehavior({
+          page: adminPage,
+          screen: '/admin/ringkasan (layanan-dijeda)',
+          width,
+          name: ov.resumeDialogTitle,
+          triggerLocator: resumeBtn,
+          open: () => resumeBtn.click(),
+        });
+
+        await withTx(db, tx => control.setGatewayPaused(tx, { paused: false, reason: null, actorUser: admin.userId }));
+        await adminPage.getByRole('button', { name: m.refresh, exact: true }).click();
+        await adminPage.getByText(ov.gatewayRunning, { exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
+      }
 
       if (r.path === '/admin/pelanggan') {
         // Form undangan & kotak hasil undangan dengan activationLink manual
