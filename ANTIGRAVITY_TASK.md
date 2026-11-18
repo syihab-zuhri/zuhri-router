@@ -241,3 +241,71 @@ Berkas Anda sendiri, `a11y-audit.mjs`, `verify-all.mjs` (baru), blok `ov` dan `a
 ## Laporan
 
 Bagian bertanggal di log Anda per bagian A sampai C, dengan keluaran `verify-all.mjs` lengkap sebagai bukti akhir. Commit ke `antigravity/akun`, jangan push.
+
+---
+
+# Tugas enam (2026-11-18)
+
+Tugas lima diterima. Claude sudah menggabungkannya dengan `main` dan memajukan cabang Anda ke `eb65b65`, yang juga membawa skill `modern-web-guidance` di `.agents/skills/` (aturan pakainya di `AGENTS.md`, bagian Aturan UI). Penggabungan ke `main` dan deploy menunggu Hermes selesai. Temuan aksesibilitas Anda sudah menjadi tugas Hermes.
+
+Tugas ini lebih besar dan sebagian besar di luar `web/`: bukti bahwa server menolak akses yang salah, uji restore cadangan, dan satu alur penuh pelanggan sampai gateway. Kerjakan berurutan, commit per bagian, lapor sekali di akhir.
+
+    cd /mnt/d/router.dev.zuhri-antigravity && source .antigravity-env.sh
+    git checkout antigravity/akun && git pull --ff-only origin main
+
+Baca dulu: `AGENTS.md` (invariant uang, tenant, rahasia), `docs/SECURITY.md` section 2 (peran dan izin), `docs/ARCHITECTURE.md` section 2 sampai 4 (state request, hold, settlement), `server/test/helpers.ts` dan satu dua test yang ada untuk pola setup. Test server memakai `TEST_DATABASE_URL` dan **menghapus serta membuat ulang skema** di database itu: hanya `router_test_antigravity`, jangan pernah `router_test`, `router_test_claude` atau database lain.
+
+## A. Matriks otorisasi semua rute (`server/test/route-matrix.test.ts`, baru)
+
+Tujuannya: setiap rute yang ada atau ditambah kelak wajib terklasifikasi, dan penolakan bawaannya terbukti.
+
+1. Ambil daftar seluruh rute dari aplikasi yang dibangun `buildApp` (misalnya `app.printRoutes({ commonPrefix: false })` lalu diurai). Tabel klasifikasi di test: `public`, `customer`, `admin`, `admin-stepup` (aksi keuangan dan sensitif admin), `apikey` (`/v1/*`), `static`. **Rute yang tidak ada di tabel membuat test gagal** dengan pesan yang menyuruh pengembang mengklasifikasikannya; entri tabel yang rutenya sudah tidak ada juga gagal.
+2. Untuk setiap rute (pakai nilai parameter tiruan bila perlu):
+   - `customer` dan `admin` tanpa cookie: 401, bukan 200, 404 atau 500.
+   - Cookie pelanggan pada rute `admin`: ditolak. Cookie admin pada rute `customer`: ditolak.
+   - Rute yang mengubah data dengan sesi sah tetapi tanpa header `x-router-csrf: 1`: ditolak (catat kode yang dipakai server).
+   - `admin-stepup` dengan sesi admin yang umur autentikasinya lewat ambang step-up: ditolak dengan kode step-up, dan tidak ada perubahan data (periksa tabel terkait).
+   - `apikey` tanpa key, key salah, key dicabut: 401 dalam format error permukaan masing-masing.
+3. Isolasi tenant: untuk setiap rute `customer` yang menerima ID (key, request, transaksi, dan sebagainya), pelanggan B memakai ID milik pelanggan A mendapat respons yang sama dengan ID yang tidak ada.
+4. Bila menemukan celah nyata (rute yang lolos tanpa izin, bocor antar-tenant, aksi keuangan tanpa step-up): **jangan ubah `server/src`**. Biarkan kasus itu gagal, tulis di log bagian "Untuk Claude" dengan langkah reproduksi dan tingkat keparahan, lanjutkan bagian berikutnya.
+
+## B. Uji restore cadangan tanpa merusak apa pun (`deploy/restore-drill.sh`, baru)
+
+`deploy/restore.sh` yang ada mengganti database produksi; yang dibutuhkan adalah latihan yang tidak menyentuh database mana pun selain database sekali pakai.
+
+1. `sh deploy/restore-drill.sh <berkas.dump>`: buat database `zrouter_drill_<waktu>`, `pg_restore --no-owner --exit-on-error` ke sana, jalankan `server/scripts/check-invariants.ts` terhadapnya, cetak jumlah baris penting dan bandingkan jumlah migrasi tercatat dengan jumlah berkas migrasi di repo, lalu **selalu** hapus database drill (pakai `trap`). Keluar 1 bila restore gagal, invariant dilanggar atau migrasi tidak cocok.
+2. Harus bisa dipakai di dua tempat dengan variabel lingkungan, ikuti gaya `deploy/backup-cron.sh` (`DOCKER`, `COMPOSE_FILE`, `COMPOSE_PROJECT`): lokal lewat container `router-spike-pg` (port 55432), dan di VPS lewat container database compose. Script menolak berjalan bila nama database tujuan tidak berawalan `zrouter_drill_`.
+3. Bukti lokal: buat dump format custom dari `router_test_antigravity` sesudah satu skrip verifikasi mengisi data (ada ledger, voucher, request), jalankan drill (lulus). Lalu buat salinan yang sengaja dirusak (ubah `posted` satu akun di database sekali pakai, dump, drill): drill harus keluar 1 dan menyebut pelanggarannya. Jangan menghentikan atau mengubah container `router-spike-pg`. Claude yang akan menjalankannya terhadap cadangan produksi.
+
+## C. Alur penuh pelanggan sampai gateway (`web/scripts/golden-path-local-verify.mjs`, baru)
+
+Ikuti pola skrip `*-local-verify.mjs` Anda. Gateway diarahkan ke **upstream tiruan di loopback** yang Anda jalankan sendiri dalam skrip (`gateway: { unsafeAllowAnyUpstreamUrl: true }` di `buildApp`, lihat `server/test/gateway.test.ts`). Tidak ada request ke upstream nyata.
+
+1. Persiapan admin (boleh lewat API): upstream ke tiruan, model dengan harga terbit dan pengali bukan 1, voucher.
+2. Pelanggan lewat UI: tukar voucher, buat API key (ambil secret dari tampilan sekali-tampil).
+3. Panggil `/v1/chat/completions` non-stream dan stream, serta `/v1/messages`, dengan key itu. Periksa: field usage di respons sama persis dengan usage dari upstream tiruan (pengali hanya memengaruhi debit); debit per request sama dengan perhitungan dari harga terbit dalam mikro-kredit integer; saldo turun tepat sebesar jumlah debit.
+4. UI pelanggan: Pemakaian menampilkan ketiga request dengan debitnya; Transaksi menampilkan entri debit. UI admin: Ringkasan menunjukkan `requests24h.total` 3 dan total debit yang sama.
+5. Stream yang diputus klien sesudah potongan pertama: catat state akhir request dan pastikan tidak ada hold `ACTIVE` tertinggal sesudah selesai. Bila perilakunya tidak sesuai `docs/ARCHITECTURE.md` section 3, laporkan ke Claude, jangan ubah server.
+6. Cabut key lewat UI, panggilan berikutnya 401. Di akhir, `invariantViolations` kosong.
+
+## D. Berburu test yang tidak stabil
+
+`portal.spec.ts:5` gagal sekali di run penuh Claude dan Hermes, tetapi lulus 3 kali berturut-turut saat dijalankan sendiri. Jalankan suite Playwright penuh minimal 3 kali (`--repeat-each` atau run berulang), daftar setiap test yang pernah gagal, dan cari sebabnya (batas waktu di bawah beban, request yang tidak di-mock seperti `[vite] http proxy error: /api/balance`, urutan antar-test, dan sebagainya). Perbaiki hanya di berkas Anda sendiri; untuk berkas Hermes tulis usulan diff yang tepat di log. Jangan menaikkan timeout global atau menambah retry untuk menyembunyikan masalah.
+
+## E. Lengkapi `verify-all.mjs`
+
+1. Langkah `server-test` (`npm test` di `server/`): **menolak berjalan** bila nama database di `TEST_DATABASE_URL` adalah `router_test` atau tidak mengandung `test`, karena test server membuat ulang skema.
+2. Langkah `test-browser` (build lalu `dist-browser-verify.mjs`) dengan port dari environment.
+3. Jalankan `verify-all.mjs` penuh di akhir; keluarannya menjadi bukti laporan.
+
+## F. Bila waktu masih ada: pemeriksaan publik hanya-baca (`deploy/smoke-public.sh <base-url>`, baru)
+
+Hanya GET dan tanpa kredensial: `/readyz` 200, halaman `/`, `/masuk` dan `/admin/masuk` 200 berisi HTML aplikasi, header keamanan yang diwajibkan `docs/SECURITY.md` ada, `/api/me` dan `/admin/api/overview` tanpa cookie 401, `/v1/models` tanpa key 401. Uji hanya terhadap server dist lokal (`VERIFY_DIST_PORT`). **Jangan menjalankannya ke zrouter.web.id**; Claude yang menjalankannya sesudah deploy.
+
+## Batas berkas
+
+Boleh: berkas baru yang disebut di atas, `verify-all.mjs`, `a11y-audit.mjs`, berkas Anda sendiri dan log Anda. Tidak boleh: `server/src/**`, migrasi, `package.json` mana pun, dependency baru, berkas Hermes, request ke upstream nyata atau ke situs publik, menghentikan container bersama.
+
+## Laporan
+
+Bagian bertanggal di log per bagian A sampai F, bedakan ditulis, dijalankan dan lulus. Temuan server di bagian "Untuk Claude", diurutkan dari yang paling berat. Keluaran `verify-all.mjs` lengkap sebagai bukti akhir. Commit ke `antigravity/akun`, jangan push.
