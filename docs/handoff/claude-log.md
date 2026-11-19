@@ -261,3 +261,7 @@ Bukti: typecheck web, unit, Playwright 82/82, `verify-all.mjs` 13/13 (enam skrip
 - Benchmark menunjukkan 29 query per request non-stream (30 stream), termasuk `api_key join tenant` empat kali. Satu sudah dipangkas: `handle` kini memakai tenant dari pemeriksaan key di `guarded` (transaksi hold tetap memeriksa key di bawah lock).
 - NFR-002 (target PROPOSED p95 overhead di bawah 50 ms pada beban pilot dengan banyak tenant), diukur di laptop WSL dengan semua komponen di satu mesin: c=1 p95 31 ms (non-stream) dan 20 ms (stream); c=10 di 10 tenant p95 42 ms dan 52 ms; c=50 di 50 tenant p95 241 ms dan 190 ms. Keputusan Claude: belum mengoptimasi jalur uang sekarang. Pemangkasan query berikutnya (pra-baca harga dan saldo yang dibaca ulang di transaksi, `system_setting` tiga kali, `insert into attempt` terpisah) dikerjakan Claude sesudah angka pool produksi (`max = 20`) dari Tugas sembilan C tersedia, lalu diukur ulang. Pengukuran pada hardware pilot (VPS) butuh izin founder karena memakai mesin produksi.
 - Suite server 145/145 sesudah perubahan.
+
+### Terpasang `zrouter:r11192221`
+
+Isi: Hermes Tahap delapan, Antigravity Tugas delapan, kursor request mikrodetik, satu kali cek key. Backup sebelum pemasangan `zrouter-20261119T152157Z.dump`. Tanpa migrasi baru (14 migrasi; `gateway_paused` = 0), jadi restore drill tidak diulang. Bukti: suite server 145/145, `verify-all.mjs` 14/14 (Playwright 82/82, audit aksesibilitas 0 temuan), `smoke-public.sh` 7/7.

@@ -1,9 +1,21 @@
 # Changelog: Router AI Komersial
 
-Version: 0.40.0
+Version: 0.41.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-19, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.41.0: Banner layanan dijeda, rincian audit, kursor request; terpasang `r11192221`
+
+Source: SCR-007 keadaan layanan-dijeda dan SCR-018 rincian audit di `docs/UX.md`, dikerjakan Hermes (`HERMES_TASK.md` Tahap delapan); verifikasi server nyata dan benchmark oleh Antigravity (Tugas delapan); diperiksa dan dilengkapi Claude. Terpasang di zrouter.web.id sebagai `zrouter:r11192221` pada 2026-11-19.
+
+- Portal pelanggan: selama layanan dijeda, setiap halaman menampilkan banner "Layanan sedang dijeda sementara. Request baru ditolak; saldo Anda tidak berubah."; Beranda punya bagian Status layanan ("Berjalan" atau "Dijeda").
+- Audit: tiap event dengan ringkasan punya "Rincian" berisi kunci dan nilai dalam bahasa admin; nilai `*Micro` sebagai kredit token; kode status diterjemahkan hanya pada kunci status.
+- Audit, Rekonsiliasi dan tab Request: halaman lanjutan yang kosong menampilkan "Tidak ada data lagi" dengan tombol ke halaman awal.
+- Perbaikan: kursor `nextBefore` kedua daftar request kini waktu mikrodetik ditambah ID request; sebelumnya baris yang berbagi milidetik dengan akhir halaman terlewat (ditemukan Antigravity). Kursor lama tetap diterima.
+- Gateway memeriksa API key satu kali di luar transaksi hold, bukan dua kali.
+- Skrip baru Antigravity: `web/scripts/admin-requests-local-verify.mjs`; `bench-gateway.ts --tenants N` dengan rincian query per request.
+- Bukti pemasangan: suite server 145/145; `verify-all.mjs` 14/14 (Playwright 82/82, tujuh skrip server nyata, audit aksesibilitas 0 temuan); `smoke-public.sh` 7/7 terhadap https://zrouter.web.id. Tanpa migrasi baru (14 migrasi); backup sebelum pemasangan `zrouter-20261119T152157Z.dump`.
 
 ## 0.40.0: Tab Request, filter audit, panel kill switch; terpasang `r11191901`
 
