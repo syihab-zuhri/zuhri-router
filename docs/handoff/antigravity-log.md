@@ -771,3 +771,160 @@ Total: 13/14 lulus dalam 947.37s
   - [`admin-overview-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-overview-local-verify.txt): `admin-overview-local-verify: PASS (real server overview metrics, kill switch pause/503/resume/200, negative warning, 360px, links)`.
   - [`a11y-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/a11y-audit.txt): `150` kombinasi layar-lebar diaudit, `0` temuan unik (`a11y-audit: PASS (0 findings)`).
 
+---
+
+## 2026-11-19 — Tugas delapan: Benchmark multi-tenant NFR-002 & rincian query DB, verifikasi server nyata daftar request/tab Request/audit, dan audit aksesibilitas layar baru
+
+Cabang: `antigravity/akun` (dimajukan dari `origin/main` di `1ee17f8` — tidak di-push).
+Commit per bagian:
+- Bagian A: `d01b67e` (`akun: add multi-tenant NFR-002 benchmark and c=1 DB query breakdown (Tugas 8 Part A)`)
+- Bagian B: `6025353` (`akun: add real-server admin requests, Request tab, and audit filter verification (Tugas 8 Part B)`)
+- Bagian C: `279e935` (`akun: audit customer Request tab, admin requests list, and audit filters in a11y-audit (Tugas 8 Part C)`)
+- Bagian D: dilewati (banner `servicePaused` pelanggan dari Hermes Tahap delapan belum ada di `origin/main` pada `04bcd03` maupun `docs/handoff/claude-log.md`).
+
+### Bagian A — NFR-002 dengan banyak tenant & rincian query DB (`d01b67e`)
+- **Ditulis**:
+  - Memperbarui [`server/scripts/bench-gateway.ts`](file:///mnt/d/router.dev.zuhri-antigravity/server/scripts/bench-gateway.ts) tanpa mengubah `server/src`:
+    - Menambahkan argumen `--tenants N` (serta `--pool-max N`, bawaan `80`) yang membagi request secara merata ke `N` tenant berbeda (masing-masing punya akun ledger bersaldo cukup dan API key sendiri); pada mode matriks bawaan (tanpa `--tenants`), langsung mengukur `c=1/t=1`, `c=10/t=1`, `c=10/t=10`, `c=50/t=1`, dan `c=50/t=50` untuk `non-stream` dan `stream`.
+    - Menambahkan pembungkus `Proxy` terhadap `pool.query` dan `pool.connect` milik pool yang diberikan ke `buildApp` (hanya aktif saat tahap profiling `c=1`, nonaktif selama pengukuran latensi) untuk mencatat jumlah query per request, total waktu di database, waktu tunggu koneksi pool, serta rincian per bagian (`Autentikasi key`, `Admission`, `Settlement`, `Pembaruan lain`) dan per pola SQL.
+- **Dijalankan**:
+  - `cd server && npm run typecheck`
+  - `ps aux | grep -E "verify-all|playwright"` pada host: kosong (`NO_OTHER_LOAD`) sebelum benchmark dijalankan.
+  - `source .antigravity-env.sh && cd server && node scripts/bench-gateway.ts`
+  - `source .antigravity-env.sh && cd server && node scripts/bench-gateway.ts --tenants 5`
+- **Lulus**:
+  - `typecheck`: lulus (`exit 0`).
+  - `bench-gateway.ts` (matriks penuh) dan `bench-gateway.ts --tenants 5`: keduanya lulus (`exit 0`, `invariantViolations=[]`, `active holds = 0`).
+  - **Spesifikasi mesin**: `OS=linux 6.18.33.2-microsoft-standard-WSL2 (x64) | CPU=13th Gen Intel(R) Core(TM) i5-13420H (12 vCPU) | RAM=7.61 GiB | Node=v24.21.0 | DB=PostgreSQL 18.7 (Debian 18.7-1.pgdg13+2) on x86_64-pc-linux-gnu | PoolMax=80`
+  - **Tabel latensi multi-tenant vs single-tenant (bahan NFR-002)**:
+
+| Mode | Concurrency | Tenants | Direct TTFB p50 | Gateway TTFB p50 | Overhead TTFB p50 | Direct TTFB p95 | Gateway TTFB p95 | Overhead TTFB p95 | Direct Total p50 | Gateway Total p50 | Overhead Total p50 | Direct Total p95 | Gateway Total p95 | Overhead Total p95 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| non-stream | 1 | 1 | 1.15 ms | 25.77 ms | 24.62 ms | 1.50 ms | 32.91 ms | 31.40 ms | 1.16 ms | 25.79 ms | 24.62 ms | 1.54 ms | 32.93 ms | 31.40 ms |
+| non-stream | 10 | 1 | 5.54 ms | 143.95 ms | 138.41 ms | 11.46 ms | 196.20 ms | 184.74 ms | 5.55 ms | 143.97 ms | 138.41 ms | 11.47 ms | 196.22 ms | 184.75 ms |
+| non-stream | 10 | 10 | 5.54 ms | 44.25 ms | 38.70 ms | 11.46 ms | 53.06 ms | 41.60 ms | 5.55 ms | 44.26 ms | 38.70 ms | 11.47 ms | 53.08 ms | 41.60 ms |
+| non-stream | 50 | 1 | 3.38 ms | 619.42 ms | 616.03 ms | 57.25 ms | 1151.34 ms | 1094.09 ms | 3.39 ms | 619.44 ms | 616.05 ms | 57.25 ms | 1151.36 ms | 1094.11 ms |
+| non-stream | 50 | 50 | 3.38 ms | 201.12 ms | 197.73 ms | 57.25 ms | 298.26 ms | 241.01 ms | 3.39 ms | 201.13 ms | 197.74 ms | 57.25 ms | 298.27 ms | 241.02 ms |
+| stream | 1 | 1 | 0.81 ms | 18.53 ms | 17.71 ms | 0.99 ms | 21.24 ms | 20.25 ms | 0.86 ms | 19.85 ms | 18.99 ms | 1.01 ms | 22.31 ms | 21.31 ms |
+| stream | 10 | 1 | 2.17 ms | 106.73 ms | 104.56 ms | 3.67 ms | 239.72 ms | 236.05 ms | 3.83 ms | 107.67 ms | 103.84 ms | 6.89 ms | 241.29 ms | 234.40 ms |
+| stream | 10 | 10 | 2.17 ms | 46.04 ms | 43.87 ms | 3.67 ms | 55.30 ms | 51.63 ms | 3.83 ms | 51.36 ms | 47.52 ms | 6.89 ms | 59.80 ms | 52.90 ms |
+| stream | 50 | 1 | 5.12 ms | 214.87 ms | 209.75 ms | 53.85 ms | 1816.71 ms | 1762.86 ms | 11.46 ms | 216.02 ms | 204.56 ms | 57.28 ms | 1817.49 ms | 1760.22 ms |
+| stream | 50 | 50 | 5.12 ms | 176.47 ms | 171.35 ms | 53.85 ms | 244.09 ms | 190.24 ms | 11.46 ms | 203.25 ms | 191.79 ms | 57.28 ms | 266.55 ms | 209.28 ms |
+
+  - **Rincian waktu database pada konkurensi 1 (rata-rata 20 request berurutan)**:
+    - **`non-stream`**: **29.0 query/req** (2.0 transaksi `withTx`) | TTFB `24.08 ms` | Total `24.10 ms` | Total waktu DB `20.70 ms` | Tunggu koneksi pool `0.18 ms` | Non-DB `3.22 ms`:
+      - `Admission`: `14.00` query/req, `9.65 ms` (`46.6%` waktu DB), tunggu pool `0.03 ms`
+      - `Settlement`: `9.00` query/req, `6.12 ms` (`29.5%` waktu DB), tunggu pool `0.07 ms`
+      - `Pembaruan lain` (`insert into attempt`, pra-baca `price_version`, pra-baca `ledger_account`): `3.00` query/req, `2.53 ms` (`12.2%` waktu DB), tunggu pool `0.04 ms`
+      - `Autentikasi key` (`2x select api_key join tenant` + `1x select gateway_paused`): `3.00` query/req, `2.40 ms` (`11.6%` waktu DB), tunggu pool `0.04 ms`
+    - **`stream`**: **30.0 query/req** (2.0 transaksi `withTx`) | TTFB `17.99 ms` | Total `19.12 ms` | Total waktu DB `22.08 ms` (mencakup TX Settlement asinkron `6.21 ms` sesudah stream selesai) | Tunggu koneksi pool `0.21 ms`:
+      - `Admission`: `14.00` query/req, `9.81 ms` (`44.4%` waktu DB), tunggu pool `0.04 ms`
+      - `Settlement`: `9.00` query/req, `6.21 ms` (`28.1%` waktu DB), tunggu pool `0.03 ms`
+      - `Pembaruan lain` (`update request set state='STREAMING'` `1.27 ms`, `insert into attempt` `1.12 ms`, pra-baca `price_version` `0.71 ms`, pra-baca `ledger_account` `0.69 ms`): `4.00` query/req, `3.78 ms` (`17.1%` waktu DB), tunggu pool `0.11 ms`
+      - `Autentikasi key`: `3.00` query/req, `2.28 ms` (`10.3%` waktu DB), tunggu pool `0.04 ms`
+
+### Bagian B — Bukti server nyata untuk daftar request, tab Request, dan filter audit (`6025353`)
+- **Ditulis**:
+  - [`web/scripts/admin-requests-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-requests-local-verify.mjs) (baru; seluruh teks UI dari `web/src/messages.ts`, skema privat `web_admin_req_*`, upstream tiruan loopback):
+    - Dua pelanggan (`req_pelanggan_a` & `req_pelanggan_b`) dengan dua model (`req/alpha`, `req/beta`): 52 request normal `SETTLED`, 1 request batal di tengah stream (`SETTLED_ESTIMATED`, `cancelled_mid_stream`), dan 1 request `UNRESOLVED` (`process_lost_mid_stream`) yang dibuat melalui proses anak gateway yang di-`SIGKILL` tepat sesudah byte stream pertama lalu dipulihkan lewat `recoverStuck(pool, 0)` (tanpa menulis `request`/`hold` dengan SQL langsung).
+    - Memverifikasi `/admin/rekonsiliasi` (bagian belum diputuskan + daftar semua request, badge, alasan/keterangan, filter `username`, `state=UNRESOLVED`, `model`, dan tautan username ke detail pelanggan).
+    - Memverifikasi tab `Request` di detail pelanggan (isolasi tenant: request pelanggan lain tidak muncul; paginasi 50 + 3 baris via `requestBefore` dan kembali ke halaman awal).
+    - Memverifikasi `/admin/audit`: paginasi >50 event via `nextBefore`, suspend & restore pelanggan lewat UI -> kelompok "Status pelanggan" menampilkan `Pelanggan ditangguhkan` & `Pelanggan dipulihkan` dengan username admin (bukan UUID), filter `actor` + `targetId`, jeda & lanjut kill switch lewat UI -> kelompok "Pengaturan" menampilkan `Layanan dijeda` & `Layanan dilanjutkan`, serta filter awalan khusus `request.mark_unresolved` (pelaku `Sistem`).
+    - Mengakhiri dengan `invariantViolations(pool) === []`, `0` `pageerror`, `0` respons `>=500`, dan pemeriksaan kebersihan rahasia.
+- **Dijalankan**:
+  - `source .antigravity-env.sh && cd web && node scripts/admin-requests-local-verify.mjs` (mandiri dan di dalam `verify-all.mjs` penuh).
+- **Lulus**:
+  - Lulus (`exit 0`, `22.59s` di `verify-all.mjs`): `admin-requests-local-verify: PASS (rekonsiliasi filters/badges/links, customer Request tab isolation+requestBefore, audit groups/actor/targetId/nextBefore, invariantViolations=[])`.
+
+### Bagian C — Audit aksesibilitas layar baru (`279e935`)
+- **Ditulis**:
+  - Memperbarui [`web/scripts/a11y-audit.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/a11y-audit.mjs) untuk menambah audit pada lebar `360px` dan `1280px` (+10 kombinasi, total `160` kombinasi):
+    - `/admin/pelanggan (detail: Request)` berisi baris
+    - `/admin/rekonsiliasi (daftar request terisi)` dan `/admin/rekonsiliasi (daftar request tanpa hasil)`
+    - `/admin/audit (awalan khusus terbuka)` dan `/admin/audit (awalan khusus tanpa hasil)`
+- **Dijalankan**:
+  - `source .antigravity-env.sh && cd web && node scripts/a11y-audit.mjs` (mandiri dan di dalam `verify-all.mjs` penuh).
+- **Lulus**:
+  - Lulus (`exit 0`, `149.46s` di `verify-all.mjs`): `160` kombinasi layar-lebar diaudit, `0` temuan unik (`a11y-audit: PASS (0 findings)`).
+
+### Bagian D — Banner layanan dijeda pada portal pelanggan (dilewati)
+- **Status**: Dilewati sesuai instruksi. Pada saat Bagian C selesai, `origin/main` berada di `04bcd03` dan `docs/handoff/claude-log.md` belum mencatat penggabungan banner pelanggan `servicePaused` (Hermes Tahap delapan); pemeriksaan `rg "servicePaused" web/src/` hanya menemukan `servicePausedStatus` di `messages.ts` (untuk halaman panduan), belum ada banner di portal pelanggan.
+
+### Untuk Claude
+1. **Usulan optimasi NFR-002 berdasarkan angka benchmark Bagian A (target p95 < 50 ms banyak tenant)**:
+   - Membagi trafik ke banyak tenant memang menghilangkan serialisasi `FOR UPDATE` pada satu akun (`c=10` non-stream p95 turun `184.74 -> 41.60 ms`, stream `236.05 -> 51.63 ms`; `c=50` non-stream `1094.09 -> 241.01 ms`, stream `1762.86 -> 190.24 ms`). Namun pada `c=50, t=50`, overhead p95 masih `190–241 ms` (3.8–4.8x di atas 50 ms) karena setiap request melakukan **29–30 query SQL** (~1.450–1.500 roundtrip serentak pada `c=50`), dan bagian termahal adalah **Admission (`44.4–46.6%` waktu DB, 14 query)** diikuti **Settlement (`28.1–29.5%`, 9 query)**.
+   - Duplikasi query konkret yang tertangkap pada `c=1` (seluruhnya dapat dipangkas tanpa menyentuh invariant uang):
+     1. **`api_key join tenant` dijalankan 4 kali per request (`~3.2 ms/req`)**: `2x` di luar TX (`1.66–1.76 ms`) + `2x` di dalam TX Admission (`1.48–1.55 ms`). Mengurangi menjadi 1x baca/lock (`for update of k for share of t`) di TX Admission (atau 1x auth + 1x lock dengan ID) menghemat `2–3` query (`~1.6–2.4 ms`).
+     2. **Pra-baca sebelum TX Admission yang langsung dibaca ulang di dalam TX (`~2.0 ms/req`)**: `select ... from price_version` (`2x/req`, `1.32–1.39 ms`), `select posted, held, currency from ledger_account` di luar TX (`0.59–0.69 ms`) tepat sebelum `select ... for update` di dalam TX, dan `select status from tenant ... for share` (`0.62–0.68 ms`) yang sudah bisa digabung dengan query `api_key`.
+     3. **`system_setting` dibaca 3 kali per request (`~1.8 ms/req`)**: `overdraft_micro` **2x/req** (`1.17 ms`) + `gateway_paused` **1x/req** (`0.62–0.64 ms`). Keduanya pengaturan global jarang berubah — menggabung dalam satu query `where name in (...)` atau cache in-memory TTL singkat (dengan invalidasi eksplisit saat admin `POST` setting) menghemat `2–3` query.
+     4. **`insert into attempt` (`1.12–1.22 ms`) sebagai query terpisah di luar TX**: dapat dimasukkan ke dalam TX Settlement agar menghemat 1 roundtrip + 1 `COMMIT` WAL tersendiri.
+     5. **Jalur TTFB `stream`**: `update request set state='STREAMING'` (`1.27 ms`) dijalankan sinkron sebelum byte pertama diteruskan; tetap penting bagi `recoverStuck`, tetapi bersama pemangkasan query Admission di atas, jalur sebelum byte pertama bisa turun dari ~19 query menjadi ~9–11 query.
+     6. **Ukuran pool koneksi produksi (`server/src/main.ts:22`)**: produksi memakai `createPool(DATABASE_URL)` dengan bawaan `max = 20` (benchmark memakai `PoolMax=80`). Pada 50 tenant bersamaan, `max = 20` akan menambah waktu tunggu koneksi pool selain beban roundtrip DB; layak dievaluasi bersama jumlah query/req.
+2. **Pemotongan presisi mikrodetik pada cursor `nextBefore` di `listAllRequests` (`server/src/control.ts:65,71`) dan `listRequests` (`server/src/gateway.ts:310-311`)**:
+   - Kedua endpoint memfilter `r.created_at < $before::timestamptz` memakai `(created_at as Date).toISOString()` (presisi milidetik, memotong mikrodetik PostgreSQL). Saat pengujian 52 request paralel di Bagian B, beberapa baris berada pada milidetik yang sama dengan baris ke-50 sehingga halaman berikutnya melewati baris lain di milidetik tersebut. Di skrip verifikasi kami memberi jeda 2 ms antar request; di server, cursor keyset `(created_at, id)` atau mempertahankan presisi mikrodetik akan mencegah baris terlewat saat trafik tinggi.
+
+### Keluaran `verify-all.mjs` penuh akhir (`2026-11-19`)
+Pemeriksaan sebelum jalan: `ps aux | grep -E "verify-all|playwright|vite"` kosong (`NO_OTHER_LOAD`).
+Perintah: `source .antigravity-env.sh && cd web && node scripts/verify-all.mjs`
+
+```text
+[1/15] RUN   typecheck-server
+[1/15] PASS  typecheck-server (1.12s) (exit 0) -> web/evidence/verify-all/typecheck-server.txt
+[2/15] RUN   typecheck-web
+[2/15] PASS  typecheck-web (1.30s) (exit 0) -> web/evidence/verify-all/typecheck-web.txt
+[3/15] RUN   server-test
+[3/15] PASS  server-test (152.00s) (exit 0) -> web/evidence/verify-all/server-test.txt
+[4/15] RUN   unit
+[4/15] PASS  unit (1.34s) (exit 0) -> web/evidence/verify-all/unit.txt
+[5/15] RUN   playwright
+[5/15] PASS  playwright (218.23s) (exit 0) -> web/evidence/verify-all/playwright.txt
+[6/15] RUN   test-local
+[6/15] PASS  test-local (11.41s) (exit 0) -> web/evidence/verify-all/test-local.txt
+[7/15] RUN   test-browser
+[7/15] PASS  test-browser (8.15s) (exit 0) -> web/evidence/verify-all/test-browser.txt
+[8/15] RUN   account-local-verify
+[8/15] PASS  account-local-verify (12.49s) (exit 0) -> web/evidence/verify-all/account-local-verify.txt
+[9/15] RUN   admin-catalog-local-verify
+[9/15] PASS  admin-catalog-local-verify (19.90s) (exit 0) -> web/evidence/verify-all/admin-catalog-local-verify.txt
+[10/15] RUN   admin-customers-local-verify
+[10/15] PASS  admin-customers-local-verify (16.49s) (exit 0) -> web/evidence/verify-all/admin-customers-local-verify.txt
+[11/15] RUN   admin-overview-local-verify
+[11/15] PASS  admin-overview-local-verify (12.90s) (exit 0) -> web/evidence/verify-all/admin-overview-local-verify.txt
+[12/15] RUN   admin-requests-local-verify
+[12/15] PASS  admin-requests-local-verify (22.59s) (exit 0) -> web/evidence/verify-all/admin-requests-local-verify.txt
+[13/15] RUN   golden-path-local-verify
+[13/15] PASS  golden-path-local-verify (9.43s) (exit 0) -> web/evidence/verify-all/golden-path-local-verify.txt
+[14/15] RUN   portal-local-verify
+[14/15] PASS  portal-local-verify (14.01s) (exit 0) -> web/evidence/verify-all/portal-local-verify.txt
+[15/15] RUN   a11y-audit
+[15/15] PASS  a11y-audit (149.46s) (exit 0) -> web/evidence/verify-all/a11y-audit.txt
+
+langkah                      | hasil |  durasi
+-----------------------------+-------+--------
+typecheck-server             | lulus |   1.12s
+typecheck-web                | lulus |   1.30s
+server-test                  | lulus | 152.00s
+unit                         | lulus |   1.34s
+playwright                   | lulus | 218.23s
+test-local                   | lulus |  11.41s
+test-browser                 | lulus |   8.15s
+account-local-verify         | lulus |  12.49s
+admin-catalog-local-verify   | lulus |  19.90s
+admin-customers-local-verify | lulus |  16.49s
+admin-overview-local-verify  | lulus |  12.90s
+admin-requests-local-verify  | lulus |  22.59s
+golden-path-local-verify     | lulus |   9.43s
+portal-local-verify          | lulus |  14.01s
+a11y-audit                   | lulus | 149.46s
+
+Total: 15/15 lulus dalam 650.87s
+```
+
+- Rincian bukti utama di [`web/evidence/verify-all`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all):
+  - [`server-test.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/server-test.txt): `145` passed, `0` failed.
+  - [`unit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/unit.txt): `6` passed, `0` failed.
+  - [`playwright.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/playwright.txt): `76 passed (3.6m)`, `0` failed.
+  - [`admin-requests-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-requests-local-verify.txt): `admin-requests-local-verify: PASS (rekonsiliasi filters/badges/links, customer Request tab isolation+requestBefore, audit groups/actor/targetId/nextBefore, invariantViolations=[])`.
+  - [`a11y-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/a11y-audit.txt): `160` kombinasi layar-lebar diaudit, `0` temuan unik (`a11y-audit: PASS (0 findings)`).
+
+
