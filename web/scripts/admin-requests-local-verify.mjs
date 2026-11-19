@@ -409,10 +409,10 @@ try {
   }
 
   const custANormalIds = [];
-  for (let i = 0; i < 52; i++) {
-    custANormalIds.push(await callNormal(keyASecret, modelAlpha));
-    // Ensure distinct millisecond timestamps so Date.toISOString() cursor pagination does not drop same-ms rows
-    await delay(2);
+  for (let batch = 0; batch < 52; batch += 10) {
+    const size = Math.min(10, 52 - batch);
+    const ids = await Promise.all(Array.from({ length: size }, () => callNormal(keyASecret, modelAlpha)));
+    custANormalIds.push(...ids);
   }
   for (const id of custANormalIds) {
     const row = await waitForSettled(pool, id);
@@ -469,6 +469,41 @@ try {
   assert.equal(unresRow.state, 'UNRESOLVED', 'State sesudah recoverStuck harus UNRESOLVED');
   assert.equal(unresRow.outcome, 'process_lost_mid_stream', 'Outcome sesudah recoverStuck harus process_lost_mid_stream');
   assert.equal(unresRow.debit, null, 'Debit UNRESOLVED harus null sampai diputuskan');
+
+  // Cluster 10 earliest custA requests across the UI page-50 boundary:
+  // 6 rows share the exact same microsecond timestamp and 4 rows differ by < 1ms within the same millisecond.
+  const clusterIds = custANormalIds.slice(0, 10);
+  const exactSameTs = '2026-11-19T10:00:00.500250Z';
+  const subMsTs = [
+    '2026-11-19T10:00:00.500900Z',
+    '2026-11-19T10:00:00.500700Z',
+    '2026-11-19T10:00:00.500400Z',
+    '2026-11-19T10:00:00.500100Z',
+  ];
+  await pool.query('update request set created_at = $1::timestamptz where id = any($2::text[])', [exactSameTs, clusterIds.slice(0, 6)]);
+  for (let i = 0; i < subMsTs.length; i++) {
+    await pool.query('update request set created_at = $1::timestamptz where id = $2', [subMsTs[i], clusterIds[6 + i]]);
+  }
+
+  const allExpectedIds = [...custANormalIds, custAEstimatedId, ...custBNormalIds, custBUnresolvedId];
+  const custAExpectedIds = [...custANormalIds, custAEstimatedId];
+  const assertExactIdSet = (actualIds, expectedIds, label) => {
+    const unique = new Set(actualIds);
+    assert.equal(actualIds.length, expectedIds.length, `${label}: jumlah baris tidak cocok (got ${actualIds.length}, expected ${expectedIds.length})`);
+    assert.equal(unique.size, expectedIds.length, `${label}: terdapat ID request duplikat (unique=${unique.size}, total=${actualIds.length})`);
+    assert.deepEqual([...unique].sort(), [...expectedIds].sort(), `${label}: himpunan ID request tidak persis sama`);
+  };
+  const extractSectionRequestIds = (targetPage, sectionAriaLabel) => targetPage.evaluate(
+    sel => {
+      const section = [...document.querySelectorAll('section.panel')].find(el => el.getAttribute('aria-label') === sel);
+      if (!section) return [];
+      return [...section.querySelectorAll('article.data-row')].map(row => {
+        const match = (row.textContent ?? '').match(/req_[0-9a-f-]{36}/);
+        return match ? match[0] : '';
+      }).filter(Boolean);
+    },
+    sectionAriaLabel,
+  );
 
   // Start Vite + Chromium
   vite = spawn(
@@ -599,14 +634,85 @@ try {
     { timeout: 10_000 },
   );
 
-  // Clear filters and click custA username link -> opens customer detail
+  // Clear filters, walk Rekonsiliasi pagination across the identical-timestamp + sub-ms cluster (API limit=3 & UI limit=50)
   await clearAndWait(allReqSection);
+  await page.waitForFunction(
+    ([sel, expectedCount]) => {
+      const section = [...document.querySelectorAll('section.panel')].find(el => el.getAttribute('aria-label') === sel);
+      return Boolean(section && section.querySelectorAll('article.data-row').length === expectedCount);
+    },
+    [m.allCustomerRequests, 50],
+    { timeout: 10_000 },
+  );
+
+  // API walk with small limit (limit=3 across all customers, limit=4 scoped to custA)
+  const adminWalkAllIds = await page.evaluate(async () => {
+    const ids = [];
+    let before = null;
+    for (let guard = 0; guard < 100; guard++) {
+      const q = new URLSearchParams({ limit: '3' });
+      if (before) q.set('before', before);
+      const res = await fetch(`/admin/api/requests?${q.toString()}`);
+      if (res.status !== 200) throw new Error(`GET /admin/api/requests HTTP ${res.status}`);
+      const body = await res.json();
+      for (const r of body.requests) ids.push(r.id);
+      if (!body.nextBefore) break;
+      before = body.nextBefore;
+    }
+    return ids;
+  });
+  assertExactIdSet(adminWalkAllIds, allExpectedIds, 'API /admin/api/requests limit=3');
+
+  const adminWalkCustAIds = await page.evaluate(async username => {
+    const ids = [];
+    let before = null;
+    for (let guard = 0; guard < 100; guard++) {
+      const q = new URLSearchParams({ limit: '4', username });
+      if (before) q.set('before', before);
+      const res = await fetch(`/admin/api/requests?${q.toString()}`);
+      if (res.status !== 200) throw new Error(`GET /admin/api/requests?username HTTP ${res.status}`);
+      const body = await res.json();
+      for (const r of body.requests) ids.push(r.id);
+      if (!body.nextBefore) break;
+      before = body.nextBefore;
+    }
+    return ids;
+  }, custAUsername);
+  assertExactIdSet(adminWalkCustAIds, custAExpectedIds, 'API /admin/api/requests?username=custA limit=4');
+
+  // UI walk on /admin/rekonsiliasi (page 1 = 50, page 2 = 6 across the 6 identical-timestamp + sub-ms rows)
+  const rekPage1Ids = await extractSectionRequestIds(page, m.allCustomerRequests);
+  assert.equal(rekPage1Ids.length, 50, `Halaman 1 Rekonsiliasi harus berisi 50 baris (got ${rekPage1Ids.length})`);
+  const rekNextBtn = allReqSection.getByRole('button', { name: m.next, exact: true });
+  await expectVisible(rekNextBtn, 'Tombol Berikutnya pada Rekonsiliasi tidak tampil untuk >50 baris');
+  await rekNextBtn.click();
+  await page.waitForFunction(
+    ([sel, expectedCount]) => {
+      const section = [...document.querySelectorAll('section.panel')].find(el => el.getAttribute('aria-label') === sel);
+      return Boolean(section && new URLSearchParams(location.search).has('before') && section.querySelectorAll('article.data-row').length === expectedCount);
+    },
+    [m.allCustomerRequests, 6],
+    { timeout: 10_000 },
+  );
+  const rekPage2Ids = await extractSectionRequestIds(page, m.allCustomerRequests);
+  assertExactIdSet([...rekPage1Ids, ...rekPage2Ids], allExpectedIds, 'UI /admin/rekonsiliasi (50 + 6)');
+
+  await allReqSection.getByRole('button', { name: m.first, exact: true }).click();
+  await page.waitForFunction(
+    ([sel, expectedCount]) => {
+      const section = [...document.querySelectorAll('section.panel')].find(el => el.getAttribute('aria-label') === sel);
+      return Boolean(section && !new URLSearchParams(location.search).has('before') && section.querySelectorAll('article.data-row').length === expectedCount);
+    },
+    [m.allCustomerRequests, 50],
+    { timeout: 10_000 },
+  );
+
   const custALink = allReqSection.getByRole('link', { name: custAUsername, exact: true }).first();
   await expectVisible(custALink, 'Tautan username pelanggan A di daftar request tidak tampil');
   await custALink.click();
   await expectVisible(page.locator('.customer-detail-heading h2', { hasText: custAUsername }), 'Tautan username tidak membuka detail pelanggan A');
 
-  // ---- 3. Detail pelanggan -> tab Request: tenant isolation + requestBefore pagination (>50 rows) ----
+  // ---- 3. Detail pelanggan -> tab Request: tenant isolation + requestBefore pagination (>50 rows across cluster) ----
   const reqTab = page.getByRole('tab', { name: m.customerRequestTab, exact: true });
   await expectVisible(reqTab, 'Tab Request di detail pelanggan tidak tampil');
   await reqTab.click();
@@ -622,6 +728,7 @@ try {
     [m.customerRequests, 50, custBUsername],
     { timeout: 10_000 },
   );
+  const tabPage1Ids = await extractSectionRequestIds(page, m.customerRequests);
 
   // Page 2 via requestBefore -> remaining 3 rows of custA, still zero custB
   const nextReqBtn = custReqSection.getByRole('button', { name: m.next, exact: true });
@@ -642,6 +749,8 @@ try {
     [m.customerRequests, 3, custBUsername],
     { timeout: 10_000 },
   );
+  const tabPage2Ids = await extractSectionRequestIds(page, m.customerRequests);
+  assertExactIdSet([...tabPage1Ids, ...tabPage2Ids], custAExpectedIds, 'UI tab Request pelanggan (50 + 3)');
 
   // Back to page 1 via Halaman awal
   const firstReqBtn = custReqSection.getByRole('button', { name: m.first, exact: true });
@@ -808,11 +917,57 @@ try {
   await assertCleanSecretHygiene(page, secrets, 'admin-requests-audit');
   await ctx.close();
 
+  // ---- 5. Customer portal /pemakaian + GET /api/requests?limit=3 pagination across identical-timestamp & sub-ms cluster ----
+  const custCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const custPage = await custCtx.newPage();
+  attachListeners(custPage, 'custA', pageErrors, serverErrors);
+  await custPage.goto(`${webBase}/masuk`);
+  await custPage.getByLabel(m.identifier).fill(custAUsername);
+  await custPage.getByLabel(m.password, { exact: true }).fill(custPassword);
+  await custPage.getByRole('button', { name: m.login, exact: true }).click();
+  await expectVisible(custPage.getByRole('heading', { name: m.home, exact: true }), 'Login pelanggan A gagal');
+
+  const custWalkIds = await custPage.evaluate(async () => {
+    const ids = [];
+    let before = null;
+    for (let guard = 0; guard < 100; guard++) {
+      const q = new URLSearchParams({ limit: '3' });
+      if (before) q.set('before', before);
+      const res = await fetch(`/api/requests?${q.toString()}`);
+      if (res.status !== 200) throw new Error(`GET /api/requests HTTP ${res.status}`);
+      const body = await res.json();
+      for (const r of body.requests) ids.push(r.id);
+      if (!body.nextBefore) break;
+      before = body.nextBefore;
+    }
+    return ids;
+  });
+  assertExactIdSet(custWalkIds, custAExpectedIds, 'API /api/requests limit=3');
+
+  await custPage.locator('aside.desktop-nav nav').getByRole('link', { name: m.requests, exact: true }).click();
+  await expectVisible(custPage.getByRole('heading', { name: m.requests, exact: true }), 'Halaman /pemakaian pelanggan tidak terbuka');
+  await custPage.waitForFunction(() => document.querySelectorAll('article.request-row').length === 50, null, { timeout: 10_000 });
+  const extractUsageIds = () => custPage.evaluate(() => [...document.querySelectorAll('article.request-row')].map(row => {
+    const match = (row.textContent ?? '').match(/req_[0-9a-f-]{36}/);
+    return match ? match[0] : '';
+  }).filter(Boolean));
+  const usagePage1Ids = await extractUsageIds();
+  await custPage.locator('nav.pagination').getByRole('button', { name: m.next, exact: true }).click();
+  await custPage.waitForFunction(
+    () => new URLSearchParams(location.search).has('before') && document.querySelectorAll('article.request-row').length === 3,
+    null,
+    { timeout: 10_000 },
+  );
+  const usagePage2Ids = await extractUsageIds();
+  assertExactIdSet([...usagePage1Ids, ...usagePage2Ids], custAExpectedIds, 'UI /pemakaian pelanggan (50 + 3)');
+  await assertCleanSecretHygiene(custPage, secrets, 'customer-usage-cursor');
+  await custCtx.close();
+
   assert.deepEqual(pageErrors, [], `Ada pageerror browser: ${pageErrors.join('; ')}`);
   assert.deepEqual(serverErrors, [], `Ada respons >=500: ${serverErrors.join('; ')}`);
   assert.deepEqual(await ledger.invariantViolations(pool), [], 'Ada pelanggaran invariant ledger');
 
-  process.stdout.write('admin-requests-local-verify: PASS (rekonsiliasi filters/badges/links, customer Request tab isolation+requestBefore, audit groups/actor/targetId/nextBefore, invariantViolations=[])\n');
+  process.stdout.write('admin-requests-local-verify: PASS (rekonsiliasi filters/badges/links, sub-ms+same-ts cursor API+UI across rekonsiliasi/Request-tab/pemakaian, audit groups/actor/targetId/nextBefore, invariantViolations=[])\n');
 } finally {
   mock?.closeHangs();
   mock?.server.closeAllConnections();
