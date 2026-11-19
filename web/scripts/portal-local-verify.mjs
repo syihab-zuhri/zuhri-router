@@ -13,6 +13,7 @@ import * as pricing from '../../server/src/pricing.ts';
 import * as upstreams from '../../server/src/upstreams.ts';
 import * as vouchers from '../../server/src/vouchers.ts';
 import { DB_URL } from '../../server/test/helpers.ts';
+import { errorText, kindText, m, statusText } from '../src/messages.ts';
 
 const apiPort = Number(process.env.VERIFY_API_PORT ?? 55491);
 const webPort = Number(process.env.VERIFY_WEB_PORT ?? 5185);
@@ -95,11 +96,11 @@ async function assertCleanSecretHygiene(page, secrets, label) {
 
 async function customerLogin(page, username, password) {
   await page.goto(`${webBase}/masuk`);
-  await expectVisible(page.getByRole('heading', { name: 'Masuk', exact: true }), 'Halaman /masuk tidak terbuka');
-  await page.getByLabel('Username atau email').fill(username);
-  await page.getByLabel('Password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Masuk', exact: true }).click();
-  await expectVisible(page.getByRole('heading', { name: 'Beranda', exact: true }), `Login ${username} gagal`);
+  await expectVisible(page.getByRole('heading', { name: m.login, exact: true }), 'Halaman /masuk tidak terbuka');
+  await page.getByLabel(m.identifier).fill(username);
+  await page.getByLabel(m.password, { exact: true }).fill(password);
+  await page.getByRole('button', { name: m.login, exact: true }).click();
+  await expectVisible(page.getByRole('heading', { name: m.home, exact: true }), `Login ${username} gagal`);
 }
 
 const databaseUrl = new URL(DB_URL);
@@ -259,7 +260,7 @@ try {
     const warmCtx = await browser.newContext();
     const warmPage = await warmCtx.newPage();
     await warmPage.goto(`${webBase}/masuk`);
-    await expectVisible(warmPage.getByRole('heading', { name: 'Masuk', exact: true }), 'Warmup Vite /masuk gagal');
+    await expectVisible(warmPage.getByRole('heading', { name: m.login, exact: true }), 'Warmup Vite /masuk gagal');
     await warmCtx.close();
   }
 
@@ -273,26 +274,26 @@ try {
 
   // ---- 1. Tukar kode SALE ----
   await customerLogin(page1, custOneUsername, custPassword);
-  await expectVisible(page1.getByText('Saldo tersedia: 0 kredit token', { exact: false }), 'Saldo awal harus 0');
+  await expectVisible(page1.getByText(`${m.available}: 0 ${m.credits}`, { exact: false }), 'Saldo awal harus 0');
   await expectVisible(page1.getByText('Paket Portal 100', { exact: true }), 'Paket aktif tidak tampil di beranda');
 
-  await page1.locator('aside.desktop-nav nav').getByRole('link', { name: 'Isi saldo', exact: true }).click();
-  await expectVisible(page1.getByRole('heading', { name: 'Isi saldo', exact: true }), 'Halaman Isi saldo gagal terbuka');
+  await page1.locator('aside.desktop-nav nav').getByRole('link', { name: m.redeem, exact: true }).click();
+  await expectVisible(page1.getByRole('heading', { name: m.redeem, exact: true }), 'Halaman Isi saldo gagal terbuka');
 
   // Kode salah ditolak dengan pesan benar
-  await page1.getByLabel('Kode redeem').fill('ZR-SALAH-0000000-0000000-0000000');
-  await page1.getByRole('button', { name: 'Tukar kode', exact: true }).click();
-  await expectVisible(page1.getByText('Kode ini tidak dapat dipakai. Periksa penulisannya atau hubungi penjual.'), 'Pesan penolakan kode salah tidak tampil');
+  await page1.getByLabel(m.redeemCode).fill('ZR-SALAH-0000000-0000000-0000000');
+  await page1.getByRole('button', { name: m.redeemAction, exact: true }).click();
+  await expectVisible(page1.getByText(errorText.code_unusable), 'Pesan penolakan kode salah tidak tampil');
   assert.equal((await ledger.getBalance(db, cust1.tenantId)).posted, 0n, 'Kode salah tidak boleh menambah saldo');
 
   // Kode SALE sah -> saldo naik persis 100 kredit token
-  await page1.getByLabel('Kode redeem').fill(saleVoucher.code);
-  await page1.getByRole('button', { name: 'Tukar kode', exact: true }).click();
+  await page1.getByLabel(m.redeemCode).fill(saleVoucher.code);
+  await page1.getByRole('button', { name: m.redeemAction, exact: true }).click();
   const receipt = page1.locator('section.receipt');
-  await expectVisible(receipt.getByRole('heading', { name: 'Saldo berhasil ditambah', exact: true }), 'Struk redeem tidak tampil');
+  await expectVisible(receipt.getByRole('heading', { name: m.redeemed, exact: true }), 'Struk redeem tidak tampil');
   const receiptText = await receipt.innerText();
-  assert.ok(receiptText.includes('100 kredit token'), `Nominal struk tidak cocok: ${receiptText}`);
-  await expectVisible(page1.getByText('Saldo tersedia: 100 kredit token', { exact: false }), 'Saldo topbar tidak naik menjadi 100');
+  assert.ok(receiptText.includes(`100 ${m.credits}`), `Nominal struk tidak cocok: ${receiptText}`);
+  await expectVisible(page1.getByText(`${m.available}: 100 ${m.credits}`, { exact: false }), 'Saldo topbar tidak naik menjadi 100');
 
   const balAfterRedeem = await ledger.getBalance(db, cust1.tenantId);
   assert.equal(balAfterRedeem.posted, 100_000_000n, 'Saldo DB setelah redeem SALE harus tepat 100_000_000 mikro');
@@ -301,9 +302,9 @@ try {
   assert.ok(receiptText.includes(entriesAfterRedeem[0].id), 'Struk harus menampilkan ID transaksi ledger yang sama');
 
   // Menukar kode yang sama lagi oleh pemilik: replay idempotent, saldo tidak bertambah kedua kali
-  await page1.getByLabel('Kode redeem').fill(saleVoucher.code);
-  await page1.getByRole('button', { name: 'Tukar kode', exact: true }).click();
-  await expectVisible(page1.getByText('Penukaran ini sudah tercatat. Tidak ada penambahan kedua.'), 'Pesan replay pemilik kode tidak tampil');
+  await page1.getByLabel(m.redeemCode).fill(saleVoucher.code);
+  await page1.getByRole('button', { name: m.redeemAction, exact: true }).click();
+  await expectVisible(page1.getByText(m.replay), 'Pesan replay pemilik kode tidak tampil');
   assert.equal((await ledger.getBalance(db, cust1.tenantId)).posted, 100_000_000n, 'Replay tidak boleh menggandakan saldo');
   assert.equal((await ledger.listEntries(db, cust1.tenantId)).length, 1, 'Replay tidak boleh menggandakan entri');
 
@@ -312,29 +313,29 @@ try {
   const page2 = await ctx2.newPage();
   attachListeners(page2, 'cust2', pageErrors, serverErrors);
   await customerLogin(page2, custTwoUsername, custPassword);
-  await page2.locator('aside.desktop-nav nav').getByRole('link', { name: 'Isi saldo', exact: true }).click();
-  await page2.getByLabel('Kode redeem').fill(saleVoucher.code);
-  await page2.getByRole('button', { name: 'Tukar kode', exact: true }).click();
-  await expectVisible(page2.getByText('Kode ini tidak dapat dipakai. Periksa penulisannya atau hubungi penjual.'), 'Pelanggan lain harus ditolak saat menukar kode yang sudah dipakai');
+  await page2.locator('aside.desktop-nav nav').getByRole('link', { name: m.redeem, exact: true }).click();
+  await page2.getByLabel(m.redeemCode).fill(saleVoucher.code);
+  await page2.getByRole('button', { name: m.redeemAction, exact: true }).click();
+  await expectVisible(page2.getByText(errorText.code_unusable), 'Pelanggan lain harus ditolak saat menukar kode yang sudah dipakai');
   assert.equal((await ledger.getBalance(db, cust2.tenantId)).posted, 0n, 'Pelanggan kedua tidak boleh mendapat saldo');
   await ctx2.close();
 
   await assertCleanSecretHygiene(page1, secrets, 'after-redeem');
 
   // ---- 2. Buat API key, tampil sekali, tidak ada di URL/storage/konsol, tidak tampil lagi setelah ditutup, cabut -> 401 ----
-  await page1.locator('aside.desktop-nav nav').getByRole('link', { name: 'API key', exact: true }).click();
-  await expectVisible(page1.getByRole('heading', { name: 'API key', exact: true }), 'Halaman API key tidak terbuka');
+  await page1.locator('aside.desktop-nav nav').getByRole('link', { name: m.keys, exact: true }).click();
+  await expectVisible(page1.getByRole('heading', { name: m.keys, exact: true }), 'Halaman API key tidak terbuka');
 
-  await page1.getByLabel('Nama key').fill('Key Portal Dicabut');
-  await page1.getByRole('button', { name: 'Buat API key', exact: true }).click();
-  const secretDialog = page1.getByRole('dialog', { name: 'Salin API key ini sekarang' });
+  await page1.getByLabel(m.keyName).fill('Key Portal Dicabut');
+  await page1.getByRole('button', { name: m.createKey, exact: true }).click();
+  const secretDialog = page1.getByRole('dialog', { name: m.secretTitle });
   await expectVisible(secretDialog, 'Dialog secret API key tidak tampil');
   const firstKeySecret = (await secretDialog.locator('pre.secret').textContent())?.trim() ?? '';
   assert.match(firstKeySecret, /^rtr_[A-Za-z0-9_-]{43}$/, 'Format secret API key tidak sesuai');
   secrets.push(firstKeySecret);
 
   await assertCleanSecretHygiene(page1, secrets, 'after-key-reveal');
-  await secretDialog.getByRole('button', { name: 'Saya sudah menyalin', exact: true }).click();
+  await secretDialog.getByRole('button', { name: m.copiedDone, exact: true }).click();
   await secretDialog.waitFor({ state: 'hidden', timeout: 5_000 });
 
   assert.equal((await page1.content()).includes(firstKeySecret), false, 'Secret masih ada di DOM setelah dialog ditutup');
@@ -354,11 +355,11 @@ try {
 
   // Cabut key di UI -> ditolak di admission (GET /v1/models 401)
   const keyCard = page1.locator('.data-row').filter({ hasText: 'Key Portal Dicabut' });
-  await keyCard.getByRole('button', { name: 'Cabut', exact: true }).click();
-  await expectVisible(keyCard.getByText('Cabut key ini? Tool yang memakainya akan langsung ditolak.'), 'Konfirmasi cabut key tidak tampil');
-  await keyCard.getByRole('button', { name: 'Cabut API key', exact: true }).click();
-  await expectVisible(page1.getByText('Key sudah dicabut.', { exact: true }), 'Pesan key dicabut tidak tampil');
-  await expectVisible(keyCard.getByText('Dicabut', { exact: true }), 'Badge status Dicabut tidak tampil');
+  await keyCard.getByRole('button', { name: m.revoke, exact: true }).click();
+  await expectVisible(keyCard.getByText(m.revokeQuestion), 'Konfirmasi cabut key tidak tampil');
+  await keyCard.getByRole('button', { name: m.revokeKey, exact: true }).click();
+  await expectVisible(page1.getByText(m.revoked, { exact: true }), 'Pesan key dicabut tidak tampil');
+  await expectVisible(keyCard.getByText(statusText.REVOKED, { exact: true }), 'Badge status Dicabut tidak tampil');
 
   const revokedModelsRes = await fetch(`${apiBase}/v1/models`, {
     headers: { authorization: `Bearer ${firstKeySecret}` },
@@ -368,13 +369,13 @@ try {
   assert.equal(revokedModelsBody?.error?.code, 'key_revoked', 'Kode error key dicabut harus key_revoked');
 
   // Buat key kedua untuk men-seed 55 request selesai tanpa upstream
-  await page1.getByLabel('Nama key').fill('Key Pemakaian Seed');
-  await page1.getByRole('button', { name: 'Buat API key', exact: true }).click();
-  const secretDialog2 = page1.getByRole('dialog', { name: 'Salin API key ini sekarang' });
+  await page1.getByLabel(m.keyName).fill('Key Pemakaian Seed');
+  await page1.getByRole('button', { name: m.createKey, exact: true }).click();
+  const secretDialog2 = page1.getByRole('dialog', { name: m.secretTitle });
   await expectVisible(secretDialog2, 'Dialog secret key kedua tidak tampil');
   const secondKeySecret = (await secretDialog2.locator('pre.secret').textContent())?.trim() ?? '';
   secrets.push(secondKeySecret);
-  await secretDialog2.getByRole('button', { name: 'Saya sudah menyalin', exact: true }).click();
+  await secretDialog2.getByRole('button', { name: m.copiedDone, exact: true }).click();
   await secretDialog2.waitFor({ state: 'hidden', timeout: 5_000 });
 
   // ---- 3. Seed 55 request selesai lewat fungsi server (tanpa upstream) & buktikan /pemakaian, /transaksi, dan pagination ----
@@ -412,43 +413,43 @@ try {
   assert.equal(expectedFinalBalance.posted, 93_350_000n, 'Saldo akhir harus 93_350_000 mikro');
 
   // Cek /pemakaian dan pagination (50 per halaman -> halaman 1 = 50, halaman 2 = 5)
-  await page1.locator('aside.desktop-nav nav').getByRole('link', { name: 'Pemakaian', exact: true }).click();
-  await expectVisible(page1.getByRole('heading', { name: 'Pemakaian', exact: true }), 'Halaman Pemakaian tidak terbuka');
+  await page1.locator('aside.desktop-nav nav').getByRole('link', { name: m.requests, exact: true }).click();
+  await expectVisible(page1.getByRole('heading', { name: m.requests, exact: true }), 'Halaman Pemakaian tidak terbuka');
   await expectVisible(page1.locator('.request-row').first(), 'Daftar request tidak tampil');
   assert.equal(await page1.locator('.request-row').count(), 50, 'Halaman pertama /pemakaian harus memuat 50 request');
-  await expectVisible(page1.locator('.request-row').first().getByText('1,25 kredit token', { exact: true }), 'Debit request terbaru (1,25 kredit token) tidak cocok');
+  await expectVisible(page1.locator('.request-row').first().getByText(`1,25 ${m.credits}`, { exact: true }), 'Debit request terbaru (1,25 kredit token) tidak cocok');
 
-  await page1.getByRole('button', { name: 'Berikutnya', exact: true }).click();
-  await expectVisible(page1.getByRole('button', { name: 'Halaman awal', exact: true }), 'Tombol Halaman awal di /pemakaian tidak tampil');
+  await page1.getByRole('button', { name: m.next, exact: true }).click();
+  await expectVisible(page1.getByRole('button', { name: m.first, exact: true }), 'Tombol Halaman awal di /pemakaian tidak tampil');
   await page1.waitForFunction(() => document.querySelectorAll('.request-row').length === 5, { timeout: 10_000 });
   assert.equal(await page1.locator('.request-row').count(), 5, 'Halaman kedua /pemakaian harus memuat 5 request sisa');
 
-  await page1.getByRole('button', { name: 'Halaman awal', exact: true }).click();
+  await page1.getByRole('button', { name: m.first, exact: true }).click();
   await page1.waitForFunction(() => document.querySelectorAll('.request-row').length === 50, { timeout: 10_000 });
 
   // Cek /transaksi mencantumkan entri ledger yang sama dan pagination bekerja (56 entri -> halaman 1 = 50, halaman 2 = 6)
-  await page1.locator('aside.desktop-nav nav').getByRole('link', { name: 'Transaksi', exact: true }).click();
-  await expectVisible(page1.getByRole('heading', { name: 'Transaksi', exact: true }), 'Halaman Transaksi tidak terbuka');
+  await page1.locator('aside.desktop-nav nav').getByRole('link', { name: m.ledger, exact: true }).click();
+  await expectVisible(page1.getByRole('heading', { name: m.ledger, exact: true }), 'Halaman Transaksi tidak terbuka');
   await expectVisible(page1.locator('.data-row').first(), 'Daftar transaksi tidak tampil');
   assert.equal(await page1.locator('.data-row').count(), 50, 'Halaman pertama /transaksi harus memuat 50 entri');
 
   const allLedgerEntries = await ledger.listEntries(db, cust1.tenantId, { limit: 100 });
   assert.equal(allLedgerEntries.length, 56, 'Total entri ledger harus 56 (1 redeem + 55 debit)');
   const newestEntryText = await page1.locator('.data-row').first().innerText();
-  assert.ok(newestEntryText.includes('Pemakaian API'), `Entri terbaru harus Pemakaian API: ${newestEntryText}`);
-  assert.ok(newestEntryText.includes('-1,25 kredit token'), `Nominal entri terbaru tidak cocok dengan ledger: ${newestEntryText}`);
+  assert.ok(newestEntryText.includes(kindText.DEBIT_USAGE), `Entri terbaru harus Pemakaian API: ${newestEntryText}`);
+  assert.ok(newestEntryText.includes(`-1,25 ${m.credits}`), `Nominal entri terbaru tidak cocok dengan ledger: ${newestEntryText}`);
   assert.ok(newestEntryText.includes(allLedgerEntries[0].id), `ID entri terbaru tidak cocok dengan ledger: ${newestEntryText}`);
 
-  await page1.getByRole('button', { name: 'Berikutnya', exact: true }).click();
+  await page1.getByRole('button', { name: m.next, exact: true }).click();
   await page1.waitForFunction(() => document.querySelectorAll('.data-row').length === 6, { timeout: 10_000 });
   assert.equal(await page1.locator('.data-row').count(), 6, 'Halaman kedua /transaksi harus memuat 6 entri sisa');
-  await expectVisible(page1.locator('.data-row').last().getByText('100 kredit token', { exact: true }), 'Entri redeem awal tidak ditemukan di halaman kedua /transaksi');
-  await page1.getByRole('button', { name: 'Halaman awal', exact: true }).click();
+  await expectVisible(page1.locator('.data-row').last().getByText(`100 ${m.credits}`, { exact: true }), 'Entri redeem awal tidak ditemukan di halaman kedua /transaksi');
+  await page1.getByRole('button', { name: m.first, exact: true }).click();
   await page1.waitForFunction(() => document.querySelectorAll('.data-row').length === 50, { timeout: 10_000 });
 
   // ---- 4. Halaman Model dan Harga (/model-harga) ----
-  await page1.locator('aside.desktop-nav nav').getByRole('link', { name: 'Model dan Harga', exact: true }).click();
-  await expectVisible(page1.getByRole('heading', { name: 'Model dan Harga', exact: true }), 'Halaman Model dan Harga tidak terbuka');
+  await page1.locator('aside.desktop-nav nav').getByRole('link', { name: m.catalogue, exact: true }).click();
+  await expectVisible(page1.getByRole('heading', { name: m.catalogue, exact: true }), 'Halaman Model dan Harga tidak terbuka');
 
   const serverCatalogue = await page1.evaluate(async () => {
     const res = await fetch('/api/models');
@@ -478,10 +479,10 @@ try {
   await expectVisible(variedCard, 'Model varied tidak tampil di /model-harga');
   const variedText = await variedCard.innerText();
   assert.ok(
-    variedText.includes(`${variedServer.creditsPerToken.input.replace('.', ',')} kredit token`) &&
-      variedText.includes(`${variedServer.creditsPerToken.output.replace('.', ',')} kredit token`) &&
-      variedText.includes(`${variedServer.creditsPerToken.cacheRead.replace('.', ',')} kredit token`) &&
-      variedText.includes(`${variedServer.creditsPerToken.cacheWrite.replace('.', ',')} kredit token`),
+    variedText.includes(`${variedServer.creditsPerToken.input.replace('.', ',')} ${m.credits}`) &&
+      variedText.includes(`${variedServer.creditsPerToken.output.replace('.', ',')} ${m.credits}`) &&
+      variedText.includes(`${variedServer.creditsPerToken.cacheRead.replace('.', ',')} ${m.credits}`) &&
+      variedText.includes(`${variedServer.creditsPerToken.cacheWrite.replace('.', ',')} ${m.credits}`),
     `Tarif per kategori model varied tidak cocok dengan server: ${variedText}`,
   );
   assert.equal(await page1.getByText('portal/archived-model').count(), 0, 'Model diarsipkan tidak boleh tampil di /model-harga');
@@ -492,8 +493,8 @@ try {
   assert.equal(await page1.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Terdapat gulir horizontal di 360px');
 
   await page1.goto(`${webBase}/beranda`);
-  await expectVisible(page1.getByRole('heading', { name: 'Beranda', exact: true }), 'Halaman Beranda tidak terbuka di akhir verifikasi');
-  await expectVisible(page1.getByText('Saldo tersedia: 93,35 kredit token', { exact: false }), 'Saldo akhir di shell harus 93,35 kredit token');
+  await expectVisible(page1.getByRole('heading', { name: m.home, exact: true }), 'Halaman Beranda tidak terbuka di akhir verifikasi');
+  await expectVisible(page1.getByText(`${m.available}: 93,35 ${m.credits}`, { exact: false }), 'Saldo akhir di shell harus 93,35 kredit token');
   await assertCleanSecretHygiene(page1, secrets, 'portal-final');
 
   assert.deepEqual(pageErrors, [], `Terdapat pageerror: ${pageErrors.join('; ')}`);

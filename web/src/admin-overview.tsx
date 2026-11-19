@@ -1,8 +1,20 @@
+import { useState } from 'react';
 import { Link } from 'react-router';
+import { post } from './api.ts';
 import { formatCredits, formatDate, grouped } from './credits.ts';
-import { useResource } from './hooks.tsx';
+import { useAdminAction, useResource } from './hooks.tsx';
 import { m, ov } from './messages.ts';
-import { Button, ErrorBox, PageTitle, Pending } from './ui.tsx';
+import { Alert, Button, ErrorBox, Field, Modal, PageTitle, Pending } from './ui.tsx';
+
+type OverviewGateway = {
+  paused: boolean;
+  reason: string | null;
+  changedAt: string | null;
+};
+
+type GatewayState = OverviewGateway & {
+  changedBy: string | null;
+};
 
 type OverviewData = {
   generatedAt: string;
@@ -18,6 +30,7 @@ type OverviewData = {
   requests24h: { total: number; failed: number; estimated: number; debitMicro: string };
   unresolved: { count: number; heldMicro: string };
   upstreams: { PENDING: number; ELIGIBLE: number; BLOCKED: number };
+  gateway: OverviewGateway;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -32,11 +45,34 @@ function isMicro(value: unknown): value is string {
   return typeof value === 'string' && /^-?(0|[1-9][0-9]*)$/.test(value);
 }
 
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function isNullableDate(value: unknown): value is string | null {
+  return value === null || (typeof value === 'string' && !Number.isNaN(Date.parse(value)));
+}
+
+function parseOverviewGateway(raw: unknown): OverviewGateway | null {
+  if (!isRecord(raw)) return null;
+  if (typeof raw.paused !== 'boolean') return null;
+  if (!isNullableString(raw.reason)) return null;
+  if (!isNullableDate(raw.changedAt)) return null;
+  return { paused: raw.paused, reason: raw.reason, changedAt: raw.changedAt };
+}
+
+function parseGatewayState(raw: unknown): GatewayState | null {
+  const base = parseOverviewGateway(raw);
+  if (!base || !isRecord(raw)) return null;
+  if (!isNullableString(raw.changedBy)) return null;
+  return { ...base, changedBy: raw.changedBy };
+}
+
 function parseOverview(raw: unknown): OverviewData | null {
   if (!isRecord(raw)) return null;
   if (typeof raw.generatedAt !== 'string' || Number.isNaN(Date.parse(raw.generatedAt))) return null;
 
-  const { customers, balances, activeVouchers, requests24h, unresolved, upstreams } = raw;
+  const { customers, balances, activeVouchers, requests24h, unresolved, upstreams, gateway } = raw;
   if (!isRecord(customers) || !isRecord(balances) || !isRecord(activeVouchers)) return null;
   if (!isRecord(requests24h) || !isRecord(unresolved) || !isRecord(upstreams)) return null;
 
@@ -47,6 +83,7 @@ function parseOverview(raw: unknown): OverviewData | null {
   if (!isCount(requests24h.total) || !isCount(requests24h.failed) || !isCount(requests24h.estimated) || !isMicro(requests24h.debitMicro)) return null;
   if (!isCount(unresolved.count) || !isMicro(unresolved.heldMicro)) return null;
   if (!isCount(upstreams.PENDING) || !isCount(upstreams.ELIGIBLE) || !isCount(upstreams.BLOCKED)) return null;
+  if (!parseOverviewGateway(gateway)) return null;
 
   return raw as OverviewData;
 }
@@ -58,15 +95,42 @@ function formatCount(value: number): string {
 
 export function AdminOverviewPage() {
   const overview = useResource<unknown>('/admin/api/overview');
-  const title = <PageTitle subtitle={ov.overviewSubtitle}>{ov.overviewTitle}</PageTitle>;
+  const gatewayRes = useResource<unknown>('/admin/api/settings/gateway');
+  const action = useAdminAction();
+  const [confirmMode, setConfirmMode] = useState<'pause' | 'resume' | null>(null);
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const [statusNotice, setStatusNotice] = useState<'paused' | 'resumed' | null>(null);
 
-  if (overview.isPending) return <>{title}<Pending /></>;
-  if (overview.isError) return <>{title}<ErrorBox error={overview.error} retry={() => { void overview.refetch(); }} /></>;
+  const title = <PageTitle subtitle={ov.overviewSubtitle}>{ov.overviewTitle}</PageTitle>;
+  const retryAll = () => {
+    void overview.refetch();
+    void gatewayRes.refetch();
+  };
+  const closeConfirm = () => {
+    setConfirmMode(null);
+    setReason('');
+    setReasonError(null);
+    action.setError(null);
+  };
+  const openConfirm = (mode: 'pause' | 'resume') => {
+    setStatusNotice(null);
+    setReason('');
+    setReasonError(null);
+    action.setError(null);
+    setConfirmMode(mode);
+  };
+
+  if (overview.isPending || gatewayRes.isPending) return <>{title}<Pending /></>;
+  if (overview.isError) return <>{title}<ErrorBox error={overview.error} retry={retryAll} /></>;
+  if (gatewayRes.isError) return <>{title}<ErrorBox error={gatewayRes.error} retry={retryAll} /></>;
 
   const data = parseOverview(overview.data);
-  if (!data) {
-    return <>{title}<ErrorBox error={new Error('invalid_overview_payload')} retry={() => { void overview.refetch(); }} /></>;
+  const gateway = parseGatewayState(gatewayRes.data);
+  if (!data || !gateway) {
+    return <>{title}<ErrorBox error={new Error('invalid_overview_payload')} retry={retryAll} /></>;
   }
+
   const hasNegative = data.balances.negativeAccounts > 0;
   const isAllZero =
     data.customers.ACTIVE === 0 &&
@@ -86,8 +150,62 @@ export function AdminOverviewPage() {
     {title}
     <div className="overview-toolbar">
       <p className="muted">{ov.generatedAt}: {formatDate(data.generatedAt)}</p>
-      <Button className="secondary" busy={overview.isFetching} onClick={() => { void overview.refetch(); }}>{m.refresh}</Button>
+      <Button
+        className="secondary"
+        busy={overview.isFetching || gatewayRes.isFetching}
+        onClick={() => {
+          setStatusNotice(null);
+          retryAll();
+        }}
+      >
+        {m.refresh}
+      </Button>
     </div>
+
+    <section
+      className={gateway.paused ? 'panel gateway-panel gateway-paused' : 'panel gateway-panel'}
+      aria-label={ov.gatewaySection}
+    >
+      <div className="gateway-header">
+        <h2>{ov.gatewaySection}</h2>
+        <span className="badge" data-status={gateway.paused ? 'PAUSED' : 'RUNNING'}>
+          {gateway.paused ? ov.gatewayPaused : ov.gatewayRunning}
+        </span>
+      </div>
+
+      {gateway.paused ? (
+        <Alert danger>{ov.gatewayPausedBanner}</Alert>
+      ) : (
+        <p className="muted">{ov.gatewayRunningNote}</p>
+      )}
+
+      {statusNotice === 'paused' && <Alert>{ov.gatewayPausedConfirmed}</Alert>}
+      {statusNotice === 'resumed' && <Alert>{ov.gatewayResumedConfirmed}</Alert>}
+
+      <dl className="overview-dl">
+        <div>
+          <dt>{ov.gatewaySince}</dt>
+          <dd>{gateway.changedAt ? formatDate(gateway.changedAt) : ov.gatewayNeverChanged}</dd>
+        </div>
+        <div>
+          <dt>{ov.gatewayChangedBy}</dt>
+          <dd>{gateway.changedBy ?? ov.gatewayNoActor}</dd>
+        </div>
+        <div>
+          <dt>{ov.gatewayReason}</dt>
+          <dd>{gateway.reason ?? ov.gatewayNoReason}</dd>
+        </div>
+      </dl>
+
+      <div className="actions">
+        {gateway.paused ? (
+          <Button busy={action.busy} onClick={() => openConfirm('resume')}>{ov.resumeGateway}</Button>
+        ) : (
+          <Button className="danger-button" busy={action.busy} onClick={() => openConfirm('pause')}>{ov.pauseGateway}</Button>
+        )}
+      </div>
+    </section>
+
     <p className="muted">{ov.costUnavailableNote}</p>
     {isAllZero && <p className="muted">{ov.zeroOverviewNote}</p>}
 
@@ -170,5 +288,92 @@ export function AdminOverviewPage() {
         <Link className="overview-card-link" to="/admin/upstream">{ov.openUpstreams}</Link>
       </section>
     </div>
+
+    {confirmMode && (
+      <Modal
+        title={confirmMode === 'pause' ? ov.pauseDialogTitle : ov.resumeDialogTitle}
+        busy={action.busy}
+        onClose={closeConfirm}
+      >
+        <Alert danger={confirmMode === 'pause'}>
+          {confirmMode === 'pause' ? ov.pauseImpact : ov.resumeImpact}
+        </Alert>
+        <form
+          className="stack"
+          onSubmit={event => {
+            event.preventDefault();
+            const trimmed = reason.trim();
+            if (confirmMode === 'pause' && (trimmed.length < 1 || trimmed.length > 200)) {
+              setReasonError(ov.pauseReasonInvalid);
+              return;
+            }
+            setReasonError(null);
+            const submittedMode = confirmMode;
+            void action.run(async () => {
+              const updated = await post<unknown>(
+                '/admin/api/settings/gateway',
+                submittedMode === 'pause' ? { paused: true, reason: trimmed } : { paused: false },
+              );
+              const parsed = parseGatewayState(updated);
+              if (!parsed) throw new Error('invalid_gateway_payload');
+              closeConfirm();
+              await Promise.all([overview.refetch(), gatewayRes.refetch()]);
+              setStatusNotice(parsed.paused ? 'paused' : 'resumed');
+            });
+          }}
+        >
+          {confirmMode === 'pause' ? (
+            <Field
+              label={m.reason}
+              help={ov.pauseReasonHelp}
+              value={reason}
+              onChange={event => {
+                setReason(event.target.value);
+                setReasonError(null);
+              }}
+              maxLength={200}
+              required
+              autoFocus
+            />
+          ) : (
+            <dl className="overview-dl">
+              <div>
+                <dt>{ov.gatewaySince}</dt>
+                <dd>{gateway.changedAt ? formatDate(gateway.changedAt) : ov.gatewayNeverChanged}</dd>
+              </div>
+              <div>
+                <dt>{ov.gatewayChangedBy}</dt>
+                <dd>{gateway.changedBy ?? ov.gatewayNoActor}</dd>
+              </div>
+              <div>
+                <dt>{ov.gatewayReason}</dt>
+                <dd>{gateway.reason ?? ov.gatewayNoReason}</dd>
+              </div>
+            </dl>
+          )}
+          {reasonError && <Alert danger>{reasonError}</Alert>}
+          {action.error && <ErrorBox error={action.error} />}
+          {action.busy && <Alert>{ov.changingFlag}</Alert>}
+          <div className="actions">
+            <Button
+              type="button"
+              className="secondary"
+              disabled={action.busy}
+              onClick={closeConfirm}
+              autoFocus={confirmMode === 'resume'}
+            >
+              {m.cancel}
+            </Button>
+            <Button
+              className={confirmMode === 'pause' ? 'danger-button' : undefined}
+              busy={action.busy}
+            >
+              {confirmMode === 'pause' ? ov.pauseGateway : ov.resumeGateway}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    )}
+    {action.dialog}
   </>;
 }

@@ -162,6 +162,11 @@ dialog::backdrop { background: var(--color-scrim); }
 
 /* --- ringkasan (Antigravity) --- */
 .overview-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; }
+.gateway-panel { display: grid; gap: var(--space-3); }
+.gateway-panel.gateway-paused { border-color: var(--color-danger); }
+.gateway-header { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center; justify-content: space-between; }
+.badge[data-status="RUNNING"] { color: var(--color-success-text); background: var(--color-success-bg); }
+.badge[data-status="PAUSED"] { color: var(--color-danger-text); background: var(--color-danger-bg); }
 .metric.metric-warning { background: var(--color-warning-bg); border-color: var(--color-warning-text); }
 .metric.metric-warning h2,
 .metric.metric-warning .number,

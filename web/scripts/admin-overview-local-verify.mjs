@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -13,8 +14,9 @@ import * as ledger from '../../server/src/ledger.ts';
 import * as pricing from '../../server/src/pricing.ts';
 import * as upstreams from '../../server/src/upstreams.ts';
 import * as vouchers from '../../server/src/vouchers.ts';
-import { totpAt, totpStep } from '../../server/src/crypto.ts';
+import { seal, totpAt, totpStep } from '../../server/src/crypto.ts';
 import { DB_URL } from '../../server/test/helpers.ts';
+import { m, ov } from '../src/messages.ts';
 
 const apiPort = Number(process.env.VERIFY_API_PORT ?? 55491);
 const webPort = Number(process.env.VERIFY_WEB_PORT ?? 5185);
@@ -74,10 +76,18 @@ async function waitFor(url) {
   throw new Error(`Server tidak siap: ${url} ${last instanceof Error ? last.message : ''}`);
 }
 
-async function safeTotpStep() {
-  const remaining = 30_000 - (Date.now() % 30_000);
-  if (remaining < 4_500) await delay(remaining + 300);
-  return totpStep(Date.now());
+let lastTotpStep = -1n;
+async function nextTotpCode(seed) {
+  for (;;) {
+    const cur = totpStep(Date.now());
+    const candidate = lastTotpStep + 1n > cur - 1n ? lastTotpStep + 1n : cur - 1n;
+    if (candidate <= cur + 1n) {
+      lastTotpStep = candidate;
+      return totpAt(seed, candidate);
+    }
+    const remaining = 30_000 - (Date.now() % 30_000);
+    await delay(remaining + 250);
+  }
 }
 
 const databaseUrl = new URL(DB_URL);
@@ -87,6 +97,7 @@ assert.ok(databaseUrl.pathname === '/router_test_antigravity' || databaseUrl.pat
 const root = createPool(databaseUrl.href);
 let db;
 let app;
+let mockServer;
 let vite;
 let browser;
 
@@ -226,7 +237,15 @@ try {
 
   assert.deepEqual(await ledger.invariantViolations(db), []);
 
-  app = await buildApp({ db, key, mailer, secureCookies: false, resolveHost: offlinePublicResolver, publicBaseUrl: webBase });
+  app = await buildApp({
+    db,
+    key,
+    mailer,
+    secureCookies: false,
+    resolveHost: offlinePublicResolver,
+    publicBaseUrl: webBase,
+    gateway: { unsafeAllowAnyUpstreamUrl: true },
+  });
   await app.listen({ host: '127.0.0.1', port: apiPort });
 
   vite = spawn(
@@ -246,6 +265,15 @@ try {
     args: ['--no-proxy-server'],
   });
 
+  // Hangatkan cache Vite sekali agar konteks pengujian tidak terkena reload saat pre-bundling
+  {
+    const warmCtx = await browser.newContext();
+    const warmPage = await warmCtx.newPage();
+    await warmPage.goto(`${webBase}/masuk`);
+    await expectVisible(warmPage.getByRole('heading', { name: m.login, exact: true }), 'Warmup Vite gagal');
+    await warmCtx.close();
+  }
+
   const adminCtx = await browser.newContext({ viewport: { width: 360, height: 640 } });
   const page = await adminCtx.newPage();
   const pageErrors = [];
@@ -255,20 +283,24 @@ try {
     if (res.status() >= 500) serverErrors.push(`${res.status()} ${res.url()}`);
   });
 
-  const step = await safeTotpStep();
-  await page.goto(`${webBase}/admin/masuk`, { waitUntil: 'networkidle' });
-  await page.getByLabel('Username atau email').fill(adminUsername);
-  await page.getByLabel('Password', { exact: true }).fill(adminPassword);
-  await page.getByRole('button', { name: 'Masuk', exact: true }).click();
-  await expectVisible(page.getByLabel('Kode autentikator', { exact: true }), 'Input 2FA tidak tampil');
-  await page.getByLabel('Kode autentikator', { exact: true }).fill(totpAt(totpSeed, step));
-  await page.getByRole('button', { name: 'Verifikasi kode', exact: true }).click();
-  await expectVisible(page.getByRole('heading', { name: 'Pelanggan', exact: true }), 'Login admin gagal');
+  const loginCode = await nextTotpCode(totpSeed);
+  await page.goto(`${webBase}/admin/masuk`);
+  await expectVisible(page.getByLabel(m.identifier), 'Form login admin tidak tampil');
+  await page.getByLabel(m.identifier).fill(adminUsername);
+  await page.getByLabel(m.password, { exact: true }).fill(adminPassword);
+  await page.getByRole('button', { name: m.login, exact: true }).click();
+  await expectVisible(page.getByLabel(m.code, { exact: true }), 'Input 2FA tidak tampil');
+  await page.getByLabel(m.code, { exact: true }).fill(loginCode);
+  await page.getByRole('button', { name: m.verify, exact: true }).click();
+  await expectVisible(page.getByRole('heading', { name: ov.overviewTitle, exact: true }), 'Login admin tidak mendarat di Ringkasan Operasi');
 
-  // Buka /admin/ringkasan lewat Menu di 360px
-  await page.getByRole('button', { name: 'Menu', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Menu' }).getByRole('link', { name: 'Ringkasan', exact: true }).click();
-  await expectVisible(page.getByRole('heading', { name: 'Ringkasan Operasi', exact: true }), 'Halaman Ringkasan Operasi tidak terbuka');
+  // Uji buka /admin/pelanggan lalu kembali ke /admin/ringkasan lewat Menu di 360px
+  await page.getByRole('button', { name: m.menu, exact: true }).click();
+  await page.getByRole('dialog', { name: m.menu }).getByRole('link', { name: m.customers, exact: true }).click();
+  await expectVisible(page.getByRole('heading', { name: m.customers, exact: true, level: 1 }), 'Navigasi ke /admin/pelanggan lewat menu mobile gagal');
+  await page.getByRole('button', { name: m.menu, exact: true }).click();
+  await page.getByRole('dialog', { name: m.menu }).getByRole('link', { name: ov.overview, exact: true }).click();
+  await expectVisible(page.getByRole('heading', { name: ov.overviewTitle, exact: true }), 'Halaman Ringkasan Operasi tidak terbuka');
 
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Terdapat gulir horizontal di 360px');
 
@@ -293,52 +325,205 @@ try {
 
   const metricText = async (heading) => (await page.locator('section.metric', { hasText: heading }).innerText()).replace(/\s+/g, ' ').trim();
 
-  const custText = await metricText('Pelanggan');
-  assert.ok(custText.includes('Aktif 1') && custText.includes('Ditangguhkan 1') && custText.includes('Ditutup 0'), `Kartu pelanggan tidak cocok: ${custText}`);
+  const custText = await metricText(ov.customersCard);
+  assert.ok(custText.includes(`${ov.activeCustomers} 1`) && custText.includes(`${ov.suspendedCustomers} 1`) && custText.includes(`${ov.closedCustomers} 0`), `Kartu pelanggan tidak cocok: ${custText}`);
 
-  const totalText = await metricText('Total saldo tercatat');
-  assert.ok(totalText.includes('9,25') && totalText.includes('Saldo positif 9,5'), `Kartu total saldo tidak cocok: ${totalText}`);
+  const totalText = await metricText(ov.totalBalanceCard);
+  assert.ok(totalText.includes('9,25') && totalText.includes(`${ov.positiveBalanceLabel} 9,5`), `Kartu total saldo tidak cocok: ${totalText}`);
 
-  const heldText = await metricText('Saldo ditahan');
+  const heldText = await metricText(ov.heldBalanceCard);
   assert.ok(heldText.includes('0,75'), `Kartu saldo ditahan tidak cocok: ${heldText}`);
 
-  const negCard = page.locator('section.metric', { hasText: 'Akun bersaldo minus' });
+  const negCard = page.locator('section.metric', { hasText: ov.negativeAccountsCard });
   const negClass = (await negCard.getAttribute('class')) ?? '';
   assert.ok(negClass.includes('metric-warning'), 'Kartu akun bersaldo minus harus memiliki kelas peringatan');
   const negText = (await negCard.innerText()).replace(/\s+/g, ' ').trim();
-  assert.ok(negText.includes('Perlu perhatian') && negText.includes('1') && negText.includes('-0,25'), `Kartu akun minus tidak cocok: ${negText}`);
+  assert.ok(negText.includes(ov.negativeAccountsAttention) && negText.includes('1') && negText.includes('-0,25'), `Kartu akun minus tidak cocok: ${negText}`);
 
-  const voucherText = await metricText('Kode aktif belum ditukar');
-  assert.ok(voucherText.includes('1') && voucherText.includes('50 kredit token'), `Kartu kode aktif tidak cocok: ${voucherText}`);
+  const voucherText = await metricText(ov.activeVouchersCard);
+  assert.ok(voucherText.includes('1') && voucherText.includes(`50 ${m.credits}`), `Kartu kode aktif tidak cocok: ${voucherText}`);
 
-  const reqText = await metricText('Request 24 jam');
-  assert.ok(reqText.includes('0,5') && reqText.includes('Total request 3') && reqText.includes('Gagal 1') && reqText.includes('Estimasi 1'), `Kartu request 24 jam tidak cocok: ${reqText}`);
+  const reqText = await metricText(ov.requests24hCard);
+  assert.ok(reqText.includes('0,5') && reqText.includes(`${ov.requestsTotal} 3`) && reqText.includes(`${ov.requestsFailed} 1`) && reqText.includes(`${ov.requestsEstimated} 1`), `Kartu request 24 jam tidak cocok: ${reqText}`);
 
-  const unresText = await metricText('Request menunggu keputusan');
+  const unresText = await metricText(ov.unresolvedCard);
   assert.ok(unresText.includes('1') && unresText.includes('0,75'), `Kartu unresolved tidak cocok: ${unresText}`);
 
-  const upText = await metricText('Upstream aktif (non-arsip)');
-  assert.ok(upText.includes('Menunggu tinjauan 1') && upText.includes('Layak 0') && upText.includes('Diblokir 0'), `Kartu upstream tidak cocok: ${upText}`);
+  const upText = await metricText(ov.upstreamsCard);
+  assert.ok(upText.includes(`${m.stateText.PENDING} 1`) && upText.includes(`${m.stateText.ELIGIBLE} 0`) && upText.includes(`${m.stateText.BLOCKED} 0`), `Kartu upstream tidak cocok: ${upText}`);
 
-  await expectVisible(page.getByText('Angka biaya upstream, margin, dan kill switch belum tersedia dari server.'), 'Catatan biaya belum tersedia tidak tampil');
-  await expectVisible(page.getByText('Diperbarui pada:', { exact: false }), 'Waktu generatedAt tidak tampil');
+  await expectVisible(page.getByText(ov.costUnavailableNote), 'Catatan biaya belum tersedia tidak tampil');
+  await expectVisible(page.getByText(`${ov.generatedAt}:`, { exact: false }), 'Waktu generatedAt tidak tampil');
+
+  // ---- Uji Kill Switch pada server nyata (Jeda -> 503 service_paused -> Lanjutkan -> 200) ----
+  const gatewayCard = page.getByRole('region', { name: ov.gatewaySection });
+  await expectVisible(gatewayCard.getByText(ov.gatewayRunning, { exact: true }), 'Status awal gateway harus Berjalan');
+  await expectVisible(gatewayCard.getByText(ov.gatewayNeverChanged, { exact: true }), 'Status waktu perubahan awal harus belum pernah diubah');
+  await expectVisible(gatewayCard.getByText(ov.gatewayNoActor, { exact: true }), 'Status pelaku awal harus belum ada');
+
+  mockServer = http.createServer(async (req, res) => {
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    void raw;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (req.url?.includes('/messages')) {
+      res.end(JSON.stringify({
+        type: 'message',
+        content: [{ type: 'text', text: 'Halo dari mock overview' }],
+        usage: { input_tokens: 10, output_tokens: 5 },
+      }));
+      return;
+    }
+    if (req.url?.endsWith('/responses')) {
+      res.end(JSON.stringify({
+        id: 'resp_ov_1',
+        object: 'response',
+        status: 'completed',
+        output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Halo dari mock overview' }] }],
+        usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+      }));
+      return;
+    }
+    res.end(JSON.stringify({
+      choices: [{ index: 0, message: { role: 'assistant', content: 'Halo dari mock overview' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    }));
+  });
+  await new Promise(resolve => mockServer.listen(0, '127.0.0.1', resolve));
+  const mockAddr = mockServer.address();
+  const mockPort = typeof mockAddr === 'object' && mockAddr ? mockAddr.port : 0;
+
+  await createInvite(db, { email: 'ov-live@example.test', adminUser: adminBoot.userId }, mailer);
+  const custLive = await activateInvite(db, {
+    token: mail.invites.at(-1).token,
+    username: 'ov_pelanggan_live',
+    password: custPassword,
+  });
+  await withTx(db, tx => ledger.grantAdminTopup(tx, {
+    tenantId: custLive.tenantId,
+    amount: 50_000_000n,
+    saleRef: 'OV-LIVE-SEED',
+    actorUser: adminBoot.userId,
+    idemKey: 'ov-live-topup-1',
+  }));
+  const liveLogin = await login(db, { identifier: 'ov_pelanggan_live', password: custPassword, ip: '127.0.0.1' });
+  const livePrincipal = await authenticate(db, liveLogin.token, 'CUSTOMER', LIMITS.customerIdleHours);
+  assert.ok(livePrincipal, 'Principal pelanggan live gagal dibuat');
+  const liveKey = (await keys.create(
+    db,
+    livePrincipal,
+    keys.policy({ name: 'Key Live Kill Switch', allowedModels: null, spendLimitMicro: null, expiresAt: null }),
+    'ov-live-key-1',
+  )).secret;
+
+  const upLive = (await db.query(
+    'insert into upstream(name, status, base_url_chat, base_url_anthropic, base_url_responses, key_enc, key_set_at) values($1,$2,$3,$4,$3,$5,now()) returning id',
+    ['Upstream Overview Live', 'ELIGIBLE', `http://127.0.0.1:${mockPort}/v1`, `http://127.0.0.1:${mockPort}/anthropic`, seal(key, Buffer.from('sk-ov-live-mock-1'))],
+  )).rows[0];
+  for (const proto of ['CHAT', 'ANTHROPIC', 'RESPONSES']) {
+    await db.query(
+      'insert into route(model_id, upstream_id, protocol, upstream_model, priority) values($1,$2,$3,$4,1)',
+      [model.id, upLive.id, proto, 'ok'],
+    );
+  }
+
+  const callGateway = (path, token = liveKey) => fetch(`${apiBase}${path}`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model: model.id, stream: false, max_tokens: 16, messages: [{ role: 'user', content: 'halo' }], input: 'halo' }),
+  });
+
+  assert.equal((await callGateway('/v1/chat/completions')).status, 200, 'Gateway sebelum dijeda harus mengembalikan 200');
+
+  // Jeda layanan lewat UI dengan step-up wajib dan alasan wajib
+  await db.query("update session set auth_at = now() - interval '10 minutes' where kind = 'ADMIN'");
+  await gatewayCard.getByRole('button', { name: ov.pauseGateway, exact: true }).click();
+  const pauseDialog = page.getByRole('dialog', { name: ov.pauseDialogTitle });
+  await expectVisible(pauseDialog.getByText(ov.pauseImpact), 'Peringatan dampak jeda gateway tidak tampil');
+  await pauseDialog.getByLabel(m.reason).fill('Uji jeda darurat ringkasan');
+  await pauseDialog.getByRole('button', { name: ov.pauseGateway, exact: true }).click();
+
+  const pauseStepUp = page.getByRole('dialog', { name: m.stepUp });
+  await expectVisible(pauseStepUp, 'Dialog step-up untuk jeda gateway tidak muncul');
+  await expectVisible(gatewayCard.getByText(ov.gatewayRunning, { exact: true }), 'Status tidak boleh berubah optimistis sebelum step-up');
+  await pauseStepUp.getByLabel(m.code).fill(await nextTotpCode(totpSeed));
+  await pauseStepUp.getByRole('button', { name: m.verify, exact: true }).click();
+
+  await expectVisible(gatewayCard.getByText(ov.gatewayPaused, { exact: true }), 'Status gateway tidak berubah menjadi Dijeda');
+  await expectVisible(gatewayCard.getByText(ov.gatewayPausedConfirmed), 'Konfirmasi jeda dari server tidak tampil');
+  await expectVisible(gatewayCard.getByText(ov.gatewayPausedBanner), 'Banner layanan-dijeda tidak tampil');
+  await expectVisible(gatewayCard.getByText('Uji jeda darurat ringkasan', { exact: true }), 'Alasan jeda tidak tampil');
+  await expectVisible(gatewayCard.getByText(adminUsername, { exact: true }), 'Pelaku penjedaan tidak tampil');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Terdapat gulir horizontal 360px saat layanan-dijeda');
+
+  await page.reload();
+  await expectVisible(gatewayCard.getByText(ov.gatewayPaused, { exact: true }), 'Status Dijeda tidak bertahan setelah muat ulang');
+
+  // Saat dijeda: /v1/chat/completions, /v1/messages, /v1/responses -> 503 service_paused + Retry-After: 60; /v1/models -> 200; key salah -> 401
+  const chatPaused = await callGateway('/v1/chat/completions');
+  assert.equal(chatPaused.status, 503);
+  assert.equal(chatPaused.headers.get('retry-after'), '60');
+  assert.equal((await chatPaused.json())?.error?.code, 'service_paused');
+
+  const msgPaused = await callGateway('/v1/messages');
+  assert.equal(msgPaused.status, 503);
+  assert.equal(msgPaused.headers.get('retry-after'), '60');
+  const msgPausedJson = await msgPaused.json();
+  assert.equal(msgPausedJson?.type, 'error');
+  assert.equal(msgPausedJson?.error?.type, 'service_paused');
+
+  const respPaused = await callGateway('/v1/responses');
+  assert.equal(respPaused.status, 503);
+  assert.equal(respPaused.headers.get('retry-after'), '60');
+  assert.equal((await respPaused.json())?.error?.code, 'service_paused');
+
+  const wrongKeyPaused = await callGateway('/v1/chat/completions', `rtr_${'0'.repeat(43)}`);
+  assert.equal(wrongKeyPaused.status, 401, 'Key salah tetap harus ditolak 401 saat gateway dijeda');
+
+  const modelsPaused = await fetch(`${apiBase}/v1/models`, { headers: { authorization: `Bearer ${liveKey}` } });
+  assert.equal(modelsPaused.status, 200, 'GET /v1/models harus tetap 200 saat gateway dijeda');
+  assert.ok((await modelsPaused.json()).data.some(item => item.id === model.id));
+
+  // Lanjutkan layanan lewat UI dengan konfirmasi + step-up -> panggilan gateway kembali berhasil 200
+  await db.query("update session set auth_at = now() - interval '10 minutes' where kind = 'ADMIN'");
+  await gatewayCard.getByRole('button', { name: ov.resumeGateway, exact: true }).click();
+  const resumeDialog = page.getByRole('dialog', { name: ov.resumeDialogTitle });
+  await expectVisible(resumeDialog.getByText(ov.resumeImpact), 'Peringatan konfirmasi lanjutkan gateway tidak tampil');
+  await resumeDialog.getByRole('button', { name: ov.resumeGateway, exact: true }).click();
+
+  const resumeStepUp = page.getByRole('dialog', { name: m.stepUp });
+  await expectVisible(resumeStepUp, 'Dialog step-up untuk melanjutkan gateway tidak muncul');
+  await resumeStepUp.getByLabel(m.code).fill(await nextTotpCode(totpSeed));
+  await resumeStepUp.getByRole('button', { name: m.verify, exact: true }).click();
+
+  await expectVisible(gatewayCard.getByText(ov.gatewayRunning, { exact: true }), 'Status gateway tidak kembali menjadi Berjalan');
+  await expectVisible(gatewayCard.getByText(ov.gatewayResumedConfirmed), 'Konfirmasi lanjutkan layanan dari server tidak tampil');
+  assert.equal((await callGateway('/v1/chat/completions')).status, 200, 'Gateway setelah dilanjutkan harus kembali mengembalikan 200');
+  assert.deepEqual(await ledger.invariantViolations(db), []);
+
+  const auditRows = (await db.query("select action from audit_event where action in ('setting.gateway_pause', 'setting.gateway_resume') order by id")).rows.map(r => r.action);
+  assert.deepEqual(auditRows, ['setting.gateway_pause', 'setting.gateway_resume'], 'Audit pause dan resume harus tercatat');
 
   // Uji tautan ke /admin/rekonsiliasi dan /admin/upstream
-  await page.getByRole('link', { name: 'Buka Request dan Rekonsiliasi', exact: true }).click();
-  await expectVisible(page.getByRole('heading', { name: 'Request belum diputuskan', exact: true }), 'Tautan ke /admin/rekonsiliasi gagal');
+  await page.getByRole('link', { name: ov.openUnresolved, exact: true }).click();
+  await expectVisible(page.getByRole('heading', { name: m.unresolved, exact: true }), 'Tautan ke /admin/rekonsiliasi gagal');
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.locator('aside.desktop-nav nav').getByRole('link', { name: 'Ringkasan', exact: true }).click();
-  await expectVisible(page.getByRole('heading', { name: 'Ringkasan Operasi', exact: true }), 'Kembali ke /admin/ringkasan gagal');
-  await page.getByRole('link', { name: 'Buka Upstream dan Route', exact: true }).click();
-  await expectVisible(page.getByRole('heading', { name: 'Upstream dan Route', exact: true }), 'Tautan ke /admin/upstream gagal');
+  await page.locator('aside.desktop-nav nav').getByRole('link', { name: ov.overview, exact: true }).click();
+  await expectVisible(page.getByRole('heading', { name: ov.overviewTitle, exact: true }), 'Kembali ke /admin/ringkasan gagal');
+  await page.getByRole('link', { name: ov.openUpstreams, exact: true }).click();
+  await expectVisible(page.getByRole('heading', { name: m.upstreams, exact: true }), 'Tautan ke /admin/upstream gagal');
 
   assert.deepEqual(pageErrors, [], `Terdapat pageerror: ${pageErrors.join('; ')}`);
   assert.deepEqual(serverErrors, [], `Terdapat server error 5xx: ${serverErrors.join('; ')}`);
 
   await adminCtx.close();
-  process.stdout.write('admin-overview-local-verify: PASS (real server overview metrics, negative warning, 360px, links)\n');
+  process.stdout.write('admin-overview-local-verify: PASS (real server overview metrics, kill switch pause/503/resume/200, negative warning, 360px, links)\n');
 } finally {
   await browser?.close().catch(() => {});
+  if (mockServer) {
+    mockServer.closeAllConnections?.();
+    mockServer.close();
+  }
   if (vite) {
     vite.kill('SIGTERM');
     await Promise.race([new Promise(resolve => vite.once('exit', resolve)), delay(3_000)]);

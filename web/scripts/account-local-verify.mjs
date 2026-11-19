@@ -10,6 +10,7 @@ import { bootstrapAdmin } from '../../server/src/admin.ts';
 import { activateInvite, createInvite } from '../../server/src/identity.ts';
 import { totpAt, totpStep } from '../../server/src/crypto.ts';
 import { DB_URL } from '../../server/test/helpers.ts';
+import { am, errorText, m } from '../src/messages.ts';
 
 const apiPort = Number(process.env.VERIFY_API_PORT ?? 55491);
 const webPort = Number(process.env.VERIFY_WEB_PORT ?? 5185);
@@ -98,9 +99,9 @@ function attachListeners(page, tag) {
 
 async function customerLogin(page, username, password) {
   await page.goto(`${webBase}/masuk`);
-  await page.getByLabel('Username atau email').fill(username);
-  await page.getByLabel('Password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Masuk', exact: true }).click();
+  await page.getByLabel(m.identifier).fill(username);
+  await page.getByLabel(m.password, { exact: true }).fill(password);
+  await page.getByRole('button', { name: m.login, exact: true }).click();
 }
 
 const databaseUrl = new URL(DB_URL);
@@ -141,6 +142,15 @@ try {
     args: ['--no-proxy-server'],
   });
 
+  // Hangatkan cache Vite sekali agar konteks paralel berikutnya tidak terkena reload/ERR_NETWORK_CHANGED saat pre-bundling
+  {
+    const warmCtx = await browser.newContext();
+    const warmPage = await warmCtx.newPage();
+    await warmPage.goto(`${webBase}/masuk`);
+    await expectVisible(warmPage.getByRole('heading', { name: m.login, exact: true }), 'Warmup Vite gagal');
+    await warmCtx.close();
+  }
+
   // ---- Alur akun pelanggan (/akun) ----
   const custCtx1 = await browser.newContext({ viewport: { width: 360, height: 640 } });
   const custPage1 = await custCtx1.newPage();
@@ -151,65 +161,65 @@ try {
   attachListeners(custPage2, 'cust2');
 
   await customerLogin(custPage1, customerUsername, customerPass1);
-  await expectVisible(custPage1.getByRole('heading', { name: 'Beranda', exact: true }), 'Login pelanggan 1 gagal');
+  await expectVisible(custPage1.getByRole('heading', { name: m.home, exact: true }), 'Login pelanggan 1 gagal');
 
   await customerLogin(custPage2, customerUsername, customerPass1);
-  await expectVisible(custPage2.getByRole('heading', { name: 'Beranda', exact: true }), 'Login pelanggan 2 gagal');
+  await expectVisible(custPage2.getByRole('heading', { name: m.home, exact: true }), 'Login pelanggan 2 gagal');
   await custPage2.goto(`${webBase}/akun`);
-  await expectVisible(custPage2.getByRole('heading', { name: 'Akun dan Keamanan', exact: true }), 'Halaman akun pelanggan 2 tidak terbuka');
+  await expectVisible(custPage2.getByRole('heading', { name: am.customerAccountTitle, exact: true }), 'Halaman akun pelanggan 2 tidak terbuka');
 
   // Buka /akun via menu di viewport 360px
-  await custPage1.getByRole('button', { name: 'Menu', exact: true }).click();
-  await custPage1.getByRole('dialog', { name: 'Menu' }).getByRole('link', { name: 'Akun', exact: true }).click();
-  await expectVisible(custPage1.getByRole('heading', { name: 'Akun dan Keamanan', exact: true }), 'Halaman akun pelanggan 1 tidak terbuka');
-  await expectVisible(custPage1.getByText('Sesi saat ini', { exact: true }), 'Sesi saat ini tidak ditandai');
-  await expectVisible(custPage1.getByText('Sesi lain', { exact: true }), 'Sesi lain tidak tampil');
+  await custPage1.getByRole('button', { name: m.menu, exact: true }).click();
+  await custPage1.getByRole('dialog', { name: m.menu }).getByRole('link', { name: am.account, exact: true }).click();
+  await expectVisible(custPage1.getByRole('heading', { name: am.customerAccountTitle, exact: true }), 'Halaman akun pelanggan 1 tidak terbuka');
+  await expectVisible(custPage1.getByText(am.currentSession, { exact: true }), 'Sesi saat ini tidak ditandai');
+  await expectVisible(custPage1.getByText(am.otherSession, { exact: true }), 'Sesi lain tidak tampil');
   await assertReflow(custPage1);
   await assertCleanStorageAndUrl(custPage1);
 
   // Cabut sesi lain dan buktikan sesi tersebut ditolak server (401 -> /masuk)
-  const otherCard = custPage1.locator('.data-row').filter({ hasText: 'Sesi lain' });
-  await otherCard.getByRole('button', { name: 'Cabut sesi', exact: true }).click();
-  const revokeDialog = custPage1.getByRole('dialog', { name: 'Cabut sesi ini?' });
+  const otherCard = custPage1.locator('.data-row').filter({ hasText: am.otherSession });
+  await otherCard.getByRole('button', { name: am.revokeSession, exact: true }).click();
+  const revokeDialog = custPage1.getByRole('dialog', { name: am.revokeOtherSessionTitle });
   await expectVisible(revokeDialog, 'Dialog konfirmasi cabut sesi tidak tampil');
-  await revokeDialog.getByRole('button', { name: 'Cabut sesi', exact: true }).click();
-  await expectVisible(custPage1.getByText('Sesi berhasil dicabut.'), 'Status pencabutan sesi tidak tampil');
-  assert.equal(await custPage1.getByText('Sesi lain', { exact: true }).count(), 0, 'Sesi lain masih tampil setelah dicabut');
+  await revokeDialog.getByRole('button', { name: am.revokeSession, exact: true }).click();
+  await expectVisible(custPage1.getByText(am.sessionRevoked), 'Status pencabutan sesi tidak tampil');
+  assert.equal(await custPage1.getByText(am.otherSession, { exact: true }).count(), 0, 'Sesi lain masih tampil setelah dicabut');
 
-  await custPage2.getByRole('button', { name: 'Muat ulang', exact: true }).click();
-  await expectVisible(custPage2.getByRole('heading', { name: 'Masuk', exact: true }), 'Sesi 2 tidak diarahkan ke /masuk setelah dicabut');
+  await custPage2.getByRole('button', { name: m.refresh, exact: true }).click();
+  await expectVisible(custPage2.getByRole('heading', { name: m.login, exact: true }), 'Sesi 2 tidak diarahkan ke /masuk setelah dicabut');
   await custCtx2.close();
 
   // Ubah password pelanggan, buktikan password lama ditolak dan password baru berhasil masuk
-  const custPwForm = custPage1.locator('form').filter({ hasText: 'Ubah password' });
-  await custPwForm.getByLabel('Password saat ini').fill(customerPass1);
-  await custPwForm.getByLabel('Password baru').fill(customerPass2);
-  await custPwForm.getByRole('button', { name: 'Ubah password', exact: true }).click();
-  await expectVisible(custPage1.getByText('Password berhasil diperbarui. Semua sesi lain telah dicabut.'), 'Status ubah password pelanggan tidak tampil');
+  const custPwForm = custPage1.locator('form').filter({ hasText: am.changePassword });
+  await custPwForm.getByLabel(am.currentPassword).fill(customerPass1);
+  await custPwForm.getByLabel(m.newPassword).fill(customerPass2);
+  await custPwForm.getByRole('button', { name: am.changePassword, exact: true }).click();
+  await expectVisible(custPage1.getByText(am.passwordChanged), 'Status ubah password pelanggan tidak tampil');
 
-  await custPage1.getByRole('button', { name: 'Keluar', exact: true }).click();
-  await expectVisible(custPage1.getByRole('heading', { name: 'Masuk', exact: true }), 'Logout pelanggan tidak kembali ke /masuk');
+  await custPage1.getByRole('button', { name: m.logout, exact: true }).click();
+  await expectVisible(custPage1.getByRole('heading', { name: m.login, exact: true }), 'Logout pelanggan tidak kembali ke /masuk');
 
   await customerLogin(custPage1, customerUsername, customerPass1);
-  await expectVisible(custPage1.getByText('Username atau password tidak cocok.'), 'Password lama masih diterima setelah diganti');
+  await expectVisible(custPage1.getByText(errorText.auth_invalid), 'Password lama masih diterima setelah diganti');
 
   await customerLogin(custPage1, customerUsername, customerPass2);
-  await expectVisible(custPage1.getByRole('heading', { name: 'Beranda', exact: true }), 'Login dengan password baru gagal');
+  await expectVisible(custPage1.getByRole('heading', { name: m.home, exact: true }), 'Login dengan password baru gagal');
 
   // Tutup akun permanen dan buktikan tidak dapat login lagi
   await custPage1.goto(`${webBase}/akun`);
-  await expectVisible(custPage1.getByRole('heading', { name: 'Akun dan Keamanan', exact: true }), 'Halaman akun tidak terbuka sebelum tutup akun');
-  await custPage1.getByRole('button', { name: 'Tutup akun', exact: true }).click();
-  const closeDialog = custPage1.getByRole('dialog', { name: 'Tutup akun permanen?' });
+  await expectVisible(custPage1.getByRole('heading', { name: am.customerAccountTitle, exact: true }), 'Halaman akun tidak terbuka sebelum tutup akun');
+  await custPage1.getByRole('button', { name: am.closeAccount, exact: true }).click();
+  const closeDialog = custPage1.getByRole('dialog', { name: am.closeAccountDialogTitle });
   await expectVisible(closeDialog, 'Dialog konfirmasi tutup akun tidak tampil');
-  await expectVisible(closeDialog.getByText('Sisa saldo token hangus dan tidak dapat dikembalikan atau diuangkan. Riwayat transaksi tetap tersimpan.'), 'Teks CR-035 konsekuensi saldo tutup akun tidak tampil');
-  await closeDialog.getByLabel('Konfirmasi username').fill(customerUsername);
-  await closeDialog.getByLabel('Password saat ini').fill(customerPass2);
-  await closeDialog.getByRole('button', { name: 'Tutup akun permanen', exact: true }).click();
-  await expectVisible(custPage1.getByRole('heading', { name: 'Masuk', exact: true }), 'Tutup akun tidak mengarahkan ke /masuk');
+  await expectVisible(closeDialog.getByText(am.closeConsequenceBalance), 'Teks CR-035 konsekuensi saldo tutup akun tidak tampil');
+  await closeDialog.getByLabel(am.confirmUsername).fill(customerUsername);
+  await closeDialog.getByLabel(am.currentPassword).fill(customerPass2);
+  await closeDialog.getByRole('button', { name: am.closeAccountConfirmAction, exact: true }).click();
+  await expectVisible(custPage1.getByRole('heading', { name: m.login, exact: true }), 'Tutup akun tidak mengarahkan ke /masuk');
 
   await customerLogin(custPage1, customerUsername, customerPass2);
-  await expectVisible(custPage1.getByText('Username atau password tidak cocok.'), 'Akun yang sudah ditutup masih bisa login');
+  await expectVisible(custPage1.getByText(errorText.auth_invalid), 'Akun yang sudah ditutup masih bisa login');
   await assertCleanStorageAndUrl(custPage1);
   await custCtx1.close();
 
@@ -220,60 +230,60 @@ try {
 
   const initialStep = await safeTotpStep();
   await adminPage.goto(`${webBase}/admin/masuk`);
-  await adminPage.getByLabel('Username atau email').fill(adminUsername);
-  await adminPage.getByLabel('Password', { exact: true }).fill(adminPass1);
-  await adminPage.getByRole('button', { name: 'Masuk', exact: true }).click();
-  await expectVisible(adminPage.getByLabel('Kode autentikator', { exact: true }), 'Langkah 2FA admin tidak tampil');
-  await adminPage.getByLabel('Kode autentikator', { exact: true }).fill(totpAt(seed1, initialStep - 1n));
-  await adminPage.getByRole('button', { name: 'Verifikasi kode', exact: true }).click();
-  await expectVisible(adminPage.getByRole('heading', { name: 'Pelanggan', exact: true }), 'Login admin tidak selesai');
+  await adminPage.getByLabel(m.identifier).fill(adminUsername);
+  await adminPage.getByLabel(m.password, { exact: true }).fill(adminPass1);
+  await adminPage.getByRole('button', { name: m.login, exact: true }).click();
+  await expectVisible(adminPage.getByLabel(m.code, { exact: true }), 'Langkah 2FA admin tidak tampil');
+  await adminPage.getByLabel(m.code, { exact: true }).fill(totpAt(seed1, initialStep - 1n));
+  await adminPage.getByRole('button', { name: m.verify, exact: true }).click();
+  await expectVisible(adminPage.getByRole('heading', { name: m.customers, exact: true }), 'Login admin tidak selesai');
 
   // Buka /admin/akun via menu di 360px
-  await adminPage.getByRole('button', { name: 'Menu', exact: true }).click();
-  await adminPage.getByRole('dialog', { name: 'Menu' }).getByRole('link', { name: 'Akun', exact: true }).click();
-  await expectVisible(adminPage.getByRole('heading', { name: 'Akun Admin', exact: true }), 'Halaman akun admin tidak terbuka');
+  await adminPage.getByRole('button', { name: m.menu, exact: true }).click();
+  await adminPage.getByRole('dialog', { name: m.menu }).getByRole('link', { name: am.account, exact: true }).click();
+  await expectVisible(adminPage.getByRole('heading', { name: am.adminAccountTitle, exact: true }), 'Halaman akun admin tidak terbuka');
   await assertReflow(adminPage);
 
   // Ubah password admin dengan step-up asli dari Postgres
   await db.query("update session set auth_at=clock_timestamp()-interval '10 minutes' where user_id=$1 and kind='ADMIN'", [admin.userId]);
-  const adminPwForm = adminPage.locator('form').filter({ hasText: 'Ubah password' });
-  await adminPwForm.getByLabel('Password saat ini').fill(adminPass1);
-  await adminPwForm.getByLabel('Password baru').fill(adminPass2);
-  await adminPwForm.getByRole('button', { name: 'Ubah password', exact: true }).click();
-  const pwStepUp = adminPage.getByRole('dialog', { name: 'Verifikasi ulang admin' });
+  const adminPwForm = adminPage.locator('form').filter({ hasText: am.changePassword });
+  await adminPwForm.getByLabel(am.currentPassword).fill(adminPass1);
+  await adminPwForm.getByLabel(m.newPassword).fill(adminPass2);
+  await adminPwForm.getByRole('button', { name: am.changePassword, exact: true }).click();
+  const pwStepUp = adminPage.getByRole('dialog', { name: m.stepUp });
   await expectVisible(pwStepUp, 'Dialog step-up ubah password admin tidak tampil');
-  await pwStepUp.getByLabel('Kode autentikator').fill(admin.recoveryCodes[0]);
-  await pwStepUp.getByRole('button', { name: 'Verifikasi kode', exact: true }).click();
-  await expectVisible(adminPage.getByText('Password admin berhasil diperbarui. Semua sesi admin lain telah dicabut.'), 'Status ubah password admin tidak tampil');
+  await pwStepUp.getByLabel(m.code).fill(admin.recoveryCodes[0]);
+  await pwStepUp.getByRole('button', { name: m.verify, exact: true }).click();
+  await expectVisible(adminPage.getByText(am.adminPasswordChanged), 'Status ubah password admin tidak tampil');
 
   // Logout dan verifikasi password lama ditolak, password baru diterima
-  await adminPage.getByRole('button', { name: 'Keluar', exact: true }).click();
-  await expectVisible(adminPage.getByRole('heading', { name: 'Masuk admin', exact: true }), 'Logout admin tidak kembali ke /admin/masuk');
+  await adminPage.getByRole('button', { name: m.logout, exact: true }).click();
+  await expectVisible(adminPage.getByRole('heading', { name: m.adminLogin, exact: true }), 'Logout admin tidak kembali ke /admin/masuk');
 
-  await adminPage.getByLabel('Username atau email').fill(adminUsername);
-  await adminPage.getByLabel('Password', { exact: true }).fill(adminPass1);
-  await adminPage.getByRole('button', { name: 'Masuk', exact: true }).click();
-  await expectVisible(adminPage.getByText('Username atau password tidak cocok.'), 'Password lama admin masih diterima');
+  await adminPage.getByLabel(m.identifier).fill(adminUsername);
+  await adminPage.getByLabel(m.password, { exact: true }).fill(adminPass1);
+  await adminPage.getByRole('button', { name: m.login, exact: true }).click();
+  await expectVisible(adminPage.getByText(errorText.auth_invalid), 'Password lama admin masih diterima');
 
   const reloginStep = await safeTotpStep();
-  await adminPage.getByLabel('Password', { exact: true }).fill(adminPass2);
-  await adminPage.getByRole('button', { name: 'Masuk', exact: true }).click();
-  await expectVisible(adminPage.getByLabel('Kode autentikator', { exact: true }), 'Langkah 2FA admin ulang tidak tampil');
-  await adminPage.getByLabel('Kode autentikator', { exact: true }).fill(totpAt(seed1, reloginStep));
-  await adminPage.getByRole('button', { name: 'Verifikasi kode', exact: true }).click();
-  await expectVisible(adminPage.getByRole('heading', { name: 'Pelanggan', exact: true }), 'Login admin dengan password baru gagal');
+  await adminPage.getByLabel(m.password, { exact: true }).fill(adminPass2);
+  await adminPage.getByRole('button', { name: m.login, exact: true }).click();
+  await expectVisible(adminPage.getByLabel(m.code, { exact: true }), 'Langkah 2FA admin ulang tidak tampil');
+  await adminPage.getByLabel(m.code, { exact: true }).fill(totpAt(seed1, reloginStep));
+  await adminPage.getByRole('button', { name: m.verify, exact: true }).click();
+  await expectVisible(adminPage.getByRole('heading', { name: m.customers, exact: true }), 'Login admin dengan password baru gagal');
 
   // Ganti autentikator 2 langkah dengan step-up asli dari Postgres
   await adminPage.goto(`${webBase}/admin/akun`);
-  await expectVisible(adminPage.getByRole('heading', { name: 'Akun Admin', exact: true }), 'Halaman akun admin tidak terbuka untuk rotasi');
+  await expectVisible(adminPage.getByRole('heading', { name: am.adminAccountTitle, exact: true }), 'Halaman akun admin tidak terbuka untuk rotasi');
   await db.query("update session set auth_at=clock_timestamp()-interval '10 minutes' where user_id=$1 and kind='ADMIN'", [admin.userId]);
-  await adminPage.getByRole('button', { name: 'Mulai ganti autentikator', exact: true }).click();
-  const rotStepUp = adminPage.getByRole('dialog', { name: 'Verifikasi ulang admin' });
+  await adminPage.getByRole('button', { name: am.startRotation, exact: true }).click();
+  const rotStepUp = adminPage.getByRole('dialog', { name: m.stepUp });
   await expectVisible(rotStepUp, 'Dialog step-up mulai ganti autentikator tidak tampil');
-  await rotStepUp.getByLabel('Kode autentikator').fill(admin.recoveryCodes[1]);
-  await rotStepUp.getByRole('button', { name: 'Verifikasi kode', exact: true }).click();
+  await rotStepUp.getByLabel(m.code).fill(admin.recoveryCodes[1]);
+  await rotStepUp.getByRole('button', { name: m.verify, exact: true }).click();
 
-  await expectVisible(adminPage.getByRole('button', { name: 'Salin kunci', exact: true }), 'Kunci manual autentikator baru tidak tampil');
+  await expectVisible(adminPage.getByRole('button', { name: am.copyKey, exact: true }), 'Kunci manual autentikator baru tidak tampil');
   const qrPathData = await adminPage.locator('.qr-box svg.qr-svg path').getAttribute('d');
   assert.ok(qrPathData && qrPathData.length > 100, 'QR SVG lokal tidak terbentuk');
   assert.equal(await adminPage.locator('a[href^="otpauth:"]').count(), 0, 'otpauth URI tidak boleh dirender sebagai tautan');
@@ -285,10 +295,10 @@ try {
   await assertCleanStorageAndUrl(adminPage);
 
   const confirmStep = await safeTotpStep();
-  await adminPage.getByLabel('Kode autentikator baru').fill(totpAt(seed2, confirmStep - 1n));
-  await adminPage.getByRole('button', { name: 'Konfirmasi autentikator baru', exact: true }).click();
+  await adminPage.getByLabel(am.newAuthenticatorCode).fill(totpAt(seed2, confirmStep - 1n));
+  await adminPage.getByRole('button', { name: am.confirmRotation, exact: true }).click();
 
-  const recDialog = adminPage.getByRole('dialog', { name: 'Simpan kode pemulihan baru' });
+  const recDialog = adminPage.getByRole('dialog', { name: am.recoveryCodesTitle });
   await expectVisible(recDialog, 'Modal kode pemulihan baru tidak tampil');
   const recoveryText = (await recDialog.locator('.secret').innerText()).trim();
   const recoveryList = recoveryText.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
@@ -296,28 +306,28 @@ try {
   for (const rc of recoveryList) assert.match(rc, /^[0-9a-f]{20}$/, 'Format kode pemulihan tidak sesuai');
   await assertCleanStorageAndUrl(adminPage);
 
-  await recDialog.getByRole('button', { name: 'Saya sudah menyalin', exact: true }).click();
+  await recDialog.getByRole('button', { name: m.copiedDone, exact: true }).click();
   assert.equal(await adminPage.locator('.secret').count(), 0, 'Rahasia tetap dirender setelah modal ditutup');
-  await expectVisible(adminPage.getByText('Autentikator baru telah aktif.'), 'Peringatan autentikator lama berhenti berlaku tidak tampil');
+  await expectVisible(adminPage.getByText(am.rotationDoneAlert), 'Peringatan autentikator lama berhenti berlaku tidak tampil');
   await assertReflow(adminPage);
 
   // Logout dan verifikasi TOTP LAMA ditolak sedangkan TOTP BARU diterima
-  await adminPage.getByRole('button', { name: 'Keluar', exact: true }).click();
-  await expectVisible(adminPage.getByRole('heading', { name: 'Masuk admin', exact: true }), 'Logout setelah rotasi gagal');
+  await adminPage.getByRole('button', { name: m.logout, exact: true }).click();
+  await expectVisible(adminPage.getByRole('heading', { name: m.adminLogin, exact: true }), 'Logout setelah rotasi gagal');
 
-  await adminPage.getByLabel('Username atau email').fill(adminUsername);
-  await adminPage.getByLabel('Password', { exact: true }).fill(adminPass2);
-  await adminPage.getByRole('button', { name: 'Masuk', exact: true }).click();
-  await expectVisible(adminPage.getByLabel('Kode autentikator', { exact: true }), 'Langkah 2FA sesudah rotasi tidak tampil');
+  await adminPage.getByLabel(m.identifier).fill(adminUsername);
+  await adminPage.getByLabel(m.password, { exact: true }).fill(adminPass2);
+  await adminPage.getByRole('button', { name: m.login, exact: true }).click();
+  await expectVisible(adminPage.getByLabel(m.code, { exact: true }), 'Langkah 2FA sesudah rotasi tidak tampil');
 
-  await adminPage.getByLabel('Kode autentikator', { exact: true }).fill(totpAt(seed1, totpStep(Date.now())));
-  await adminPage.getByRole('button', { name: 'Verifikasi kode', exact: true }).click();
-  await expectVisible(adminPage.getByText('Kode autentikator tidak valid atau sudah dipakai.'), 'TOTP lama masih diterima setelah rotasi');
+  await adminPage.getByLabel(m.code, { exact: true }).fill(totpAt(seed1, totpStep(Date.now())));
+  await adminPage.getByRole('button', { name: m.verify, exact: true }).click();
+  await expectVisible(adminPage.getByText(errorText.invalid_code), 'TOTP lama masih diterima setelah rotasi');
 
   const finalStep = await safeTotpStep();
-  await adminPage.getByLabel('Kode autentikator', { exact: true }).fill(totpAt(seed2, finalStep));
-  await adminPage.getByRole('button', { name: 'Verifikasi kode', exact: true }).click();
-  await expectVisible(adminPage.getByRole('heading', { name: 'Pelanggan', exact: true }), 'TOTP baru gagal untuk masuk admin');
+  await adminPage.getByLabel(m.code, { exact: true }).fill(totpAt(seed2, finalStep));
+  await adminPage.getByRole('button', { name: m.verify, exact: true }).click();
+  await expectVisible(adminPage.getByRole('heading', { name: m.customers, exact: true }), 'TOTP baru gagal untuk masuk admin');
   await assertCleanStorageAndUrl(adminPage);
   await adminCtx.close();
 
