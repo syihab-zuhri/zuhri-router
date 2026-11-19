@@ -229,3 +229,10 @@ Hermes mengerjakan tab Request di detail pelanggan dan filter audit, menulis tes
 Teks baru yang terlihat (untuk skrip Antigravity): `m.auditFilters`, sepuluh label aksi di atas, label kelompok "Status pelanggan", "Saldo", "Sesi masuk", "Ganti password", "Pemulihan password".
 
 Bukti: typecheck web, unit 6/6 (test baru gagal pada versi Hermes), Playwright terkait 30/30 (admin-operations, admin-customers, admin-requests, return-to, customer-tabs-focus). verify-all penuh dijalankan sesudah cabang Antigravity Tugas tujuh digabung.
+
+### Tugas tujuh Antigravity digabung; `servicePaused` di `/api/me`
+
+- Cabang Antigravity (`86fe5bd`..`ec7c6dc`) digabung tanpa konflik: skrip mengambil teks dari `messages.ts`, `server/test/gateway-concurrency.test.ts` dan `server/scripts/stress-gateway.ts` (240 request, 48 bersamaan, `invariantViolations=0`), `server/scripts/bench-gateway.ts`, dan panel kill switch di Ringkasan (konfirmasi dengan alasan, step-up, hasil hanya sesudah server menjawab). Race `admin.spec.ts` yang dilaporkan sudah diperbaiki di `a2ceb36`.
+- Angka benchmark: pada satu request, gateway menambah sekitar 20 ms (stream) sampai 30 ms (non-stream) sebelum byte pertama; satu tenant dengan 50 request bersamaan menunggu giliran pada baris akun (p95 stream sekitar 2,6 detik), sesuai RSK-017. NFR-002 menargetkan banyak tenant, jadi Antigravity Tugas delapan A mengukurnya beserta rincian query per request sebelum Claude memutuskan perlu tidaknya optimasi.
+- `GET /api/me` kini membawa `servicePaused` (SCR-007 keadaan layanan-dijeda; UX.md alur kill switch meminta portal menampilkan jeda). Hanya pelanggan yang masuk yang mengetahuinya; alasan jeda tetap untuk admin. Test di `control.test.ts`. Banner di portal: Hermes Tahap delapan.
+- Suite server 145/145 sesudah penggabungan.
