@@ -484,6 +484,41 @@ try {
   assert.equal(modelsPaused.status, 200, 'GET /v1/models harus tetap 200 saat gateway dijeda');
   assert.ok((await modelsPaused.json()).data.some(item => item.id === model.id));
 
+  // Portal pelanggan saat layanan dijeda: /api/me -> servicePaused: true, banner jeda di Beranda + 2 halaman lain, Beranda menampilkan Dijeda
+  const custCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const custPage = await custCtx.newPage();
+  custPage.on('pageerror', err => pageErrors.push(`cust:${err.message}`));
+  custPage.on('response', res => {
+    if (res.status() >= 500) serverErrors.push(`cust:${res.status()} ${res.url()}`);
+  });
+  await custPage.goto(`${webBase}/masuk`);
+  await custPage.getByLabel(m.identifier).fill('ov_pelanggan_live');
+  await custPage.getByLabel(m.password, { exact: true }).fill(custPassword);
+  await custPage.getByRole('button', { name: m.login, exact: true }).click();
+  await expectVisible(custPage.getByRole('heading', { name: m.home, exact: true }), 'Login pelanggan live tidak mendarat di Beranda');
+
+  const mePaused = await custPage.evaluate(async () => {
+    const res = await fetch('/api/me');
+    return { status: res.status, data: await res.json() };
+  });
+  assert.equal(mePaused.status, 200, 'GET /api/me saat layanan dijeda harus 200');
+  assert.equal(mePaused.data.servicePaused, true, 'GET /api/me harus mengembalikan servicePaused: true saat dijeda');
+  assert.equal(JSON.stringify(mePaused.data).includes('Uji jeda darurat ringkasan'), false, 'Alasan jeda admin tidak boleh bocor ke /api/me pelanggan');
+
+  const custBanner = custPage.getByRole('status').filter({ hasText: m.servicePausedMessage });
+  await expectVisible(custBanner, 'Banner layanan dijeda tidak tampil di Beranda pelanggan');
+  assert.equal(await custBanner.count(), 1, 'Banner layanan dijeda harus tampil tepat satu kali di Beranda');
+  const serviceStatusRegion = custPage.getByRole('region', { name: m.serviceStatus });
+  await expectVisible(serviceStatusRegion.getByText(m.servicePaused, { exact: true }), 'Beranda pelanggan harus menunjukkan status Dijeda');
+
+  // Minimal dua halaman portal lain tetap menampilkan banner layanan dijeda
+  for (const [linkLabel, headingLabel] of [[m.redeem, m.redeem], [m.keys, m.keys]]) {
+    await custPage.locator('aside.desktop-nav nav').getByRole('link', { name: linkLabel, exact: true }).click();
+    await expectVisible(custPage.getByRole('heading', { name: headingLabel, exact: true }), `Halaman portal ${headingLabel} tidak terbuka saat layanan dijeda`);
+    await expectVisible(custBanner, `Banner layanan dijeda tidak tampil di halaman ${headingLabel}`);
+    assert.equal(await custBanner.count(), 1, `Banner layanan dijeda tidak boleh ganda di halaman ${headingLabel}`);
+  }
+
   // Lanjutkan layanan lewat UI dengan konfirmasi + step-up -> panggilan gateway kembali berhasil 200
   await db.query("update session set auth_at = now() - interval '10 minutes' where kind = 'ADMIN'");
   await gatewayCard.getByRole('button', { name: ov.resumeGateway, exact: true }).click();
@@ -501,6 +536,20 @@ try {
   assert.equal((await callGateway('/v1/chat/completions')).status, 200, 'Gateway setelah dilanjutkan harus kembali mengembalikan 200');
   assert.deepEqual(await ledger.invariantViolations(db), []);
 
+  // Portal pelanggan sesudah dilanjutkan dan dimuat ulang: /api/me -> servicePaused: false, banner hilang, Beranda menunjukkan Berjalan
+  await custPage.goto(`${webBase}/beranda`);
+  await custPage.reload();
+  await expectVisible(custPage.getByRole('heading', { name: m.home, exact: true }), 'Beranda pelanggan gagal dimuat ulang sesudah layanan dilanjutkan');
+  const meResumed = await custPage.evaluate(async () => {
+    const res = await fetch('/api/me');
+    return { status: res.status, data: await res.json() };
+  });
+  assert.equal(meResumed.status, 200, 'GET /api/me sesudah layanan dilanjutkan harus 200');
+  assert.equal(meResumed.data.servicePaused, false, 'GET /api/me harus mengembalikan servicePaused: false sesudah dilanjutkan');
+  await expectVisible(serviceStatusRegion.getByText(m.serviceRunning, { exact: true }), 'Beranda pelanggan harus kembali menunjukkan status Berjalan');
+  assert.equal(await custBanner.count(), 0, 'Banner layanan dijeda harus hilang sesudah layanan dilanjutkan');
+  await custCtx.close();
+
   const auditRows = (await db.query("select action from audit_event where action in ('setting.gateway_pause', 'setting.gateway_resume') order by id")).rows.map(r => r.action);
   assert.deepEqual(auditRows, ['setting.gateway_pause', 'setting.gateway_resume'], 'Audit pause dan resume harus tercatat');
 
@@ -517,7 +566,7 @@ try {
   assert.deepEqual(serverErrors, [], `Terdapat server error 5xx: ${serverErrors.join('; ')}`);
 
   await adminCtx.close();
-  process.stdout.write('admin-overview-local-verify: PASS (real server overview metrics, kill switch pause/503/resume/200, negative warning, 360px, links)\n');
+  process.stdout.write('admin-overview-local-verify: PASS (real server overview metrics, kill switch pause/503/resume/200, customer paused banner/status, negative warning, 360px, links)\n');
 } finally {
   await browser?.close().catch(() => {});
   if (mockServer) {
