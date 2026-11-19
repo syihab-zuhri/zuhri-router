@@ -236,3 +236,7 @@ Bukti: typecheck web, unit 6/6 (test baru gagal pada versi Hermes), Playwright t
 - Angka benchmark: pada satu request, gateway menambah sekitar 20 ms (stream) sampai 30 ms (non-stream) sebelum byte pertama; satu tenant dengan 50 request bersamaan menunggu giliran pada baris akun (p95 stream sekitar 2,6 detik), sesuai RSK-017. NFR-002 menargetkan banyak tenant, jadi Antigravity Tugas delapan A mengukurnya beserta rincian query per request sebelum Claude memutuskan perlu tidaknya optimasi.
 - `GET /api/me` kini membawa `servicePaused` (SCR-007 keadaan layanan-dijeda; UX.md alur kill switch meminta portal menampilkan jeda). Hanya pelanggan yang masuk yang mengetahuinya; alasan jeda tetap untuk admin. Test di `control.test.ts`. Banner di portal: Hermes Tahap delapan.
 - Suite server 145/145 sesudah penggabungan.
+
+### Terpasang `zrouter:r11191901`
+
+Isi: kill switch dan daftar request (server dan layar), filter audit (server dan layar), tab Request, `servicePaused`. Backup sebelum pemasangan `zrouter-20261119T120238Z.dump`. Migrasi 014 berjalan (14 migrasi; `gateway_paused` = 0, layanan berjalan). Bukti: suite server 145/145, `verify-all.mjs` 13/13 (Playwright 76/76, audit aksesibilitas 0 temuan), `smoke-public.sh` 7/7, `restore-drill.sh` PASS pada backup sesudah pemasangan `zrouter-20261119T120454Z.dump` (14 migrasi, tanpa pelanggaran invariant).

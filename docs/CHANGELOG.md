@@ -5,17 +5,21 @@ Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-19, Asia/Jakarta
 Owner keputusan: founder
 
-## 0.40.0: Tab Request di detail pelanggan dan filter audit (web)
+## 0.40.0: Tab Request, filter audit, panel kill switch; terpasang `r11191901`
 
-Source: SCR-015 (tab Request) dan SCR-018 (audit) di `docs/UX.md`; dikerjakan Hermes (`HERMES_TASK.md` Tahap tujuh), diperiksa dan dilengkapi Claude. Belum terpasang di zrouter.web.id.
+Source: SCR-015 (tab Request) dan SCR-018 (audit) di `docs/UX.md`, dikerjakan Hermes (`HERMES_TASK.md` Tahap tujuh); panel kill switch SCR-014 oleh Antigravity (Tugas tujuh D); diperiksa dan dilengkapi Claude. Terpasang di zrouter.web.id sebagai `zrouter:r11191901` pada 2026-11-19 bersama isi 0.39.0 (migrasi 014).
 
 - Detail pelanggan mendapat tab Request di antara Pemakaian dan Transaksi, sesuai urutan di UX.md. Daftarnya komponen bersama dengan daftar lintas pelanggan di Rekonsiliasi (`web/src/admin-request-list.tsx`); di tab ini username tetap dan kursornya memakai parameter `requestBefore`.
 - Layar Audit: filter kelompok atau awalan aksi (termasuk isian bebas), username pelaku, jenis dan ID target; nama pelaku menggantikan UUID; nama aksi dalam bahasa admin dengan nama mentah sebagai cadangan; paginasi memakai `nextBefore` dari server.
+- Ringkasan Operasi: panel layanan gateway (berjalan atau dijeda, sejak kapan, oleh siapa, alasan); jeda dan lanjut lewat dialog konfirmasi (alasan wajib saat menjeda) dan step-up; status berubah hanya sesudah server menjawab.
+- `GET /api/me` membawa `servicePaused` untuk keadaan layanan-dijeda di portal (tampilan menyusul, Hermes Tahap delapan).
+- Test baru Antigravity: `server/test/gateway-concurrency.test.ts`; skrip `server/scripts/stress-gateway.ts` dan `server/scripts/bench-gateway.ts` (bukan bagian dari aplikasi).
+- Bukti pemasangan: suite server 145/145; `verify-all.mjs` 13/13 (Playwright 76/76, enam skrip server nyata, audit aksesibilitas 0 temuan); `smoke-public.sh` 7/7 terhadap https://zrouter.web.id; `restore-drill.sh` PASS pada backup sesudah pemasangan (14 migrasi, tanpa pelanggaran invariant).
 - `web/test/unit/audit-actions.test.ts` (baru) memindai `server/src` dan gagal bila ada aksi audit tanpa label atau tanpa kelompok filter, atau ada kelompok tanpa aksi.
 
 ## 0.39.0: Kill switch dan daftar request lintas pelanggan (server)
 
-Source: SCR-014 (kill switch, TASK-018) dan SCR-017 (daftar request lintas tenant, API-037) di `docs/UX.md`; kontrak ditetapkan Claude di `ANTIGRAVITY_TASK.md` Tugas tujuh D dan `HERMES_TASK.md` Tahap enam 1. Belum terpasang di zrouter.web.id.
+Source: SCR-014 (kill switch, TASK-018) dan SCR-017 (daftar request lintas tenant, API-037) di `docs/UX.md`; kontrak ditetapkan Claude di `ANTIGRAVITY_TASK.md` Tugas tujuh D dan `HERMES_TASK.md` Tahap enam 1. Terpasang 2026-11-19 (`r11191901`, lihat 0.40.0).
 
 - Kill switch: `GET/POST /admin/api/settings/gateway`. Menjeda butuh step-up dan alasan; request baru ke tiga permukaan inference dijawab 503 `service_paused` dengan `Retry-After: 60` sesudah key diperiksa dan sebelum hold; `/v1/models` dan request yang sedang berjalan tidak terpengaruh. Audit dan pemberitahuan Telegram untuk jeda dan lanjut; `/admin/api/overview` memuat keadaannya.
 - `GET /admin/api/requests`: metadata request semua pelanggan dengan filter username, state dan model, terbaru dulu dengan kursor. Filter state menerima juga `RESOLVED` (state sesudah admin memutuskan request unresolved), yang tidak ada di daftar kontrak awal.
