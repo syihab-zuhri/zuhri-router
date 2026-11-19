@@ -620,3 +620,154 @@ Total: 13/14 lulus dalam 593.49s
   - [`test-browser.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/test-browser.txt): `built in 718ms` + `same-origin-dist-verify: PASS`
   - `account-local-verify`, `admin-catalog-local-verify`, `admin-customers-local-verify`, `admin-overview-local-verify`, [`golden-path-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/golden-path-local-verify.txt), `portal-local-verify`: semuanya `PASS` (exit `0`)
   - [`a11y-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/a11y-audit.txt): exit `1` — `148` kombinasi diaudit, `0` temuan layar Antigravity, `16` temuan khusus pada tab/dialog detail `/admin/pelanggan` milik Hermes.
+
+---
+
+## 2026-11-18 / 2026-11-19 — Tugas tujuh (2026-11-18 siang): Impor pesan UI, uji tekanan gateway, benchmark TTFB/total, dan kill switch SCR-014
+
+Cabang: `antigravity/akun` (dimajukan dari `origin/main` di `c168c24` — tidak di-push).
+Commit per bagian:
+- Bagian A: `86fe5bd` (`akun: import UI strings from messages.ts across local verification scripts (Part A)`)
+- Bagian B: `c64db38` (`akun: add gateway concurrent financial stress tests and script (Part B)`)
+- Bagian C: `82e1e00` (`akun: add gateway TTFB and total latency benchmark script (Part C)`)
+- Bagian D: `08e01b8` (`akun: implement gateway kill switch UI on admin overview SCR-014 (Part D)`)
+
+### Bagian A — Skrip berhenti bergantung pada teks yang disalin (`86fe5bd`)
+- **Ditulis**:
+  - Memperbarui seluruh 6 skrip `*-local-verify.mjs` (`account-local-verify.mjs`, `admin-catalog-local-verify.mjs`, `admin-customers-local-verify.mjs`, `admin-overview-local-verify.mjs`, `golden-path-local-verify.mjs`, `portal-local-verify.mjs`) serta `web/scripts/a11y-audit.mjs` agar mengimpor label, judul, pesan error, status, dan jenis transaksi langsung dari [`web/src/messages.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/messages.ts).
+  - Menambahkan warmup Vite di `account-local-verify.mjs` agar tidak rapuh terhadap cache dingin dan meneruskan `m.details` secara eksplisit ke `page.evaluate` di `a11y-audit.mjs`.
+- **Dijalankan**:
+  - Pemeriksaan `rg` terhadap literal teks UI di ke-7 skrip.
+  - Seluruh 6 skrip `*-local-verify.mjs` dan `a11y-audit.mjs` (baik setelah commit `86fe5bd` maupun pada `verify-all.mjs` penuh setelah Bagian D).
+- **Lulus**:
+  - `rg` mengonfirmasi nol salinan literal label UI pada ke-7 skrip (hanya nama data uji, nilai numerik, kode protokol, dan interpolasi dari `messages.ts`).
+  - Seluruh 6 `*-local-verify.mjs` dan `a11y-audit.mjs` lulus (`exit 0`, terakhir pada `verify-all.mjs` penuh dengan `150` kombinasi, `0` temuan).
+
+### Bagian B — Uji tekanan uang di gateway (`c64db38`)
+- **Ditulis**:
+  - [`server/test/gateway-concurrency.test.ts`](file:///mnt/d/router.dev.zuhri-antigravity/server/test/gateway-concurrency.test.ts): uji deterministik singkat memakai upstream tiruan loopback dan `buildApp` dengan satu tenant bersaldo kecil + batas lebih-pakai kecil, request paralel campuran lintas 3 API key (termasuk key berbatas belanja `spendLimitMicro`), non-stream & stream normal, usage tidak dilaporkan, klien memutus di tengah stream, upstream 500 sebelum byte pertama yang memicu fallback ke route kedua, byte pertama lambat sampai batas waktu, serta penolakan saldo/overdraft (`402 insufficient_balance`).
+  - [`server/scripts/stress-gateway.ts`](file:///mnt/d/router.dev.zuhri-antigravity/server/scripts/stress-gateway.ts): skrip uji tekanan skala besar dengan argumen `--requests <n>` / `--concurrency <n>` (atau argumen posisional) pada skema terisolasi sementara `stress_gw_*` di `TEST_DATABASE_URL`, yang memverifikasi `invariantViolations`, batas bawah saldo `-overdraftMicro`, ketiadaan hold `ACTIVE` untuk request final, kesamaan total debit terhadap selisih saldo, ketiadaan debit ganda per request (termasuk fallback/retry), serta tidak adanya HTTP 500.
+- **Dijalankan**:
+  - `cd server && npm run typecheck`
+  - `source .antigravity-env.sh && cd server && node --test test/gateway-concurrency.test.ts`
+  - `source .antigravity-env.sh && cd server && node scripts/stress-gateway.ts --requests 240 --concurrency 48`
+  - Termasuk dalam `server-test` pada `verify-all.mjs` penuh.
+- **Lulus**:
+  - `typecheck`: lulus (`exit 0`).
+  - `gateway-concurrency.test.ts` mandiri: lulus (`1/1`, `6698.99ms`) dan lulus kembali di `server-test` penuh (`144/144`, `exit 0`).
+  - `stress-gateway.ts --requests 240 --concurrency 48`: lulus (`exit 0`) dengan keluaran persis:
+    ```text
+    stress-gateway: PASS (requests=240, concurrency=48, elapsedMs=1458, statusCounts={"200":38,"402":154,"429":41,"503":7}, initialPosted=3000000000, finalPosted=311000000, overdraftMicro=500000000, totalDebit=2689000000, invariantViolations=0)
+    ```
+
+### Bagian C — Pengukuran tambahan waktu gateway (`82e1e00`)
+- **Ditulis**:
+  - [`server/scripts/bench-gateway.ts`](file:///mnt/d/router.dev.zuhri-antigravity/server/scripts/bench-gateway.ts): membandingkan panggilan langsung ke upstream tiruan loopback melawan panggilan melalui gateway untuk mode `non-stream` dan `stream` pada konkurensi `1`, `10`, dan `50` menggunakan skema sementara `bench_gw_*` di `TEST_DATABASE_URL`, melaporkan TTFB & Total `p50` dan `p95` serta spesifikasi mesin.
+- **Dijalankan**:
+  - `cd server && npm run typecheck`
+  - `source .antigravity-env.sh && cd server && node scripts/bench-gateway.ts`
+- **Lulus**:
+  - `typecheck`: lulus (`exit 0`).
+  - `bench-gateway.ts`: lulus (`exit 0`).
+  - **Spesifikasi mesin**: `OS=linux 6.18.33.2-microsoft-standard-WSL2 (x64) | CPU=13th Gen Intel(R) Core(TM) i5-13420H (12 vCPU) | RAM=7.61 GiB | Node=v24.21.0 | DB=PostgreSQL 18.7 (Debian 18.7-1.pgdg13+2) on x86_64-pc-linux-gnu`
+  - **Tabel hasil benchmark (bahan NFR-002)**:
+
+| Mode | Concurrency | Direct TTFB p50 | Gateway TTFB p50 | Overhead TTFB p50 | Direct TTFB p95 | Gateway TTFB p95 | Overhead TTFB p95 | Direct Total p50 | Gateway Total p50 | Overhead Total p50 | Direct Total p95 | Gateway Total p95 | Overhead Total p95 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| non-stream | 1 | 1.31 ms | 31.00 ms | 29.68 ms | 2.39 ms | 41.02 ms | 38.63 ms | 1.33 ms | 31.02 ms | 29.68 ms | 2.44 ms | 41.05 ms | 38.60 ms |
+| non-stream | 10 | 6.31 ms | 167.27 ms | 160.96 ms | 18.87 ms | 227.26 ms | 208.39 ms | 6.32 ms | 167.29 ms | 160.97 ms | 18.89 ms | 227.27 ms | 208.38 ms |
+| non-stream | 50 | 12.32 ms | 827.08 ms | 814.76 ms | 127.43 ms | 1278.46 ms | 1151.03 ms | 12.36 ms | 827.10 ms | 814.73 ms | 127.43 ms | 1278.48 ms | 1151.05 ms |
+| stream | 1 | 1.08 ms | 20.52 ms | 19.44 ms | 1.86 ms | 31.10 ms | 29.23 ms | 1.15 ms | 21.62 ms | 20.47 ms | 1.92 ms | 33.08 ms | 31.15 ms |
+| stream | 10 | 3.39 ms | 181.02 ms | 177.63 ms | 5.51 ms | 254.90 ms | 249.39 ms | 6.53 ms | 182.28 ms | 175.76 ms | 9.18 ms | 256.09 ms | 246.91 ms |
+| stream | 50 | 9.70 ms | 451.27 ms | 441.57 ms | 124.56 ms | 2722.61 ms | 2598.05 ms | 24.54 ms | 452.75 ms | 428.21 ms | 135.16 ms | 2723.62 ms | 2588.46 ms |
+
+### Bagian D — Kill switch di layar Ringkasan Operasi / SCR-014 (`08e01b8`)
+- **Ditulis**:
+  - [`web/src/messages.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/messages.ts) (khusus blok `ov`): menambahkan 22 kunci pesan kill switch dan memperjelas `costUnavailableNote`.
+  - [`web/src/styles.css`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/styles.css) (bagian `ringkasan`): menambahkan `.gateway-panel`, `.gateway-panel.gateway-paused`, `.gateway-header`, dan badge `RUNNING`/`PAUSED` hanya dengan token `tokens.css`.
+  - [`web/src/admin-overview.tsx`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/admin-overview.tsx): membaca `/admin/api/overview` dan `/admin/api/settings/gateway` dengan validasi skema ketat, menampilkan status (`Berjalan`/`Dijeda`), waktu ubah (`changedAt`), pelaku (`changedBy`), alasan (`reason`), tombol aksi (bukan toggle switch, sesuai UAR-023) -> dialog konfirmasi UAR-008 dengan alasan wajib 1..200 karakter & uraian dampak -> `useAdminAction()` step-up -> keadaan `mengubah-flag` -> pembaruan status hanya setelah respons server + `refetch()` (tanpa pembaruan optimistis), serta banner/panel peringatan `layanan-dijeda` saat dijeda.
+  - [`web/test/e2e/admin-overview.spec.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/admin-overview.spec.ts): memperbarui mock dan menambah 3 skenario Playwright + Axe + 360px untuk kill switch (total 9 uji).
+  - [`web/scripts/admin-overview-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-overview-local-verify.mjs): menambahkan verifikasi server nyata untuk jeda lewat step-up -> `/v1/chat/completions`, `/v1/messages`, `/v1/responses` menjawab `503 service_paused` + `Retry-After: 60`, key salah `401`, `/v1/models` tetap `200`, persistensi setelah reload, lanjutkan lewat step-up -> `/v1/chat/completions` kembali `200`, pemeriksaan event audit, dan `invariantViolations === []`.
+  - [`web/scripts/a11y-audit.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/a11y-audit.mjs): menambah audit dialog jeda, state `/admin/ringkasan (layanan-dijeda)`, dan dialog lanjutkan pada lebar `360px` dan `1280px` (total `150` kombinasi).
+- **Dijalankan**:
+  - `cd web && npm run typecheck`
+  - `npx playwright test test/e2e/admin-overview.spec.ts test/e2e/admin-operations.spec.ts test/e2e/return-to.spec.ts --reporter=line`
+  - `admin-overview-local-verify.mjs` dan `a11y-audit.mjs` (mandiri dan melalui `verify-all.mjs` penuh).
+- **Lulus**:
+  - `typecheck-web`: lulus (`exit 0`).
+  - `admin-overview.spec.ts`: lulus `9/9` (pada eksekusi gabungan `24/24` bersama `admin-operations.spec.ts` & `return-to.spec.ts` maupun di dalam `verify-all.mjs` penuh).
+  - `admin-overview-local-verify.mjs`: lulus (`admin-overview-local-verify: PASS (real server overview metrics, kill switch pause/503/resume/200, negative warning, 360px, links)`).
+  - `a11y-audit.mjs`: lulus (`150` kombinasi layar-lebar diaudit, `0` temuan unik).
+
+### Untuk Claude
+1. **Race assertion pada test e2e milik Hermes ([`web/test/e2e/admin.spec.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/admin.spec.ts#L308-L340))**:
+   - Pada `verify-all.mjs` penuh terakhir, `test/e2e/admin.spec.ts:294` gagal di baris 336 karena `writes` berisi 4 item (`true, true, false, false`), sedangkan ekspektasi baris 336–340 hanya 3 item (`true, true, false`).
+   - Penyebab: mock baris 308 memakai `writes.length % 2 === 1` sehingga `403 step_up_required` terpicu pada penulisan ke-1 (arsip) dan ke-3 (pulihkan); setelah verifikasi step-up pada baris 333, retry pulihkan selalu mengirim penulisan ke-4 (`archived: false`). Namun baris 334 hanya menunggu `.data-row` terlihat — yang sudah terlihat terus karena `includeArchived=1` masih aktif — sehingga test hanya "kebetulan lulus" bila baris 336 dievaluasi sebelum penulisan ke-4 tiba. Tidak diubah Antigravity karena merupakan berkas Hermes.
+2. **Karakteristik konkurensi untuk NFR-002 (dari benchmark Bagian C)**:
+   - Pada `concurrency=1`, tambahan waktu gateway adalah `19.44 ms` (TTFB p50 stream) dan `29.68 ms` (TTFB p50 non-stream, sudah termasuk transaksi `settleHold` sebelum respons dikirim).
+   - Pada `concurrency=10` dan `50` untuk satu tenant tunggal, seluruh `placeKeyHold` dan `settleHold` berserialisasi pada satu baris `ledger_account` (`FOR UPDATE`), menaikkan overhead TTFB p50 menjadi `160.96–177.63 ms` (`c=10`) dan `441.57–814.76 ms` (`c=50`, dengan p95 stream `2598.05 ms`). Perbedaan trafik single-tenant vs multi-tenant ini relevan untuk penentuan ambang NFR-002.
+3. **Ketahanan invariant uang gateway (Bagian B)**:
+   - Tidak ditemukan pelanggaran server: baik `gateway-concurrency.test.ts` maupun `stress-gateway.ts` (`240` request, `48` konkurensi) selesai dengan `invariantViolations=0`, `0` HTTP 500, `0` debit ganda, `0` hold `ACTIVE` tersisa pada request final, dan selisih saldo persis sama dengan `totalDebit`.
+4. **Timeout intermiten 5000ms pada WSL2 `/mnt/d/`**:
+   - Saat beban I/O WSL tinggi pada run antara, `admin-operations.spec.ts:70`, `return-to.spec.ts:396`, dan `states.spec.ts:9` sempat mengalami timeout ekspektasi default 5 detik/30 detik ketika Vite melayani modul; seluruhnya lulus pada run lain (`return-to`, `admin-operations`, `admin-overview` lulus `24/24`, dan di `verify-all.mjs` terakhir ketiga berkas tersebut semuanya lulus).
+
+### Keluaran `verify-all.mjs` penuh akhir (`2026-11-19`)
+Perintah: `source .antigravity-env.sh && cd web && node scripts/verify-all.mjs`
+
+```text
+[1/14] RUN   typecheck-server
+[1/14] PASS  typecheck-server (7.21s) (exit 0) -> web/evidence/verify-all/typecheck-server.txt
+[2/14] RUN   typecheck-web
+[2/14] PASS  typecheck-web (6.97s) (exit 0) -> web/evidence/verify-all/typecheck-web.txt
+[3/14] RUN   server-test
+[3/14] PASS  server-test (290.98s) (exit 0) -> web/evidence/verify-all/server-test.txt
+[4/14] RUN   unit
+[4/14] PASS  unit (3.18s) (exit 0) -> web/evidence/verify-all/unit.txt
+[5/14] RUN   playwright
+[5/14] FAIL  playwright (298.79s) (exit 1) -> web/evidence/verify-all/playwright.txt
+[6/14] RUN   test-local
+[6/14] PASS  test-local (21.32s) (exit 0) -> web/evidence/verify-all/test-local.txt
+[7/14] RUN   test-browser
+[7/14] PASS  test-browser (23.14s) (exit 0) -> web/evidence/verify-all/test-browser.txt
+[8/14] RUN   account-local-verify
+[8/14] PASS  account-local-verify (31.53s) (exit 0) -> web/evidence/verify-all/account-local-verify.txt
+[9/14] RUN   admin-catalog-local-verify
+[9/14] PASS  admin-catalog-local-verify (31.95s) (exit 0) -> web/evidence/verify-all/admin-catalog-local-verify.txt
+[10/14] RUN   admin-customers-local-verify
+[10/14] PASS  admin-customers-local-verify (25.52s) (exit 0) -> web/evidence/verify-all/admin-customers-local-verify.txt
+[11/14] RUN   admin-overview-local-verify
+[11/14] PASS  admin-overview-local-verify (22.10s) (exit 0) -> web/evidence/verify-all/admin-overview-local-verify.txt
+[12/14] RUN   golden-path-local-verify
+[12/14] PASS  golden-path-local-verify (22.80s) (exit 0) -> web/evidence/verify-all/golden-path-local-verify.txt
+[13/14] RUN   portal-local-verify
+[13/14] PASS  portal-local-verify (16.86s) (exit 0) -> web/evidence/verify-all/portal-local-verify.txt
+[14/14] RUN   a11y-audit
+[14/14] PASS  a11y-audit (144.48s) (exit 0) -> web/evidence/verify-all/a11y-audit.txt
+
+langkah                      | hasil |  durasi
+-----------------------------+-------+--------
+typecheck-server             | lulus |   7.21s
+typecheck-web                | lulus |   6.97s
+server-test                  | lulus | 290.98s
+unit                         | lulus |   3.18s
+playwright                   | gagal | 298.79s
+test-local                   | lulus |  21.32s
+test-browser                 | lulus |  23.14s
+account-local-verify         | lulus |  31.53s
+admin-catalog-local-verify   | lulus |  31.95s
+admin-customers-local-verify | lulus |  25.52s
+admin-overview-local-verify  | lulus |  22.10s
+golden-path-local-verify     | lulus |  22.80s
+portal-local-verify          | lulus |  16.86s
+a11y-audit                   | lulus | 144.48s
+
+Total: 13/14 lulus dalam 947.37s
+```
+
+- Rincian bukti penting di [`web/evidence/verify-all`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all):
+  - [`server-test.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/server-test.txt): `144` passed, `0` failed (termasuk `gateway-concurrency.test.ts`).
+  - [`unit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/unit.txt): `5` passed, `0` failed.
+  - [`playwright.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/playwright.txt): `69 passed, 1 failed (4.9m)` — seluruh uji Antigravity lulus (`admin-overview.spec.ts` `9/9`, `account-admin.spec.ts` `2/2`, `account-customer.spec.ts` `2/2`); 1 kegagalan khusus pada `test/e2e/admin.spec.ts:294` milik Hermes (lihat butir 1 di "Untuk Claude").
+  - [`admin-overview-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-overview-local-verify.txt): `admin-overview-local-verify: PASS (real server overview metrics, kill switch pause/503/resume/200, negative warning, 360px, links)`.
+  - [`a11y-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/a11y-audit.txt): `150` kombinasi layar-lebar diaudit, `0` temuan unik (`a11y-audit: PASS (0 findings)`).
+
