@@ -15,6 +15,7 @@ import { debitMicro, holdMicro, type Price, type Usage } from './money.ts';
 import { assertSafeUpstreamUrl, type Resolver } from './netguard.ts';
 import { gatewayEvents } from './monitor.ts';
 import { gatewayPaused } from './control.ts';
+import { CURSOR_TIME_SQL, parseRequestCursor, requestCursor } from './paging.ts';
 
 export type GatewayDeps = { db: Db; key: Buffer; resolveHost: Resolver; firstByteTimeoutMs?: number; idleTimeoutMs?: number; maxTotalMs?: number; maxAttempts?: number;
   /** Abuse limits (ABU-004), per process. */ requestsPerMinutePerKey?: number; concurrentPerTenant?: number; authFailuresPerMinutePerIp?: number;
@@ -159,11 +160,12 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
     const running = active.get(tenantId) ?? 0;
     if (running >= perTenant) return fail(reply, s, 429, 'limit_exceeded', 'Too many requests in progress', undefined, 2);
     active.set(tenantId, running + 1);
-    try { return await handle(s, req, reply); }
+    try { return await handle(s, req, reply, tenantId); }
     finally { const n = (active.get(tenantId) ?? 1) - 1; if (n <= 0) active.delete(tenantId); else active.set(tenantId, n); }
   }
 
-  async function handle(s: Surface, req: FastifyRequest, reply: FastifyReply) {
+  /** `tenantId` comes from the key check in `guarded`; the hold transaction checks the key again under lock. */
+  async function handle(s: Surface, req: FastifyRequest, reply: FastifyReply, tenantId: string) {
     const secret = secretOf(req);
     const json = req.body as Record<string, any> | null;
     if (!json || typeof json !== 'object' || Array.isArray(json)) return fail(reply, s, 400, 'invalid_request', 'Request body must be a JSON object');
@@ -181,11 +183,10 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
     // ---- Admission: key, scope, price snapshot, hold. Everything billable is decided in one transaction. ----
     let adm: { tenantId: string; price: Price; maxOut: number };
     try {
-      const principal = await keys.authenticate(db, secret);
       const snap = await pricing.snapshotForAdmission(db, model);
       if (!snap) throw new AppError('model_not_available', 'This model is not available', 404);
       // Overrun rule: when the requested output does not fit the balance plus allowance, the output is capped to what fits.
-      const bal = await ledger.getBalance(db, principal.tenantId); const budget = bal.available + await ledger.overdraftMicro(db);
+      const bal = await ledger.getBalance(db, tenantId); const budget = bal.available + await ledger.overdraftMicro(db);
       let maxOut = Math.min(asked ?? GATEWAY_LIMITS.defaultMaxOutput, GATEWAY_LIMITS.maxOutputCap);
       if (bal.available > 0n && holdMicro(maxIn, maxOut, snap.price) > budget) {
         const inputOnly = holdMicro(maxIn, 0, snap.price), perOut = holdMicro(0, 1000, snap.price);
@@ -306,9 +307,11 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
 /** Tenant-scoped request history (FR-013): metadata only. */
 export async function listRequests(db: Db, tenantId: string, q: { before?: string; limit?: string }) {
   const limit = Math.min(Math.max(Number.isInteger(Number(q.limit)) ? Number(q.limit) : 50, 1), 100);
-  const before = typeof q.before === 'string' && !Number.isNaN(Date.parse(q.before)) ? q.before : null;
-  const rows = (await db.query('select id, model_id, protocol, stream, state, hold, debit, estimated, usage_norm, unbilled_input_tokens, created_at from request where tenant_id=$1 and ($2::timestamptz is null or created_at < $2::timestamptz) order by created_at desc, id limit $3', [tenantId, before, limit])).rows;
-  return { requests: rows.map(r => ({ id: r.id as string, model: r.model_id as string, protocol: r.protocol as string, stream: r.stream as boolean, state: r.state as string, final: r.debit !== null, heldMicro: String(r.hold), debitMicro: r.debit === null ? null : String(r.debit), estimated: r.estimated as boolean, usage: r.usage_norm, createdAt: (r.created_at as Date).toISOString() })), nextBefore: rows.length === limit ? (rows[rows.length - 1].created_at as Date).toISOString() : null };
+  const before = parseRequestCursor(q.before);
+  const rows = (await db.query(`select id, model_id, protocol, stream, state, hold, debit, estimated, usage_norm, unbilled_input_tokens, created_at, ${CURSOR_TIME_SQL} as cursor_time
+    from request where tenant_id=$1 and ($2::timestamptz is null or created_at < $2::timestamptz or ($4::text is not null and created_at = $2::timestamptz and id > $4::text))
+    order by created_at desc, id limit $3`, [tenantId, before?.time ?? null, limit, before?.id ?? null])).rows;
+  return { requests: rows.map(r => ({ id: r.id as string, model: r.model_id as string, protocol: r.protocol as string, stream: r.stream as boolean, state: r.state as string, final: r.debit !== null, heldMicro: String(r.hold), debitMicro: r.debit === null ? null : String(r.debit), estimated: r.estimated as boolean, usage: r.usage_norm, createdAt: (r.created_at as Date).toISOString() })), nextBefore: rows.length === limit ? requestCursor(rows[rows.length - 1].cursor_time as string, rows[rows.length - 1].id as string) : null };
 }
 
 /**

@@ -154,4 +154,34 @@ test('request list: admin only, newest first across customers, exact filters, va
 
   assert.equal((await admin.get('/admin/api/requests/unresolved')).status, 200, 'the unresolved queue keeps its own route');
   assert.deepEqual(await ledger.invariantViolations(db), []);
+
+  // Cursors keep every row when rows share a millisecond or a timestamp. Two instants inside one millisecond, several rows on each: a millisecond cursor skips rows, a time-only cursor splits ties.
+  const rows = (await db.query('select id, tenant_id from request order by id')).rows as { id: string; tenant_id: string }[];
+  assert.equal(rows.length, 5);
+  const half = Math.ceil(rows.length / 2);
+  await db.query("update request set created_at = case when id = any($1::text[]) then '2026-11-19T01:02:03.000400Z'::timestamptz else '2026-11-19T01:02:03.000900Z'::timestamptz end",
+    [rows.slice(0, half).map(r => r.id)]);
+  const expected = [...rows.slice(half), ...rows.slice(0, half)].map(r => r.id); // newest instant first, then id ascending
+
+  const walk = async (client: Client, path: string) => {
+    const seen: string[] = []; let cursor: string | null = null;
+    for (let i = 0; i < rows.length + 2; i++) {
+      const page: { requests: { id: string }[]; nextBefore: string | null } = (await client.get(`${path}?limit=2${cursor ? '&before=' + encodeURIComponent(cursor) : ''}`)).json;
+      seen.push(...page.requests.map((r: { id: string }) => r.id));
+      if (page.nextBefore === null) return seen;
+      assert.match(page.nextBefore, /^2026-11-19T01:02:03\.000[49]00Z~req_[0-9a-f-]{36}$/, 'microsecond time plus row id');
+      cursor = page.nextBefore;
+    }
+    throw new Error('cursor did not end');
+  };
+  assert.deepEqual(await walk(admin, '/admin/api/requests'), expected, 'admin list: every row once, newest first');
+  const budiTenant = (await db.query("select m.tenant_id from membership m join app_user u on u.id=m.user_id where u.username='budi'")).rows[0].tenant_id;
+  assert.deepEqual(await walk(cust, '/api/requests'), expected.filter(id => rows.find(r => r.id === id)!.tenant_id === budiTenant), 'customer list: every own row once');
+
+  // A cursor made before this format (time only) still works; an unreadable one reads as the first page.
+  assert.equal((await admin.get('/admin/api/requests?before=2026-11-19T01:02:03.001Z')).json.requests.length, rows.length);
+  assert.equal((await admin.get('/admin/api/requests?before=2026-11-19T01:02:03.000500Z')).json.requests.length, half);
+  for (const bad of ['kemarin', '2026-11-19T01:02:03.000500Z~bukan-id', '2026-11-19 01:02:03']) {
+    const r = await admin.get('/admin/api/requests?before=' + encodeURIComponent(bad)); assert.equal(r.status, 200, bad); assert.equal(r.json.requests.length, Math.min(rows.length, 50), bad);
+  }
 });

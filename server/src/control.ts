@@ -1,6 +1,7 @@
 // Operator controls (TASK-018, SCR-014 and SCR-017): the gateway kill switch and the request list across tenants.
 import { AppError, type Db, type Tx } from './db/pool.ts';
 import { audit } from './audit.ts';
+import { CURSOR_TIME_SQL, parseRequestCursor, requestCursor } from './paging.ts';
 
 export type GatewayState = { paused: boolean; reason: string | null; changedAt: string | null; changedBy: string | null };
 
@@ -54,20 +55,21 @@ export async function listAllRequests(db: Db, q: Record<string, unknown>) {
   const username = filter(q.username, 64), model = filter(q.model, 128), state = filter(q.state, 32);
   if (state !== null && !(REQUEST_STATES as readonly string[]).includes(state)) throw new AppError('invalid_request', 'Unknown request state', 400);
   const limit = Math.min(Math.max(Number.isInteger(Number(q.limit)) ? Number(q.limit) : 50, 1), 100);
-  const before = typeof q.before === 'string' && !Number.isNaN(Date.parse(q.before)) ? q.before : null;
+  const before = parseRequestCursor(q.before);
   const rows = (await db.query(
-    `select r.id, u.username, k.name as key_name, r.model_id, r.protocol, r.stream, r.state, r.outcome, r.hold, r.debit, r.estimated, r.usage_norm, r.created_at
+    `select r.id, u.username, k.name as key_name, r.model_id, r.protocol, r.stream, r.state, r.outcome, r.hold, r.debit, r.estimated, r.usage_norm, r.created_at,
+       ${CURSOR_TIME_SQL.replace('created_at', 'r.created_at')} as cursor_time
      from request r
      join membership m on m.tenant_id = r.tenant_id
      join app_user u on u.id = m.user_id
      left join api_key k on k.tenant_id = r.tenant_id and k.id = r.api_key_id
      where ($1::text is null or u.username = $1) and ($2::text is null or r.state = $2) and ($3::text is null or r.model_id = $3)
-       and ($4::timestamptz is null or r.created_at < $4::timestamptz)
-     order by r.created_at desc, r.id limit $5`, [username, state, model, before, limit])).rows;
+       and ($4::timestamptz is null or r.created_at < $4::timestamptz or ($6::text is not null and r.created_at = $4::timestamptz and r.id > $6::text))
+     order by r.created_at desc, r.id limit $5`, [username, state, model, before?.time ?? null, limit, before?.id ?? null])).rows;
   return {
     requests: rows.map(r => ({ id: r.id as string, username: r.username as string, keyName: (r.key_name ?? null) as string | null, model: r.model_id as string, protocol: r.protocol as string, stream: r.stream as boolean,
       state: r.state as string, outcome: (r.outcome ?? null) as string | null, final: r.debit !== null, heldMicro: String(r.hold), debitMicro: r.debit === null ? null : String(r.debit), estimated: r.estimated as boolean,
       usage: r.usage_norm ?? null, createdAt: (r.created_at as Date).toISOString() })),
-    nextBefore: rows.length === limit ? (rows[rows.length - 1].created_at as Date).toISOString() : null,
+    nextBefore: rows.length === limit ? requestCursor(rows[rows.length - 1].cursor_time as string, rows[rows.length - 1].id as string) : null,
   };
 }

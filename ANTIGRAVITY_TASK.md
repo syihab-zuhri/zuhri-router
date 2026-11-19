@@ -394,3 +394,36 @@ Boleh: berkas Anda, berkas baru di atas, `verify-all.mjs`, `a11y-audit.mjs`. Tid
 ## Laporan
 
 Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, jangan push. Jangan menjalankan Playwright bersamaan dengan Hermes.
+
+---
+
+# Tugas sembilan (2026-11-19)
+
+Tugas delapan diterima dan digabung (lihat `docs/handoff/claude-log.md` bagian "Tugas delapan Antigravity digabung"). Dua temuan Anda sudah ditangani Claude: kursor daftar request kini berisi waktu mikrodetik ditambah ID baris (`server/src/paging.ts`), dan autentikasi key di luar transaksi tidak lagi dijalankan dua kali. Hermes Tahap delapan (banner layanan dijeda, rincian audit, "Tidak ada data lagi") sudah ada di `main`.
+
+    cd /mnt/d/router.dev.zuhri-antigravity && source .antigravity-env.sh
+    git checkout antigravity/akun && git pull --ff-only origin main
+
+## A. Bukti server nyata untuk status layanan di portal pelanggan (sisa Tugas delapan D)
+
+Di `admin-overview-local-verify.mjs`: sesudah admin menjeda layanan lewat UI, `GET /api/me` mengembalikan `servicePaused: true`, portal pelanggan menampilkan banner jeda di Beranda dan minimal dua halaman lain, dan Beranda menunjukkan "Dijeda". Request API baru ditolak `service_paused`. Sesudah dilanjutkan dan halaman dimuat ulang, banner hilang dan Beranda menunjukkan "Berjalan". Semua teks dari `messages.ts`.
+
+## B. Kursor tanpa jeda buatan (`admin-requests-local-verify.mjs`)
+
+Hapus `delay(2)` di antara request. Buat sedikitnya enam request yang `created_at`-nya sama persis dan beberapa yang berbeda kurang dari satu milidetik (boleh dengan `update request set created_at` di skema privat Anda). Telusuri halaman di Rekonsiliasi, tab Request dan halaman Pemakaian pelanggan dengan `limit` kecil (lewat API dan lewat UI), lalu pastikan setiap request muncul tepat sekali. Pastikan juga test gagal bila kursor dikembalikan ke format lama (cukup catat di log bahwa Anda mencobanya secara lokal; jangan commit perubahan `server/src`).
+
+## C. Ukuran pool produksi (`bench-gateway.ts`)
+
+Produksi memakai pool bawaan `max = 20`. Jalankan matriks `c=10/t=10` dan `c=50/t=50` dengan `--pool-max 20` dan `--pool-max 80`, lalu laporkan waktu tunggu pool dan p95 overhead sebelum byte pertama untuk keduanya. Catat juga jumlah query per request sesudah perubahan Claude (sebelumnya 29 non-stream dan 30 stream).
+
+## D. Audit aksesibilitas keadaan baru (`a11y-audit.mjs`)
+
+Tambahkan Beranda dan satu halaman portal lain saat layanan dijeda, `/admin/audit` dengan satu "Rincian" terbuka, dan keadaan "Tidak ada data lagi" pada audit dan Rekonsiliasi; lebar 360 dan 1280.
+
+## Batas berkas
+
+Boleh: berkas Anda, `verify-all.mjs`, `a11y-audit.mjs`. Tidak boleh: `server/src/**`, migrasi, `package.json`, dependency baru, berkas Hermes, upstream nyata, situs publik.
+
+## Laporan
+
+Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, jangan push. Jangan menjalankan Playwright bersamaan dengan Hermes.
