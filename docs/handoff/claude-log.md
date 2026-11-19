@@ -265,3 +265,10 @@ Bukti: typecheck web, unit, Playwright 82/82, `verify-all.mjs` 13/13 (enam skrip
 ### Terpasang `zrouter:r11192221`
 
 Isi: Hermes Tahap delapan, Antigravity Tugas delapan, kursor request mikrodetik, satu kali cek key. Backup sebelum pemasangan `zrouter-20261119T152157Z.dump`. Tanpa migrasi baru (14 migrasi; `gateway_paused` = 0), jadi restore drill tidak diulang. Bukti: suite server 145/145, `verify-all.mjs` 14/14 (Playwright 82/82, audit aksesibilitas 0 temuan), `smoke-public.sh` 7/7.
+
+### Tugas sembilan Antigravity digabung; `DATABASE_POOL_MAX`
+
+- Cabang Antigravity (`096cbf2`..`6b595d6`) digabung: banner jeda dan status layanan diperiksa pada server nyata, `/api/me` tidak membocorkan alasan jeda; `delay(2)` dihapus dan kursor diperiksa dengan 6 request bertimestamp sama dan 4 request dalam satu milidetik lewat API dan UI (Rekonsiliasi, tab Request, Pemakaian); kursor lama dicoba lokal dan gagal (36 dari 56 baris); audit aksesibilitas 170 kombinasi, 0 temuan. Claude menjalankan ulang `admin-overview-local-verify` dan `admin-requests-local-verify` di clone yang bersih: PASS.
+- Angka pool: pada `c=50/t=50`, pool 20 membuat request menunggu koneksi rata-rata sekitar 110 ms (non-stream) dan 122 ms (stream); pool 80 menghapus antrean itu. Pada `c=10/t=10` pool belum jenuh. Angka satu kali jalan berisik (pool 80 tampak lebih lambat di `c=10`), jadi Tugas sepuluh C mengulang tiga kali.
+- `DATABASE_POOL_MAX` (bawaan 20, 1 sampai 90) di `server/src/main.ts`, `deploy/compose.yml`, `deploy/compose.tunnel.yml`, dan `deploy/README.md`. Nilai produksi tetap 20 sampai angka Tugas sepuluh C ada.
+- Query per request kini 28 (non-stream) dan 29 (stream).

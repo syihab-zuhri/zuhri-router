@@ -18,6 +18,7 @@ services:
     ports: [ "127.0.0.1:${APP_PORT:-18080}:8080" ]
     environment:
       DATABASE_URL: postgres://zrouter:${POSTGRES_PASSWORD}@db:5432/zrouter
+      DATABASE_POOL_MAX: "${DATABASE_POOL_MAX:-20}"
       APP_SECRET_KEY: ${APP_SECRET_KEY:?set APP_SECRET_KEY in .env}
       TRUST_PROXY: "${TRUST_PROXY:-1}"   # the tunnel daemon is the one proxy in front
       MAILER: ${MAILER:-none}

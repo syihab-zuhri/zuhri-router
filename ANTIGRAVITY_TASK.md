@@ -427,3 +427,36 @@ Boleh: berkas Anda, `verify-all.mjs`, `a11y-audit.mjs`. Tidak boleh: `server/src
 ## Laporan
 
 Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, jangan push. Jangan menjalankan Playwright bersamaan dengan Hermes.
+
+---
+
+# Tugas sepuluh (2026-11-19)
+
+Tugas sembilan diterima dan digabung. Bukti RED kursor lama (36 dari 56 baris) sangat membantu. Dari angka pool Anda, Claude menambahkan `DATABASE_POOL_MAX` (bawaan 20, rentang 1 sampai 90) di `server/src/main.ts` dan kedua berkas compose; nilai produksi belum diubah.
+
+    cd /mnt/d/router.dev.zuhri-antigravity && source .antigravity-env.sh
+    git checkout antigravity/akun && git pull --ff-only origin main
+
+## A. Rincian audit pada server nyata (`admin-audit-local-verify.mjs`, baru)
+
+Buat event lewat UI atau API admin pada skema privat: tambah saldo (`amountMicro`, `saleRef`), tangguhkan dan pulihkan pelanggan (`reason`, `previousStatus`, `nextStatus`), ubah batas lebih-pakai (`beforeMicro`, `afterMicro`), dan selesaikan satu request `UNRESOLVED` (`debitMicro`, `reason`). Di `/admin/audit`, buka "Rincian" tiap event dan pastikan label berasal dari `messages.ts` (`m.amount`, `m.saleRef`, `m.auditReason`, `m.auditPreviousStatus`, `m.auditNextStatus`, `m.auditBefore`, `m.auditAfter`, `m.adminRequestDebit`), nilai mikro tampil sebagai kredit token dengan angka yang benar, dan kode status diterjemahkan ("Aktif", "Ditangguhkan"). Event tanpa ringkasan tidak punya "Rincian". Akhiri dengan `invariantViolations` kosong.
+
+## B. Kursor saat request baru terus masuk (`admin-requests-local-verify.mjs`)
+
+Telusuri `/admin/api/requests` dan `/api/requests` dengan `limit` kecil sambil mengirim request gateway baru di antara pengambilan halaman. Pastikan setiap request yang sudah ada sebelum penelusuran muncul tepat sekali, tidak ada duplikat, dan request yang baru masuk tidak muncul di halaman lanjutan (karena lebih baru dari kursor).
+
+## C. Titik jenuh pool (`bench-gateway.ts`)
+
+Jalankan `c=20/t=20`, `c=30/t=30` dan `c=50/t=50` dengan `--pool-max 20`, `40` dan `80`. Laporkan p95 overhead sebelum byte pertama dan rata-rata tunggu pool per request untuk tiap kombinasi, ulangi tiap kombinasi tiga kali, dan tulis median serta rentangnya. Angka satu kali jalan di laptop terlalu berisik untuk memilih nilai produksi: pada Tugas sembilan, `c=10/t=10` non-stream dengan pool 80 tampak lebih lambat daripada dengan pool 20.
+
+## D. Bila Claude sudah menulis di claude-log bahwa Hermes Tahap sembilan ada di `main`
+
+Di `admin-overview-local-verify.mjs`: pelanggan sedang membuka portal; admin menjeda layanan; tanpa memuat ulang halaman, sesudah pelanggan berpindah halaman banner jeda muncul; sesudah dilanjutkan dan pelanggan berpindah halaman lagi, banner hilang. Bila belum ada di `main` saat Anda sampai di sini, lewati dan catat.
+
+## Batas berkas
+
+Boleh: berkas Anda, berkas baru di atas, `verify-all.mjs`, `a11y-audit.mjs`. Tidak boleh: `server/src/**`, migrasi, `package.json`, dependency baru, berkas Hermes, upstream nyata, situs publik.
+
+## Laporan
+
+Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, jangan push. Jangan menjalankan Playwright bersamaan dengan Hermes.

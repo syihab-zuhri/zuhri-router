@@ -65,6 +65,10 @@ Untuk susunan tunnel: bangun image di mesin lain, `docker save <image> | gzip | 
 
 Migrasi dijalankan saat start. Stream yang sedang berjalan diberi waktu 60 detik saat container berhenti; sesudah itu terputus dan ditagih sebagai estimasi.
 
+## Ukuran pool database
+
+`DATABASE_POOL_MAX` (bawaan 20, rentang 1 sampai 90) adalah jumlah koneksi PostgreSQL per proses aplikasi. Benchmark Antigravity Tugas sembilan: pada sekitar 50 request bersamaan dari 50 pelanggan, pool 20 menjadi antrean (rata-rata sekitar 110 ms per request menunggu koneksi), sedangkan pool 80 menghapus antrean itu. Naikkan bila beban mendekati angka itu, dan tetap di bawah `max_connections` PostgreSQL (bawaan 100) dikurangi koneksi backup.
+
 ## Bila domain di belakang proxy lain (misalnya Cloudflare)
 
 `TRUST_PROXY` harus sama dengan jumlah proxy di depan aplikasi (Caddy saja = 1; Cloudflare + Caddy = 2). Angka yang salah membuat batas laju keliru: terlalu besar memungkinkan alamat dipalsukan, terlalu kecil menggabungkan semua pelanggan ke satu alamat.

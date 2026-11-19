@@ -19,7 +19,11 @@ const mailer: Mailer = (() => {
   return { invite: fail, passwordReset: fail };
 })();
 
-const db = createPool(need('DATABASE_URL'));
+// Connections per app process. 20 is the default; at about 50 requests in flight the pool, not PostgreSQL, becomes the queue
+// (Antigravity task nine benchmark). Keep it well under the server's max_connections (100 by default).
+const poolMax = Number(process.env.DATABASE_POOL_MAX ?? 20);
+if (!Number.isInteger(poolMax) || poolMax < 1 || poolMax > 90) { console.error('DATABASE_POOL_MAX must be a whole number from 1 to 90.'); process.exit(1); }
+const db = createPool(need('DATABASE_URL'), poolMax);
 const app = await buildApp({ db, key: loadKey(need('APP_SECRET_KEY')), mailer, secureCookies: process.env.INSECURE_COOKIES !== '1', logger: true,
   webDist: process.env.WEB_DIST || undefined, publicBaseUrl: process.env.PUBLIC_BASE_URL ? new URL(process.env.PUBLIC_BASE_URL).origin : undefined, trustProxy: Number.isInteger(Number(process.env.TRUST_PROXY)) ? Number(process.env.TRUST_PROXY) : 0 });
 // Requests left open by a crashed process are released or flagged for the admin (see recoverStuck).
