@@ -45,6 +45,8 @@ test('kill switch: admin only, step-up and a reason required, nothing changes wi
   assert.equal((await cust.get('/admin/api/settings/gateway')).status, 401, 'a customer session is not an admin session');
   assert.equal((await cust.post('/admin/api/settings/gateway', { paused: true, reason: 'x' })).status, 401);
   assert.deepEqual((await admin.get('/admin/api/settings/gateway')).json, { paused: false, reason: null, changedAt: null, changedBy: null });
+  assert.equal((await cust.get('/api/me')).json.servicePaused, false);
+  assert.equal((await new Client(app).get('/api/me')).status, 401, 'nobody signed out learns the service state');
   assert.equal((await admin.post('/admin/api/settings/gateway', { paused: true, reason: 'tanpa csrf' }, { csrf: false })).status, 403);
 
   await expireStepUp();
@@ -66,12 +68,16 @@ test('kill switch: admin only, step-up and a reason required, nothing changes wi
   const ev = (await db.query("select summary, target_id from audit_event where action='setting.gateway_pause'")).rows[0];
   assert.deepEqual(ev.summary, { reason: 'pemeliharaan database' }); assert.equal(ev.target_id, 'gateway_paused');
   assert.deepEqual((await admin.get('/admin/api/overview')).json.gateway, { paused: true, reason: 'pemeliharaan database', changedAt: paused.changedAt });
+  const me = (await cust.get('/api/me')).json;
+  assert.equal(me.servicePaused, true, 'the signed-in customer sees the pause');
+  assert.equal(JSON.stringify(me).includes('pemeliharaan'), false, 'the internal reason stays with the admins');
 
   const resumed = (await admin.post('/admin/api/settings/gateway', { paused: false })).json;
   assert.equal(resumed.paused, false); assert.equal(resumed.reason, null); assert.equal(resumed.changedBy, 'founder');
   assert.equal(await auditCount('setting.gateway_resume'), 1);
   assert.deepEqual((await db.query("select summary from audit_event where action='setting.gateway_resume'")).rows[0].summary, { previousReason: 'pemeliharaan database' });
   assert.equal((await admin.get('/admin/api/overview')).json.gateway.paused, false);
+  assert.equal((await cust.get('/api/me')).json.servicePaused, false);
 });
 
 test('kill switch: paused gateway refuses every surface with service_paused, keeps the model list, lets admitted requests finish', async () => {

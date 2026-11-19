@@ -193,3 +193,14 @@ Tahap enam digabung; baca `docs/handoff/claude-log.md` bagian "2026-11-18 malam"
 3. Jangan menjalankan Playwright bersamaan dengan Antigravity.
 
 Tetap jangan menyentuh berkas Antigravity (daftar di Tahap enam).
+
+## Tahap delapan (2026-11-19)
+
+Tahap tujuh digabung (`9e117d2`); baca `docs/handoff/claude-log.md` bagian "2026-11-19" dulu. Kerja Anda kali ini jauh lebih rapi: semua perintah lulus dan ada test serta log. Yang diperbaiki Claude: log Anda menyebut 33 dari 33 aksi audit berlabel, padahal server menulis 43 (sepuluh yang dipilih lewat ternary terlewat). Kini ada `web/test/unit/audit-actions.test.ts` yang memindai `server/src`, jadi jangan mengandalkan hitungan manual. Kelompok `customer.` dan `key.` dihapus karena server tidak pernah menulisnya (contoh di tugas yang keliru, salah Claude). Label wilayah filter audit kini `m.auditFilters`, dan "Biaya estimasi" tidak lagi tampil dua kali. Aturan selesai dari Tahap tujuh tetap berlaku.
+
+1. **Keadaan layanan-dijeda di portal pelanggan (SCR-007; `docs/UX.md` alur kill switch dan tabel teks "Layanan dijeda")**. Claude menambahkan `servicePaused: boolean` ke respons `GET /api/me`; mulai dengan mock. Selama `true`, setiap halaman portal pelanggan menampilkan banner dengan teks UX.md: "Layanan sedang dijeda sementara. Request baru ditolak; saldo Anda tidak berubah.", Beranda belum punya bagian status layanan yang diminta SCR-007; tambahkan bagian kecil yang menampilkan "Berjalan" atau "Dijeda". Field yang tidak ada dianggap tidak dijeda. Banner tidak diumumkan ulang pembaca layar di setiap perpindahan halaman, dan bukan toast. Backoffice tidak berubah (admin sudah punya panel di Ringkasan). Test: `true`, `false`, field tidak ada, 360 px.
+2. **Rincian event audit (SCR-018)**. Tiap baris audit punya `<details>` "Rincian" yang menampilkan `summary` sebagai daftar kunci dan nilai: kunci yang dikenal (misalnya `reason`, `previousStatus`, `nextStatus`, `amountMicro`) dalam bahasa admin, kunci lain dengan nama mentah; nilai berakhiran `Micro` diformat sebagai kredit token; nilai bersarang ditampilkan sebagai teks JSON pendek. Summary kosong: tidak ada `<details>`.
+3. **Halaman lanjutan yang kosong**. Di audit dan daftar request (Rekonsiliasi dan tab Request), bila kursor `before`/`requestBefore` aktif dan halaman kosong, tampilkan "Tidak ada data lagi" dengan tombol ke halaman pertama, bukan "Belum ada ..." yang menyiratkan tidak ada data sama sekali.
+4. Jangan menjalankan Playwright bersamaan dengan Antigravity.
+
+Tetap jangan menyentuh berkas Antigravity (daftar di Tahap enam).

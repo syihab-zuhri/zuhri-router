@@ -1,9 +1,9 @@
 # Architecture, Data dan Interface: Router AI Komersial
 
-Version: 0.8.0
+Version: 0.8.1
 Status: Draft; stack disetujui, API M1 lokal diimplementasikan; gateway dan UI belum
 Owner keputusan: founder
-Updated: 2026-11-18, Asia/Jakarta
+Updated: 2026-11-19, Asia/Jakarta
 Dependencies: PLANNING.md; BILLING_REDEEM.md; SECURITY.md
 Evidence: E3 untuk test API M1 dan spike yang cakupannya tercatat di README masing-masing; kontrak fitur lain tetap rencana.
 
@@ -165,7 +165,7 @@ Bentuk executable ada di ../server/src/http/app.ts dan migrasi 002. Semua mutasi
 
 | Endpoint | Principal / input | Hasil dan konflik |
 |---|---|---|
-| GET /api/me | Owner | username, tenantStatus, version sebagai string |
+| GET /api/me | Owner | username, tenantStatus, version sebagai string; `servicePaused` boolean (section 5.7) |
 | GET /admin/api/customers/:username | Admin + MFA | Saldo/ledger, tenantStatus, version; tidak memerlukan step-up untuk baca |
 | POST /admin/api/customers/:username/suspend atau /restore | Admin + MFA + step-up; expectedVersion string positif, reason 3..500 karakter setelah trim | Status/versi baru, 200; versi usang, no-op dan CLOSED: 409; alasan/versi tidak valid: 400; satu audit event per perubahan |
 | POST /admin/api/adjustments | Admin + MFA + step-up; username, amountMicro integer string bertanda nonnol, reason, idempotencyKey | Receipt 201, replay identik 200, payload berubah untuk kunci sama 409; tidak memakai floating point |
@@ -204,6 +204,7 @@ Kode di ../server/src/control.ts, migrasi 014; test di ../server/test/control.te
 | GET /admin/api/settings/gateway | Admin + MFA | `{ paused, reason, changedAt, changedBy }`; `changedAt`/`changedBy` null bila belum pernah diubah; `changedBy` adalah username admin |
 | POST /admin/api/settings/gateway | Admin + MFA + step-up + CSRF; `{ paused: true, reason }` (alasan 1..200 karakter sesudah trim) atau `{ paused: false }` | 200 dengan bentuk yang sama; body lain 400 `invalid_request`; keadaan sama (dan alasan sama) tidak menulis audit kedua; audit `setting.gateway_pause` (alasan) atau `setting.gateway_resume` (alasan sebelumnya); bot Telegram mengirim keduanya dan `/status` menyebut keadaan layanan |
 | GET /admin/api/overview | Admin + MFA | Field tambahan `gateway: { paused, reason, changedAt }` |
+| GET /api/me | Owner | Field `servicePaused` untuk keadaan layanan-dijeda di portal (SCR-007). Alasan jeda tidak dikirim ke pelanggan; setelan yang hilang terbaca dijeda, sama dengan gateway |
 | GET /admin/api/requests | Admin + MFA; `username`, `state`, `model` (persis), `before` (createdAt ISO), `limit` 1..100 bawaan 50 | `{ requests: [{ id, username, keyName, model, protocol, stream, state, outcome, final, heldMicro, debitMicro, estimated, usage, createdAt }], nextBefore }`, terbaru dulu, metadata saja; username tidak dikenal menghasilkan daftar kosong; `state` di luar `ADMITTED, STREAMING, COMPLETED, FAILED, CANCELLED, SETTLED, SETTLED_ESTIMATED, UNRESOLVED, RESOLVED, REJECTED` atau filter berulang 400 |
 | GET /admin/api/audit | Admin + MFA; `action` (awalan nama aksi, mis. `setting.`), `actor` (username persis), `targetType`, `targetId` (persis), `before` (id event) | `{ events: [{ id, actorUser, actorUsername, actorKind, action, targetType, targetId, summary, createdAt }], nextBefore }`, terbaru dulu, 50 per halaman; parameter berulang atau terlalu panjang 400. Kode di ../server/src/audit.ts (SCR-018) |
 

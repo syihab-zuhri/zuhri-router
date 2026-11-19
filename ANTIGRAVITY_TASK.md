@@ -353,3 +353,44 @@ Boleh: berkas Anda, berkas baru di atas, `verify-all.mjs`, `a11y-audit.mjs`, `ad
 ## Laporan
 
 Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, jangan push.
+
+---
+
+# Tugas delapan (2026-11-19)
+
+Tugas tujuh diterima dan digabung ke `main` (lihat `docs/handoff/claude-log.md` bagian "2026-11-19"). Race di `admin.spec.ts` yang Anda laporkan sudah diperbaiki Claude di `a2ceb36` (menunggu empat kiriman). Angka benchmark Anda dipakai, tetapi NFR-002 menargetkan p95 di bawah 50 ms dengan **banyak tenant**, sedangkan pengukuran Anda satu tenant, yang memang bergiliran pada satu baris akun (RSK-017). Bagian A melengkapinya.
+
+    cd /mnt/d/router.dev.zuhri-antigravity && source .antigravity-env.sh
+    git checkout antigravity/akun && git pull --ff-only origin main
+
+## A. NFR-002 dengan banyak tenant (`server/scripts/bench-gateway.ts`)
+
+1. Tambahkan argumen `--tenants N`: request dibagi rata ke N tenant (masing-masing satu key dan saldo cukup). Ukur konkurensi 10 dan 50 dengan `tenants` sama dengan konkurensi (satu request berjalan per tenant), dan ulangi `tenants=1` sebagai pembanding, non-stream dan stream. Tabel p50/p95 TTFB dan total seperti sebelumnya.
+2. Rincian waktu pada konkurensi 1: di dalam skrip (bukan di `server/src`), bungkus `query` milik pool yang Anda berikan ke `buildApp` untuk mencatat jumlah query, total waktu di database, dan waktu tunggu koneksi pool per request. Laporkan berapa query per request non-stream dan stream, dan bagian mana yang paling mahal (autentikasi key, admission, settlement, pembaruan lain).
+3. Jangan mengubah `server/src`. Usulan perbaikan ditulis di "Untuk Claude" beserta angka yang mendasarinya.
+
+## B. Bukti server nyata untuk daftar request, tab Request dan filter audit (`web/scripts/admin-requests-local-verify.mjs`, baru)
+
+Layar Hermes Tahap enam dan tujuh baru diuji dengan mock. Di skema privat Anda, dengan upstream tiruan loopback seperti `golden-path-local-verify.mjs`:
+
+1. Dua pelanggan dengan beberapa request lewat gateway: selesai normal, estimasi (klien memutus di tengah stream), dan satu `UNRESOLVED` yang dibuat lewat jalur pemulihan server sendiri (cari di `server/src/gateway.ts` bagaimana request `STREAMING` yang prosesnya hilang ditandai; jangan menulis baris `request` atau `hold` dengan SQL langsung, karena hold harus konsisten dengan ledger).
+2. `/admin/rekonsiliasi`: baris tampil dengan badge dan alasan yang benar; filter username, state (termasuk `UNRESOLVED`) dan model memberi baris yang benar dari server; tautan username membuka detail pelanggan.
+3. Detail pelanggan, tab Request: hanya request pelanggan itu (request pelanggan lain tidak muncul), paginasi lewat `requestBefore` bila lebih dari 50 baris.
+4. `/admin/audit`: sesudah menangguhkan dan memulihkan pelanggan lewat UI, kelompok "Status pelanggan" menampilkan "Pelanggan ditangguhkan" dan "Pelanggan dipulihkan" dengan username admin (bukan UUID); filter username pelaku dan ID target bekerja; lebih dari 50 event berpindah halaman lewat `nextBefore`. Sesudah jeda dan lanjut kill switch, kelompok "Pengaturan" menampilkan "Layanan dijeda" dan "Layanan dilanjutkan".
+5. Akhiri dengan `invariantViolations` kosong. Semua teks dari `messages.ts`.
+
+## C. Audit aksesibilitas layar baru (`a11y-audit.mjs`)
+
+Tambahkan tab Request di detail pelanggan (berisi baris), daftar request di `/admin/rekonsiliasi` (berisi baris dan keadaan tanpa hasil), dan `/admin/audit` dengan isian awalan khusus terbuka dan keadaan tanpa hasil; lebar 360 dan 1280.
+
+## D. Bila Claude sudah menulis di claude-log bahwa banner "layanan dijeda" untuk pelanggan (Hermes Tahap delapan) ada di `main`
+
+Di `admin-overview-local-verify.mjs`: selama layanan dijeda, portal pelanggan menampilkan banner jeda dan tidak menampilkannya lagi sesudah dilanjutkan. Bila belum ada di `main` saat Anda sampai di sini, lewati dan catat.
+
+## Batas berkas
+
+Boleh: berkas Anda, berkas baru di atas, `verify-all.mjs`, `a11y-audit.mjs`. Tidak boleh: `server/src/**`, migrasi, `package.json`, dependency baru, berkas Hermes, upstream nyata, situs publik.
+
+## Laporan
+
+Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, jangan push. Jangan menjalankan Playwright bersamaan dengan Hermes.

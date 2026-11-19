@@ -14,7 +14,7 @@ import { registerStatic } from './static.ts';
 import { creditsToMicro } from '../money.ts';
 import { overview } from '../overview.ts';
 import { listAudit } from '../audit.ts';
-import { gatewayState, listAllRequests, parseGatewayChange, setGatewayPaused } from '../control.ts';
+import { gatewayPaused, gatewayState, listAllRequests, parseGatewayChange, setGatewayPaused } from '../control.ts';
 
 export type AppDeps = { db: Db; key: Buffer; mailer: identity.Mailer; secureCookies: boolean; logger?: boolean; resolveHost?: Resolver; gateway?: Partial<GatewayDeps>;
   /** Folder with the built web app; when set it is served from this origin. */ webDist?: string;
@@ -143,7 +143,13 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.post('/api/redeem', async req => { const p = await customer(req); return vouchers.redeem(db, p, body(req).code, req.ip); });
 
   // ---- Customer data (API-013, API-018). Every read is scoped to the session's tenant. ----
-  app.get('/api/me', async req => { const p = await customer(req); return { username: p.username, tenantStatus: p.tenantStatus, version: p.tenantVersion }; });
+  app.get('/api/me', async req => {
+    const p = await customer(req);
+    // SCR-007 layanan-dijeda: only signed-in customers learn that the service is paused. A missing setting reads as paused,
+    // matching the gateway, which refuses service in that case.
+    const servicePaused = await gatewayPaused(db).catch(() => true);
+    return { username: p.username, tenantStatus: p.tenantStatus, version: p.tenantVersion, servicePaused };
+  });
   app.get('/api/balance', async req => {
     const p = await customer(req); const b = await ledger.getBalance(db, p.tenantId);
     return { currency: b.currency, postedMicro: String(b.posted), heldMicro: String(b.held), availableMicro: String(b.available) };
