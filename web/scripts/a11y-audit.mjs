@@ -1254,7 +1254,14 @@ try {
         await waitSettled(adminPage);
         await auditScreen({ page: adminPage, screen: '/admin/pelanggan (detail: Pemakaian)', width, viaRouteTransition: false, emptyData: false });
 
-        // Tab 4: Transaksi
+        // Tab 4: Request (berisi baris)
+        await detailSection.getByRole('tab', { name: m.customerRequestTab, exact: true }).click();
+        await waitSettled(adminPage);
+        const custReqSection = detailSection.locator(`section[aria-label="${m.customerRequests}"]`);
+        await custReqSection.locator('article.data-row').first().waitFor({ state: 'visible', timeout: 10_000 });
+        await auditScreen({ page: adminPage, screen: '/admin/pelanggan (detail: Request)', width, viaRouteTransition: false, emptyData: false });
+
+        // Tab 5: Transaksi
         await detailSection.getByRole('tab', { name: m.ledger, exact: true }).click();
         await waitSettled(adminPage);
         await auditScreen({ page: adminPage, screen: '/admin/pelanggan (detail: Transaksi)', width, viaRouteTransition: false, emptyData: false });
@@ -1360,6 +1367,10 @@ try {
       }
 
       if (r.path === '/admin/rekonsiliasi') {
+        const allReqSection = adminPage.locator(`section[aria-label="${m.allCustomerRequests}"]`);
+        await allReqSection.locator('article.data-row').first().waitFor({ state: 'visible', timeout: 10_000 });
+        await auditScreen({ page: adminPage, screen: '/admin/rekonsiliasi (daftar request terisi)', width, viaRouteTransition: false, emptyData: false });
+
         const resolveBtn = adminPage.getByRole('button', { name: m.resolveRequest, exact: true }).first();
         await auditDialogBehavior({
           page: adminPage,
@@ -1369,6 +1380,31 @@ try {
           triggerLocator: resolveBtn,
           open: () => resolveBtn.click(),
         });
+
+        await allReqSection.getByLabel(m.adminRequestUsername).fill('tidak_ada_pelanggan_audit');
+        await allReqSection.getByRole('button', { name: m.search, exact: true }).click();
+        await allReqSection.getByRole('heading', { name: m.adminRequestsNoMatches, exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+        await waitSettled(adminPage);
+        await auditScreen({ page: adminPage, screen: '/admin/rekonsiliasi (daftar request tanpa hasil)', width, viaRouteTransition: false, emptyData: false });
+        await allReqSection.getByRole('button', { name: m.clearFilters, exact: true }).click();
+        await allReqSection.locator('article.data-row').first().waitFor({ state: 'visible', timeout: 10_000 });
+      }
+
+      if (r.path === '/admin/audit') {
+        const auditFilterPanel = adminPage.locator(`section[aria-label="${m.auditFilters}"]`);
+        await auditFilterPanel.getByLabel(m.auditActionFilter).selectOption('__custom');
+        const customInput = auditFilterPanel.getByLabel(m.auditCustomAction);
+        await customInput.waitFor({ state: 'visible', timeout: 5_000 });
+        await auditScreen({ page: adminPage, screen: '/admin/audit (awalan khusus terbuka)', width, viaRouteTransition: false, emptyData: false });
+
+        await customInput.fill('tidak_ada.aksi_audit');
+        await auditFilterPanel.getByRole('button', { name: m.search, exact: true }).click();
+        await adminPage.getByRole('heading', { name: m.auditNoMatches, exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+        await waitSettled(adminPage);
+        await auditScreen({ page: adminPage, screen: '/admin/audit (awalan khusus tanpa hasil)', width, viaRouteTransition: false, emptyData: false });
+
+        await auditFilterPanel.getByRole('button', { name: m.clearFilters, exact: true }).click();
+        await adminPage.locator('article.data-row').first().waitFor({ state: 'visible', timeout: 10_000 });
       }
 
       if (r.path === '/admin/batas-lebih-pakai') {
