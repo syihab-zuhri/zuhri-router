@@ -135,6 +135,7 @@ type TraceState = {
   enabled: boolean;
   nextTxId: number;
   events: QueryEvent[];
+  poolWaitSamples: number[] | null;
 };
 
 function instrumentPool(rawDb: Db, trace: TraceState): Db {
@@ -142,7 +143,17 @@ function instrumentPool(rawDb: Db, trace: TraceState): Db {
     get(target, prop, receiver) {
       if (prop === 'query') {
         return async (...args: unknown[]) => {
-          if (!trace.enabled) return (target.query as (...a: unknown[]) => Promise<unknown>)(...args);
+          if (!trace.enabled) {
+            if (!trace.poolWaitSamples) return (target.query as (...a: unknown[]) => Promise<unknown>)(...args);
+            const tConn0 = performance.now();
+            const client = await target.connect();
+            trace.poolWaitSamples.push(performance.now() - tConn0);
+            try {
+              return await (client.query as (...a: unknown[]) => Promise<unknown>)(...args);
+            } finally {
+              client.release();
+            }
+          }
           const sql = normalizeSql(args[0]);
           const tConn0 = performance.now();
           const client = await target.connect();
@@ -161,7 +172,13 @@ function instrumentPool(rawDb: Db, trace: TraceState): Db {
       if (prop === 'connect') {
         return async (...args: unknown[]) => {
           if (!trace.enabled || args.length > 0) {
-            return (target.connect as (...a: unknown[]) => Promise<pg.PoolClient>)(...args);
+            if (!trace.poolWaitSamples || args.length > 0) {
+              return (target.connect as (...a: unknown[]) => Promise<pg.PoolClient>)(...args);
+            }
+            const tConn0 = performance.now();
+            const client = await target.connect();
+            trace.poolWaitSamples.push(performance.now() - tConn0);
+            return client;
           }
           const tConn0 = performance.now();
           const client = await target.connect();
@@ -367,7 +384,7 @@ try {
   mock = await startBenchMock();
   resetRouteHealth();
 
-  const trace: TraceState = { enabled: false, nextTxId: 0, events: [] };
+  const trace: TraceState = { enabled: false, nextTxId: 0, events: [], poolWaitSamples: null };
   const appDb = instrumentPool(db, trace);
 
   app = await buildApp({
@@ -454,8 +471,8 @@ try {
   };
 
   process.stdout.write(`Machine specs: OS=${specs.os} | CPU=${specs.cpu} | RAM=${specs.ramGiB} GiB | Node=${specs.node} | DB=${specs.postgres} | PoolMax=${poolMax}\n\n`);
-  process.stdout.write('| Mode | Concurrency | Tenants | Direct TTFB p50 | Gateway TTFB p50 | Overhead TTFB p50 | Direct TTFB p95 | Gateway TTFB p95 | Overhead TTFB p95 | Direct Total p50 | Gateway Total p50 | Overhead Total p50 | Direct Total p95 | Gateway Total p95 | Overhead Total p95 |\n');
-  process.stdout.write('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n');
+  process.stdout.write('| Mode | Concurrency | Tenants | Direct TTFB p50 | Gateway TTFB p50 | Overhead TTFB p50 | Direct TTFB p95 | Gateway TTFB p95 | Overhead TTFB p95 | Direct Total p50 | Gateway Total p50 | Overhead Total p50 | Direct Total p95 | Gateway Total p95 | Overhead Total p95 | PoolWait/req avg | PoolWait/acq p95 | PoolWait/acq max |\n');
+  process.stdout.write('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n');
 
   for (const sc of scenarios) {
     const directBody = JSON.stringify({ model: 'bench-model', stream: sc.stream, max_tokens: 64, messages: [{ role: 'user', content: 'halo benchmark' }] });
@@ -474,8 +491,16 @@ try {
         directCache.set(lvl.concurrency, direct);
       }
       const sliceHeaders = gwHeadersAll.slice(0, lvl.tenants);
+      const waits: number[] = [];
+      trace.poolWaitSamples = waits;
       const gw = await runBatch(gwUrl, sliceHeaders, gwBody, lvl.total, lvl.concurrency);
       await drainSettlements(db);
+      trace.poolWaitSamples = null;
+
+      const sortedWaits = [...waits].sort((a, b) => a - b);
+      const poolWaitPerReqAvg = waits.reduce((s, v) => s + v, 0) / Math.max(1, lvl.total);
+      const poolWaitAcqP95 = percentile(sortedWaits, 95);
+      const poolWaitAcqMax = sortedWaits.length > 0 ? sortedWaits[sortedWaits.length - 1] : 0;
 
       const dTtfbP50 = gw.ttfbP50 - direct.ttfbP50;
       const dTtfbP95 = gw.ttfbP95 - direct.ttfbP95;
@@ -483,7 +508,7 @@ try {
       const dTotalP95 = gw.totalP95 - direct.totalP95;
 
       process.stdout.write(
-        `| ${sc.name} | ${lvl.concurrency} | ${lvl.tenants} | ${fmt(direct.ttfbP50)} | ${fmt(gw.ttfbP50)} | ${fmt(dTtfbP50)} | ${fmt(direct.ttfbP95)} | ${fmt(gw.ttfbP95)} | ${fmt(dTtfbP95)} | ${fmt(direct.totalP50)} | ${fmt(gw.totalP50)} | ${fmt(dTotalP50)} | ${fmt(direct.totalP95)} | ${fmt(gw.totalP95)} | ${fmt(dTotalP95)} |\n`,
+        `| ${sc.name} | ${lvl.concurrency} | ${lvl.tenants} | ${fmt(direct.ttfbP50)} | ${fmt(gw.ttfbP50)} | ${fmt(dTtfbP50)} | ${fmt(direct.ttfbP95)} | ${fmt(gw.ttfbP95)} | ${fmt(dTtfbP95)} | ${fmt(direct.totalP50)} | ${fmt(gw.totalP50)} | ${fmt(dTotalP50)} | ${fmt(direct.totalP95)} | ${fmt(gw.totalP95)} | ${fmt(dTotalP95)} | ${fmt(poolWaitPerReqAvg)} | ${fmt(poolWaitAcqP95)} | ${fmt(poolWaitAcqMax)} |\n`,
       );
     }
   }
