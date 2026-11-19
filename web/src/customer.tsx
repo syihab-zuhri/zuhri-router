@@ -39,10 +39,10 @@ function FirstUseChecklist({ username, postedMicro, keys }: { username: string; 
 }
 
 export function HomePage() {
-  const me = useResource<{ username: string }>('/api/me');
+  const me = useResource<{ username: string; servicePaused?: boolean }>('/api/me');
   const balance = useResource<Balance>('/api/balance'); const packs = useResource<{ packs: Pack[] }>('/api/packs');
   const keys = useResource<{ keys: { id: string; status: string }[] }>('/api/keys?limit=1');
-  return <><PageTitle subtitle={m.homeSubtitle}>{m.home}</PageTitle>{balance.isPending ? <Pending /> : balance.isError ? <ErrorBox error={balance.error} retry={() => void balance.refetch()} /> : <><BalanceView value={balance.data} /><p className="muted">{m.updated}: {formatDate(new Date(balance.dataUpdatedAt).toISOString())}</p>{BigInt(balance.data.availableMicro) <= 0n && <Alert>{m.zeroBalance} <Link to="/isi-saldo">{m.redeem}</Link></Alert>}</>}
+  return <><PageTitle subtitle={m.homeSubtitle}>{m.home}</PageTitle>{me.isSuccess && <section className="panel" aria-label={m.serviceStatus}><h2>{m.serviceStatus}</h2><p>{me.data.servicePaused === true ? m.servicePaused : m.serviceRunning}</p></section>}{balance.isPending ? <Pending /> : balance.isError ? <ErrorBox error={balance.error} retry={() => void balance.refetch()} /> : <><BalanceView value={balance.data} /><p className="muted">{m.updated}: {formatDate(new Date(balance.dataUpdatedAt).toISOString())}</p>{BigInt(balance.data.availableMicro) <= 0n && <Alert>{m.zeroBalance} <Link to="/isi-saldo">{m.redeem}</Link></Alert>}</>}
     {me.isSuccess && balance.isSuccess && (keys.isError ? <ErrorBox error={keys.error} retry={() => void keys.refetch()} /> : keys.isSuccess && <FirstUseChecklist username={me.data.username} postedMicro={balance.data.postedMicro} keys={keys.data.keys} />)}
     <section className="panel stack"><h2>{m.packs}</h2><p>{m.packsNote}</p><p className="refund-policy">{m.refundPolicy}</p>{packs.isPending ? <Pending /> : packs.isError ? <ErrorBox error={packs.error} retry={() => void packs.refetch()} /> : !packs.data.packs.length ? <Empty title={m.noPacks} /> : <DataList caption={m.packs}>{packs.data.packs.map(pack => <article key={pack.id} className="data-row"><h3>{pack.name}</h3>{pack.isPromo && <Badge status="PROMO" />}<dl><dt>{m.tokens}</dt><dd>{grouped(pack.tokens)}</dd><dt>{m.priceIdr}</dt><dd>Rp{grouped(pack.displayPriceIdr)}</dd></dl></article>)}</DataList>}</section></>;
 }

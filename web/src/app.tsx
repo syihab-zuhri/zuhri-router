@@ -65,9 +65,10 @@ function Shell({ admin = false }: { admin?: boolean }) {
     return <main className="standalone"><PageTitle>{m.failed}</PageTitle><ErrorBox error={probe.error} retry={() => void probe.refetch()} /></main>;
   }
   const tenant = !admin && probe.data && typeof probe.data === 'object' && 'tenantStatus' in probe.data ? probe.data.tenantStatus : null;
+  const servicePaused = !admin && probe.data !== null && typeof probe.data === 'object' && 'servicePaused' in probe.data && probe.data.servicePaused === true;
   return <div className="app-shell"><a className="skip" href="#main">{m.skip}</a><aside className="desktop-nav"><p className="product-name">{m.product}</p><p>{admin ? m.backoffice : m.portal}</p><Navigation admin={admin} /></aside>
     <div className="workspace"><header className="topbar"><Button className="secondary menu-trigger" onClick={() => setOpen(true)}>{m.menu}</Button><span>{admin ? m.backoffice : m.portal}</span>{!admin && <ShellBalance />}<Button className="secondary" busy={action.busy} onClick={() => void action.run(async () => { await post(admin ? '/admin/api/logout' : '/api/auth/logout', {}); navigate(admin ? '/admin/masuk' : '/masuk', { replace: true }); })}>{m.logout}</Button></header>
-      <main id="main" tabIndex={-1}>{tenant === 'SUSPENDED' && <Alert>{m.suspended}</Alert>}{action.error !== null && <ErrorBox error={action.error} />}<Outlet /></main>
+      <main id="main" tabIndex={-1}>{tenant === 'SUSPENDED' && <Alert>{m.suspended}</Alert>}{servicePaused && <Alert>{m.servicePausedMessage}</Alert>}{action.error !== null && <ErrorBox error={action.error} />}<Outlet /></main>
     </div>{open && <Modal title={m.menu} onClose={() => setOpen(false)}><Button className="secondary" autoFocus onClick={() => setOpen(false)}>{m.closeMenu}</Button><Navigation admin={admin} close={() => setOpen(false)} /></Modal>}</div>;
 }
 function ShellBalance() {

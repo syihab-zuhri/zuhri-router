@@ -240,3 +240,14 @@ Bukti: typecheck web, unit 6/6 (test baru gagal pada versi Hermes), Playwright t
 ### Terpasang `zrouter:r11191901`
 
 Isi: kill switch dan daftar request (server dan layar), filter audit (server dan layar), tab Request, `servicePaused`. Backup sebelum pemasangan `zrouter-20261119T120238Z.dump`. Migrasi 014 berjalan (14 migrasi; `gateway_paused` = 0, layanan berjalan). Bukti: suite server 145/145, `verify-all.mjs` 13/13 (Playwright 76/76, audit aksesibilitas 0 temuan), `smoke-public.sh` 7/7, `restore-drill.sh` PASS pada backup sesudah pemasangan `zrouter-20261119T120454Z.dump` (14 migrasi, tanpa pelanggaran invariant).
+
+## 2026-11-19: Tahap delapan Hermes digabung
+
+Hermes mengerjakan banner layanan dijeda dan status layanan di Beranda, rincian event audit, dan halaman lanjutan yang kosong, lengkap dengan test, log, dan catatan jujur bahwa sebagian RED tidak sah. Claude memperbaiki:
+
+- Rincian audit menerjemahkan setiap nilai string yang kebetulan berupa kode status (misalnya `reason: "ACTIVE"` menjadi "Aktif"). Kini hanya kunci status (`previousStatus`, `nextStatus`, `from`, `to`) yang diterjemahkan, memakai `m.stateText`/`statusText` yang sudah dipakai `Badge`. Label `RESTORED` dihapus karena server tidak pernah menulisnya, sedangkan `CLOSED` (dari `account.close`) sebelumnya tidak berlabel.
+- Label tambahan untuk kunci uang yang memang ditulis server: `debitMicro` (Debit akhir), `beforeMicro`/`afterMicro` (Sebelum/Sesudah), `previousReason` (Alasan sebelumnya), `saleRef`. Key React kini kunci mentah, bukan label.
+- Halaman audit lanjutan yang kosong menampilkan dua tombol "Halaman awal" (di keadaan kosong dan di navigasi paginasi); test Hermes mengakalinya dengan `locator('.empty')`. Navigasi kini hanya tampil bila ada baris, seperti daftar request, dan test memeriksa tombolnya tinggal satu.
+- Indentasi test galat audit dirapikan.
+
+Teks yang dihapus: `auditStatusActive`, `auditStatusSuspended`, `auditStatusRestored`. Teks baru: `auditPreviousReason`, `auditBefore`, `auditAfter`.

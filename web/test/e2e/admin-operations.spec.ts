@@ -107,7 +107,7 @@ test('audit menerjemahkan aksi, memfilter aksi/pelaku/target dan memakai usernam
   await page.getByRole('button', { name: m.next, exact: true }).click();
   await expect.poll(() => calls.at(-1)?.searchParams.get('before')).toBe('80');
   expect(calls.at(-1)?.searchParams.get('actor')).toBe('admin_uji');
-  await expect(page.getByRole('heading', { name: m.auditNoMatches, exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: m.noMoreData, exact: true })).toBeVisible();
   await page.getByLabel(m.auditTargetId).fill('tidak-ada');
   await page.getByRole('button', { name: m.search, exact: true }).click();
   await expect.poll(() => calls.at(-1)?.searchParams.get('targetId')).toBe('tidak-ada');
@@ -134,11 +134,56 @@ test('audit membedakan loading dan daftar yang memang kosong', async ({ page }) 
   await expect(page.getByRole('heading', { name: m.noAudit, exact: true })).toBeVisible();
 });
 
+test('audit menampilkan rincian terlokalisasi, nilai mikro-kredit, JSON pendek, dan melewati summary kosong', async ({ page }) => {
+  await page.route('**/admin/api/audit**', route => route.fulfill({ json: { events: [
+    { id: 'detail-1', actorUser: 'admin_uji', actorUsername: 'admin_uji', actorKind: 'ADMIN', action: 'tenant.suspend', targetType: 'tenant', targetId: 'tenant_uji', summary: { reason: 'Pemeriksaan selesai', previousStatus: 'ACTIVE', nextStatus: 'CLOSED', amountMicro: '25000000', customField: 'nilai mentah', method: 'SUSPENDED', nested: { key: 'value', large: 'x'.repeat(240) } }, createdAt: '2026-11-14T00:00:00.000Z' },
+    { id: 'detail-2', actorUser: null, actorUsername: null, actorKind: 'SYSTEM', action: 'request.recover_release', targetType: 'request', targetId: 'request_uji', summary: {}, createdAt: '2026-11-14T00:00:01.000Z' },
+  ], nextBefore: null } }));
+  await mount(page, 'AuditPage');
+  const events = page.getByRole('region', { name: m.audit });
+  const first = events.locator('.data-row').filter({ hasText: 'tenant_uji' });
+  const details = first.locator('details');
+  await expect(details).toHaveCount(1);
+  await details.getByText(m.details, { exact: true }).click();
+  await expect(details).toContainText('Alasan');
+  await expect(details).toContainText('Pemeriksaan selesai');
+  await expect(details).toContainText('Status sebelumnya');
+  await expect(details).toContainText('Aktif');
+  await expect(details).toContainText('Status berikutnya');
+  await expect(details).toContainText('Ditutup');
+  // A status code under a key that is not a status key stays raw.
+  await expect(details.locator('div').filter({ hasText: 'method' }).locator('dd')).toHaveText('SUSPENDED');
+  await expect(details).toContainText('Nominal');
+  await expect(details).toContainText('25 kredit token');
+  await expect(details).toContainText('customField');
+  await expect(details).toContainText('nilai mentah');
+  const nested = details.locator('dd').filter({ hasText: '"key"' });
+  await expect(nested).toContainText('"value"');
+  expect((await nested.innerText()).length).toBeLessThanOrEqual(180);
+  await expect(events.locator('.data-row').filter({ hasText: 'request_uji' }).locator('details')).toHaveCount(0);
+});
+
 test('audit memberi pesan dan aksi ulang saat server gagal', async ({ page }) => {
   await page.route('**/admin/api/audit**', route => route.fulfill({ status: 500, json: { error: { code: 'internal_error' } } }));
   await mount(page, 'AuditPage');
   await expect(page.getByRole('alert')).toContainText('Server belum dapat menyelesaikan tindakan. Muat ulang data dan periksa hasil sebelum mencoba lagi.');
   await expect(page.getByRole('alert').getByRole('button', { name: m.retry, exact: true })).toBeVisible();
+});
+
+test('audit menandai halaman lanjutan kosong dan menyediakan jalan ke halaman awal', async ({ page }) => {
+  const calls: URL[] = [];
+  await page.route('**/admin/api/audit**', route => {
+    const url = new URL(route.request().url()); calls.push(url);
+    if (url.searchParams.has('before')) return route.fulfill({ json: { events: [], nextBefore: null } });
+    return route.fulfill({ json: { events: [{ id: 'cursor-row', actorUser: 'admin_uji', actorUsername: 'admin_uji', actorKind: 'ADMIN', action: 'ledger.admin_topup', targetType: 'tenant', targetId: 'tenant_uji', summary: {}, createdAt: '2026-11-14T00:00:00.000Z' }], nextBefore: 'cursor-1' } });
+  });
+  await mount(page, 'AuditPage');
+  await page.getByRole('button', { name: m.next, exact: true }).click();
+  await expect.poll(() => calls.at(-1)?.searchParams.get('before')).toBe('cursor-1');
+  await expect(page.getByRole('heading', { name: m.noMoreData, exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: m.first, exact: true })).toHaveCount(1);
+  await page.getByRole('button', { name: m.first, exact: true }).click();
+  await expect(page.getByRole('heading', { name: m.auditActionText['ledger.admin_topup'], exact: true })).toBeVisible();
 });
 
 test('audit memuat metadata dan meneruskan cursor sebelum ke server', async ({ page }) => {
@@ -152,5 +197,5 @@ test('audit memuat metadata dan meneruskan cursor sebelum ke server', async ({ p
   await expect(page.getByText('admin_uji', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: m.next, exact: true }).click();
   await expect.poll(() => requests.at(-1)?.searchParams.get('before')).toBe('80');
-  await expect(page.getByRole('heading', { name: m.noAudit, exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: m.noMoreData, exact: true })).toBeVisible();
 });

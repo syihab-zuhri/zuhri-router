@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router';
 import { post } from './api.ts';
 import { formatCredits, formatDate } from './credits.ts';
 import { useAdminAction, useResource } from './hooks.tsx';
-import { m } from './messages.ts';
+import { m, statusText } from './messages.ts';
 import { AdminRequestList } from './admin-request-list.tsx';
 import { Alert, Badge, Button, DataList, Empty, ErrorBox, Field, Modal, PageTitle, Pending } from './ui.tsx';
 
@@ -16,6 +16,46 @@ const auditActionGroups = Object.keys(m.auditActionGroups) as (keyof typeof m.au
 
 function auditActionLabel(action: string): string {
   return Object.hasOwn(m.auditActionText, action) ? m.auditActionText[action as keyof typeof m.auditActionText] : action;
+}
+
+const auditSummaryLabels: Record<string, string> = {
+  reason: m.auditReason,
+  previousReason: m.auditPreviousReason,
+  previousStatus: m.auditPreviousStatus,
+  nextStatus: m.auditNextStatus,
+  amountMicro: m.amount,
+  debitMicro: m.adminRequestDebit,
+  beforeMicro: m.auditBefore,
+  afterMicro: m.auditAfter,
+  saleRef: m.saleRef,
+};
+// Only these keys carry a status code; any other string (a reason, a name) is shown exactly as written.
+const auditStatusKeys = new Set(['previousStatus', 'nextStatus', 'from', 'to']);
+
+function auditStatusLabel(value: string): string {
+  return Object.hasOwn(m.stateText, value) ? m.stateText[value as keyof typeof m.stateText] : statusText[value] ?? value;
+}
+
+function auditSummaryEntries(summary: unknown): { key: string; label: string; value: string }[] {
+  if (summary === null || typeof summary !== 'object' || Array.isArray(summary)) return [];
+  return Object.entries(summary).map(([key, value]) => {
+    const label = auditSummaryLabels[key] ?? key;
+    if (key.endsWith('Micro') && typeof value === 'string' && /^-?(0|[1-9][0-9]*)$/.test(value)) return { key, label, value: `${formatCredits(value)} ${m.credits}` };
+    if (value !== null && typeof value === 'object') {
+      const json = JSON.stringify(value);
+      return { key, label, value: json.length > 160 ? `${json.slice(0, 157)}…` : json };
+    }
+    if (typeof value === 'string') return { key, label, value: auditStatusKeys.has(key) ? auditStatusLabel(value) : value };
+    return { key, label, value: value === null ? 'null' : String(value) };
+  });
+}
+
+function AuditRow({ event }: { event: AuditEvent }) {
+  const entries = auditSummaryEntries(event.summary);
+  return <article className="data-row">
+    <div className="request-heading"><h2>{auditActionLabel(event.action)}</h2><Badge status={event.actorKind} /></div><dl><dt>{m.time}</dt><dd>{formatDate(event.createdAt)}</dd><dt>{m.actor}</dt><dd>{event.actorKind === 'SYSTEM' ? m.system : event.actorUsername ?? m.auditUnknownActor}</dd><dt>{m.target}</dt><dd>{event.targetType}: {event.targetId ?? m.auditUnknownTarget}</dd><dt>{m.auditId}</dt><dd className="mono">{event.id}</dd></dl>
+    {entries.length > 0 && <details className="audit-details"><summary>{m.details}</summary><dl>{entries.map(entry => <div key={entry.key}><dt>{entry.label}</dt><dd>{entry.value}</dd></div>)}</dl></details>}
+  </article>;
 }
 
 export function AuditPage() {
@@ -81,13 +121,11 @@ export function AuditPage() {
         <div className="actions"><Button type="submit">{m.search}</Button><Button className="secondary" type="button" disabled={!hasFilters} onClick={clearFilters}>{m.clearFilters}</Button></div>
       </form>
     </section>
-    {result.isPending ? <Pending /> : result.isError ? <ErrorBox error={result.error} retry={() => { void result.refetch(); }} /> : result.data.events.length === 0 ? <Empty title={hasFilters ? m.auditNoMatches : m.noAudit} /> : <DataList caption={m.audit}>{result.data.events.map(event => <article className="data-row" key={event.id}>
-      <div className="request-heading"><h2>{auditActionLabel(event.action)}</h2><Badge status={event.actorKind} /></div><dl><dt>{m.time}</dt><dd>{formatDate(event.createdAt)}</dd><dt>{m.actor}</dt><dd>{event.actorKind === 'SYSTEM' ? m.system : event.actorUsername ?? m.auditUnknownActor}</dd><dt>{m.target}</dt><dd>{event.targetType}: {event.targetId ?? m.auditUnknownTarget}</dd><dt>{m.auditId}</dt><dd className="mono">{event.id}</dd></dl>
-    </article>)}</DataList>}
-    {result.isSuccess && (before || result.data.nextBefore || result.data.events.length > 0) && <nav className="pagination" aria-label={m.audit}>
+    {result.isPending ? <Pending /> : result.isError ? <ErrorBox error={result.error} retry={() => { void result.refetch(); }} /> : result.data.events.length === 0 ? before ? <section className="empty"><h2>{m.noMoreData}</h2><Button className="secondary" onClick={() => page(null)}>{m.first}</Button></section> : <Empty title={hasFilters ? m.auditNoMatches : m.noAudit} /> : <DataList caption={m.audit}>{result.data.events.map(event => <AuditRow event={event} key={event.id} />)}</DataList>}
+    {result.isSuccess && result.data.events.length > 0 && <nav className="pagination" aria-label={m.audit}>
       {before && <Button className="secondary" disabled={result.isFetching} onClick={() => page(null)}>{m.first}</Button>}
       {result.data.nextBefore && <Button className="secondary" disabled={result.isFetching} onClick={() => page(result.data.nextBefore)}>{m.next}</Button>}
-      {result.data.events.length > 0 && <small>{m.auditPageSize}</small>}
+      <small>{m.auditPageSize}</small>
     </nav>}
   </>;
 }

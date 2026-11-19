@@ -204,3 +204,11 @@ Tahap tujuh digabung (`9e117d2`); baca `docs/handoff/claude-log.md` bagian "2026
 4. Jangan menjalankan Playwright bersamaan dengan Antigravity.
 
 Tetap jangan menyentuh berkas Antigravity (daftar di Tahap enam).
+
+## Tahap sembilan (2026-11-19)
+
+Tahap delapan digabung; ringkasan perbaikan Claude ada di `docs/handoff/claude-log.md` bagian "Tahap delapan Hermes digabung". Singkatnya: nilai status hanya diterjemahkan pada kunci status, `RESTORED` bukan status server (yang ada `CLOSED`), dan tombol "Halaman awal" tidak lagi muncul dua kali di audit. Aturan selesai dari Tahap tujuh tetap berlaku.
+
+1. **Status layanan selalu baru**. Kini banner jeda hanya diperbarui saat halaman dimuat ulang atau Beranda dibuka. Muat ulang `/api/me` setiap kali rute portal berpindah dan saat tab kembali terlihat (`visibilitychange`), tanpa menampilkan layar memuat dan tanpa mengganti banner yang sudah ada dengan elemen baru. Bila pembacaan ulang gagal, jangan ganti seluruh shell dengan layar galat; pertahankan data terakhir. Test: jeda lalu lanjut tanpa memuat ulang halaman, galat jaringan pada pembacaan ulang, dan elemen banner tetap sama sesudah berpindah halaman.
+2. **Label kunci rincian audit**. Beri label admin untuk semua kunci `summary` yang ditulis server (cari `summary: {` di `server/src`), misalnya `entryId`, `tenantId`, `version`, `previousVersion`, `method`, `kind`, `email`, `username`, `name`, `modelId`, `upstream`, `protocol`, `priority`, `before`, `after`. Tambahkan test unit yang memindai `server/src` seperti `web/test/unit/audit-actions.test.ts`, sehingga kunci baru tanpa label membuat test gagal. Kunci yang tidak dikenal tetap tampil mentah.
+3. Jangan menjalankan Playwright bersamaan dengan Antigravity. Tetap jangan menyentuh berkas Antigravity (daftar di Tahap enam).

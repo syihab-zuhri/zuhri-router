@@ -75,6 +75,26 @@ test('detail pelanggan menyediakan enam tab yang bertahan di query string', asyn
   expect(overflow.document, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.viewport);
 });
 
+test('tab Request membedakan halaman lanjutan kosong dan menawarkan halaman awal', async ({ page }) => {
+  const calls: URLSearchParams[] = [];
+  await page.route('**/admin/api/customers?*', route => route.fulfill({ json: { customers: [{ username: 'pelanggan', tenantStatus: 'ACTIVE', createdAt: '2026-11-15T00:00:00.000Z', postedMicro: customer.postedMicro, heldMicro: customer.heldMicro }], nextAfter: null } }));
+  await page.route('**/admin/api/customers/pelanggan', route => route.fulfill({ json: customer }));
+  await page.route('**/admin/api/requests?*', route => {
+    const url = new URL(route.request().url()); calls.push(url.searchParams);
+    if (url.searchParams.has('before')) return route.fulfill({ json: { requests: [], nextBefore: null } });
+    return route.fulfill({ json: { requests: [{ id: 'req-new', username: 'pelanggan', keyName: 'Key uji', model: 'model/baru', protocol: 'CHAT', stream: true, state: 'SETTLED', outcome: 'completed', final: true, heldMicro: '0', debitMicro: '250000', estimated: false, usage: null, createdAt: '2026-11-18T00:00:00.000Z' }], nextBefore: 'cursor-1' } });
+  });
+  await mount(page, 'admin-customers', 'CustomersPage');
+  await page.getByRole('button', { name: m.customerDetails }).click();
+  await page.getByRole('tab', { name: m.customerRequestTab }).click();
+  const requests = page.getByRole('region', { name: m.customerRequests });
+  await requests.getByRole('button', { name: m.next, exact: true }).click();
+  await expect.poll(() => calls.at(-1)?.get('before')).toBe('cursor-1');
+  await expect(requests.getByRole('heading', { name: m.noMoreData, exact: true })).toBeVisible();
+  await requests.getByRole('button', { name: m.first, exact: true }).click();
+  await expect(requests.getByText('model/baru')).toBeVisible();
+});
+
 test('tab Request meminta riwayat dengan username tetap dan menjaga cursor per pelanggan', async ({ page }) => {
   const calls: URL[] = [];
   await page.route('**/admin/api/customers?*', route => route.fulfill({ json: { customers: [{ username: 'pelanggan', tenantStatus: 'ACTIVE', createdAt: '2026-11-15T00:00:00.000Z', postedMicro: customer.postedMicro, heldMicro: customer.heldMicro }], nextAfter: null } }));

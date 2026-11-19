@@ -63,6 +63,28 @@ test('daftar request lintas pelanggan: baris, filter, paginasi dan tautan ke pel
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
 
+test('rekonsiliasi menandai halaman request lanjutan kosong', async ({ page }) => {
+  const calls: URLSearchParams[] = [];
+  await page.route('**/admin/api/**', route => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/admin/api/packs') return route.fulfill({ json: { packs: [] } });
+    if (url.pathname === '/admin/api/requests/unresolved') return route.fulfill({ json: { requests: [] } });
+    if (url.pathname === '/admin/api/requests') {
+      calls.push(url.searchParams);
+      if (url.searchParams.has('before')) return route.fulfill({ json: { requests: [], nextBefore: null } });
+      return route.fulfill({ json: { requests: [row({})], nextBefore: 'cursor-1' } });
+    }
+    return route.fulfill({ status: 404, json: { error: { code: 'not_found' } } });
+  });
+  await page.goto('/admin/rekonsiliasi');
+  const list = page.getByRole('region', { name: m.allCustomerRequests });
+  await list.getByRole('button', { name: m.next, exact: true }).click();
+  await expect.poll(() => calls.at(-1)?.get('before')).toBe('cursor-1');
+  await expect(list.getByRole('heading', { name: m.noMoreData, exact: true })).toBeVisible();
+  await list.getByRole('button', { name: m.first, exact: true }).click();
+  await expect(list.getByRole('link', { name: 'budi' }).first()).toBeVisible();
+});
+
 test('fokus berpindah ke judul halaman sesudah Shell selesai memuat, juga pada halaman masuk', async ({ page }) => {
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
