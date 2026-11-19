@@ -1114,6 +1114,23 @@ try {
     }
   }
 
+  // Keadaan layanan-dijeda di portal pelanggan (Beranda + /isi-saldo pada 360 dan 1280)
+  await withTx(db, tx => control.setGatewayPaused(tx, { paused: true, reason: 'Audit layanan dijeda portal', actorUser: admin.userId }));
+  for (const width of [360, 1280]) {
+    const height = width === 360 ? 640 : 800;
+    await custPage.setViewportSize({ width, height });
+    await custPage.goto(`${webBase}/beranda`);
+    await custPage.getByRole('status').filter({ hasText: m.servicePausedMessage }).waitFor({ state: 'visible', timeout: 10_000 });
+    await custPage.getByRole('region', { name: m.serviceStatus }).getByText(m.servicePaused, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+    await waitSettled(custPage);
+    await auditScreen({ page: custPage, screen: '/beranda (layanan-dijeda)', width, viaRouteTransition: false, emptyData: false });
+
+    await navigateShell(custPage, '/isi-saldo', width);
+    await custPage.getByRole('status').filter({ hasText: m.servicePausedMessage }).waitFor({ state: 'visible', timeout: 10_000 });
+    await auditScreen({ page: custPage, screen: '/isi-saldo (layanan-dijeda)', width, viaRouteTransition: true, emptyData: false });
+  }
+  await withTx(db, tx => control.setGatewayPaused(tx, { paused: false, reason: null, actorUser: admin.userId }));
+
   await custCtx.close();
   await custShadowCtx.close();
 
@@ -1388,9 +1405,22 @@ try {
         await auditScreen({ page: adminPage, screen: '/admin/rekonsiliasi (daftar request tanpa hasil)', width, viaRouteTransition: false, emptyData: false });
         await allReqSection.getByRole('button', { name: m.clearFilters, exact: true }).click();
         await allReqSection.locator('article.data-row').first().waitFor({ state: 'visible', timeout: 10_000 });
+
+        await adminPage.goto(`${webBase}/admin/rekonsiliasi?before=2020-01-01T00:00:00.000000Z`);
+        await allReqSection.getByRole('heading', { name: m.noMoreData, exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+        await waitSettled(adminPage);
+        await auditScreen({ page: adminPage, screen: '/admin/rekonsiliasi (tidak ada data lagi)', width, viaRouteTransition: false, emptyData: false });
+        await allReqSection.getByRole('button', { name: m.first, exact: true }).click();
+        await allReqSection.locator('article.data-row').first().waitFor({ state: 'visible', timeout: 10_000 });
       }
 
       if (r.path === '/admin/audit') {
+        const firstAuditDetailsSummary = adminPage.locator('details.audit-details summary').first();
+        await firstAuditDetailsSummary.waitFor({ state: 'visible', timeout: 10_000 });
+        await firstAuditDetailsSummary.click();
+        await adminPage.locator('details.audit-details[open]').first().waitFor({ state: 'visible', timeout: 5_000 });
+        await auditScreen({ page: adminPage, screen: '/admin/audit (Rincian terbuka)', width, viaRouteTransition: false, emptyData: false });
+
         const auditFilterPanel = adminPage.locator(`section[aria-label="${m.auditFilters}"]`);
         await auditFilterPanel.getByLabel(m.auditActionFilter).selectOption('__custom');
         const customInput = auditFilterPanel.getByLabel(m.auditCustomAction);
@@ -1404,6 +1434,13 @@ try {
         await auditScreen({ page: adminPage, screen: '/admin/audit (awalan khusus tanpa hasil)', width, viaRouteTransition: false, emptyData: false });
 
         await auditFilterPanel.getByRole('button', { name: m.clearFilters, exact: true }).click();
+        await adminPage.locator('article.data-row').first().waitFor({ state: 'visible', timeout: 10_000 });
+
+        await adminPage.goto(`${webBase}/admin/audit?before=1`);
+        await adminPage.getByRole('heading', { name: m.noMoreData, exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+        await waitSettled(adminPage);
+        await auditScreen({ page: adminPage, screen: '/admin/audit (tidak ada data lagi)', width, viaRouteTransition: false, emptyData: false });
+        await adminPage.getByRole('button', { name: m.first, exact: true }).click();
         await adminPage.locator('article.data-row').first().waitFor({ state: 'visible', timeout: 10_000 });
       }
 
