@@ -5,6 +5,7 @@ import { ApiError, newIdempotencyKey, post } from './api.ts';
 import { creditsToMicro, formatCredits, formatDate } from './credits.ts';
 import { useAction, useAdminAction, useResource } from './hooks.tsx';
 import { kindText, m } from './messages.ts';
+import { AdminRequestList } from './admin-request-list.tsx';
 import { Alert, Badge, Button, DataList, Empty, ErrorBox, Field, Modal, PageTitle, Pending, Receipt } from './ui.tsx';
 import type { ReceiptData } from './ui.tsx';
 
@@ -21,10 +22,10 @@ type UsageAggregate = { key: string; requests: number; failed: number; estimated
 type CustomerUsage = { username: string; days: number; byDay: UsageAggregate[]; byModel: UsageAggregate[]; byKey: UsageAggregate[]; recent: { id: string; model: string; protocol: string; state: string; debitMicro: string | null; estimated: boolean; unbilledInputTokens: string; createdAt: string }[] };
 type CustomerKey = { id: string; name: string; maskedKey: string; allowedModels: string[] | null; spendLimitMicro: string | null; spentMicro: string; heldMicro: string; expiresAt: string | null; status: string; version: string; createdAt: string; lastUsedAt: string | null; revokedAt: string | null };
 type CustomerKeysResult = { keys: CustomerKey[]; nextAfter: string | null };
-type CustomerTab = 'summary' | 'balance' | 'usage' | 'ledger' | 'keys';
+type CustomerTab = 'summary' | 'balance' | 'usage' | 'requests' | 'ledger' | 'keys';
 type AdminCustomer = { username: string; tenantStatus: string; createdAt: string; postedMicro: string; heldMicro: string };
 const customerTabs: { id: CustomerTab; label: string }[] = [
-  { id: 'summary', label: m.summary }, { id: 'balance', label: m.balanceTab }, { id: 'usage', label: m.usageTab }, { id: 'ledger', label: m.ledger }, { id: 'keys', label: m.apiKeys },
+  { id: 'summary', label: m.summary }, { id: 'balance', label: m.balanceTab }, { id: 'usage', label: m.usageTab }, { id: 'requests', label: m.customerRequestTab }, { id: 'ledger', label: m.ledger }, { id: 'keys', label: m.apiKeys },
 ];
 
 
@@ -288,6 +289,7 @@ function CustomerDetail({ username }: { username: string }) {
     summary: <section className="panel stack"><div className="actions"><Button className="secondary" busy={customer.isFetching} onClick={() => void customer.refetch()}>{m.refresh}</Button></div><dl className="metrics">{([[m.available, value.availableMicro], [m.posted, value.postedMicro], [m.held, value.heldMicro]] as const).map(([label, micro]) => <div className="metric" key={label}><dt>{label}</dt><dd className="number">{formatCredits(micro)} {m.credits}</dd></div>)}</dl>{value.tenantStatus === 'SUSPENDED' && <Alert danger>{m.adminSuspended}</Alert>}<Button className={value.tenantStatus === 'SUSPENDED' ? 'secondary' : 'danger-button'} onClick={() => { setConfirmationReason(''); setFinancialConfirmation({ action: value.tenantStatus === 'SUSPENDED' ? 'restore' : 'suspend', username: value.username, expectedVersion: value.version, reason: '' }); statusAction.setError(null); }}>{value.tenantStatus === 'SUSPENDED' ? m.restoreCustomer : m.suspendCustomer}</Button></section>,
     balance: <div className="stack">{topupForm}{receipt && <Receipt value={receipt} kind="topup" />}{!confirmation && action.error && <ErrorBox error={action.error} />}{adjustmentForm}{adjustmentReceipt && <Receipt value={adjustmentReceipt} kind="adjustment" />}</div>,
     usage: usageTabPanel,
+    requests: <AdminRequestList username={value.username} />,
     ledger: ledgerPanel,
     keys: <CustomerKeysPanel username={value.username} />,
   };

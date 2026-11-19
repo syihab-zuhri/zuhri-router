@@ -215,3 +215,17 @@ Hermes mengerjakan butir 1 (daftar request lintas pelanggan di `/admin/rekonsili
 - Cache `web/node_modules/.vite` di folder utama dibersihkan: optimasi dependensi yang terputus (`deps_temp_*`) membuat Vite memuat ulang di tengah test.
 
 Bukti: typecheck, unit, Playwright 69/69 (test arsip 3/3 sesudah perbaikan), `test-local`, `test-browser`, enam skrip server nyata PASS, audit aksesibilitas 0 temuan. Belum terpasang; menunggu layar kill switch Antigravity.
+
+## 2026-11-19: Tahap tujuh Hermes digabung
+
+Hermes mengerjakan tab Request di detail pelanggan dan filter audit, menulis test dan log, dan semua perintah lulus; jauh lebih rapi dari tahap enam. Claude menemukan dan memperbaiki:
+
+- Label aksi audit: log Hermes menyebut "33 nama, 33 label, tidak ada yang belum dilokalkan", padahal server menulis 43 aksi. Sepuluh aksi yang namanya dipilih dengan ternary terlewat: `model.archive/restore`, `upstream.archive/restore`, `tenant.suspend/restore`, `setting.gateway_pause/resume`, `request.recover_release`, `request.mark_unresolved`. Semuanya kini berlabel. Test unit baru `web/test/unit/audit-actions.test.ts` memindai `server/src` sehingga aksi baru tanpa label membuat test gagal.
+- Kelompok filter aksi: `customer.` dan `key.` tidak pernah ditulis server (contoh di HERMES_TASK yang keliru, salah Claude), sehingga pilihan itu selalu kosong, dan ada dua pilihan berlabel "API key". Kini daftar kelompok persis sama dengan awalan yang ada di server, termasuk `tenant.` dan `password_reset.`; test unit yang sama memeriksanya.
+- Wilayah filter audit memakai label `m.filters` ("Filter pemakaian"); kini `m.auditFilters` ("Filter audit").
+- Daftar request menampilkan "Biaya estimasi" dua kali (badge dan paragraf); paragrafnya dihapus. Navigasi paginasi audit tidak lagi dirender kosong.
+- `.git/index.lock` basi (0 byte, dari 2026-11-18 21:37, tanpa proses git) dihapus.
+
+Teks baru yang terlihat (untuk skrip Antigravity): `m.auditFilters`, sepuluh label aksi di atas, label kelompok "Status pelanggan", "Saldo", "Sesi masuk", "Ganti password", "Pemulihan password".
+
+Bukti: typecheck web, unit 6/6 (test baru gagal pada versi Hermes), Playwright terkait 30/30 (admin-operations, admin-customers, admin-requests, return-to, customer-tabs-focus). verify-all penuh dijalankan sesudah cabang Antigravity Tugas tujuh digabung.

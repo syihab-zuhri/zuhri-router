@@ -1,80 +1,95 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { useSearchParams } from 'react-router';
 import { post } from './api.ts';
-import { formatCredits, formatDate, grouped } from './credits.ts';
+import { formatCredits, formatDate } from './credits.ts';
 import { useAdminAction, useResource } from './hooks.tsx';
 import { m } from './messages.ts';
+import { AdminRequestList } from './admin-request-list.tsx';
 import { Alert, Badge, Button, DataList, Empty, ErrorBox, Field, Modal, PageTitle, Pending } from './ui.tsx';
 
 type Unresolved = { id: string; username: string; model: string; heldMicro: string; maxOutput: number; createdAt: string };
-type RequestUsage = { input: number; output: number; cacheRead: number; cacheWrite: number };
-type AdminRequest = {
-  id: string; username: string; keyName: string | null; model: string; protocol: string; stream: boolean; state: string;
-  outcome: string | null; final: boolean; heldMicro: string; debitMicro: string | null; estimated: boolean;
-  usage: RequestUsage | null; createdAt: string;
-};
-type AdminRequestsResult = { requests: AdminRequest[]; nextBefore: string | null };
-type AuditEvent = { id: string; actorUser: string | null; actorKind: string; action: string; targetType: string; targetId: string; summary: unknown; createdAt: string };
+type AuditEvent = { id: string; actorUser: string | null; actorUsername: string | null; actorKind: string; action: string; targetType: string; targetId: string | null; summary: unknown; createdAt: string };
+type AuditResult = { events: AuditEvent[]; nextBefore: string | null };
+type AuditFilterName = 'action' | 'actor' | 'targetType' | 'targetId';
+const auditActionGroups = Object.keys(m.auditActionGroups) as (keyof typeof m.auditActionGroups)[];
 
-const requestStates = Object.keys(m.requestStateText) as (keyof typeof m.requestStateText)[];
-
-function requestOutcomeLabel(value: string | null): string {
-  if (value === null) return m.adminRequestNoOutcome;
-  return Object.hasOwn(m.requestOutcomeText, value) ? m.requestOutcomeText[value as keyof typeof m.requestOutcomeText] : m.adminRequestOutcomeUnknown;
+function auditActionLabel(action: string): string {
+  return Object.hasOwn(m.auditActionText, action) ? m.auditActionText[action as keyof typeof m.auditActionText] : action;
 }
 
-function AdminRequestList() {
+export function AuditPage() {
   const [params, setParams] = useSearchParams();
-  const [username, setUsername] = useState(params.get('username') ?? '');
-  const [state, setState] = useState(params.get('state') ?? '');
-  const [model, setModel] = useState(params.get('model') ?? '');
+  const [actionChoice, setActionChoice] = useState(() => {
+    const action = params.get('action') ?? '';
+    return action === '' || auditActionGroups.some(prefix => prefix === action) ? action : '__custom';
+  });
+  const [customAction, setCustomAction] = useState(() => {
+    const action = params.get('action') ?? '';
+    return auditActionGroups.some(prefix => prefix === action) ? '' : action;
+  });
+  const [actor, setActor] = useState(params.get('actor') ?? '');
+  const [targetType, setTargetType] = useState(params.get('targetType') ?? '');
+  const [targetId, setTargetId] = useState(params.get('targetId') ?? '');
+  const filterSearch = params.toString();
   useEffect(() => {
-    setUsername(params.get('username') ?? '');
-    setState(params.get('state') ?? '');
-    setModel(params.get('model') ?? '');
-  }, [params]);
+    const current = new URLSearchParams(filterSearch);
+    const action = current.get('action') ?? '';
+    setActionChoice(action === '' || auditActionGroups.some(prefix => prefix === action) ? action : '__custom');
+    setCustomAction(auditActionGroups.some(prefix => prefix === action) ? '' : action);
+    setActor(current.get('actor') ?? '');
+    setTargetType(current.get('targetType') ?? '');
+    setTargetId(current.get('targetId') ?? '');
+  }, [filterSearch]);
 
-  const before = params.get('before');
-  const query = new URLSearchParams({ limit: '50' });
-  for (const [key, value] of [['username', params.get('username')], ['state', params.get('state')], ['model', params.get('model')], ['before', before]] as const) {
-    if (value) query.set(key, value);
+  const query = new URLSearchParams();
+  const activeFilters = new Map<AuditFilterName, string>();
+  for (const key of ['action', 'actor', 'targetType', 'targetId'] as const) {
+    const value = params.get(key)?.trim() ?? '';
+    if (value) { activeFilters.set(key, value); query.set(key, value); }
   }
-  const result = useResource<AdminRequestsResult>(`/admin/api/requests?${query}`);
-  const hasFilters = Boolean(params.get('username') || params.get('state') || params.get('model'));
+  const before = params.get('before');
+  if (before) query.set('before', before);
+  const result = useResource<AuditResult>(`/admin/api/audit${query.size ? `?${query}` : ''}`);
+  const hasFilters = activeFilters.size > 0;
   const applyFilters = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const next = new URLSearchParams({ limit: '50' });
-    const userFilter = username.trim();
-    const modelFilter = model.trim();
-    if (userFilter) next.set('username', userFilter);
-    if (state) next.set('state', state);
-    if (modelFilter) next.set('model', modelFilter);
+    const next = new URLSearchParams();
+    const selectedAction = actionChoice === '__custom' ? customAction.trim() : actionChoice;
+    if (selectedAction) next.set('action', selectedAction);
+    if (actor.trim()) next.set('actor', actor.trim());
+    if (targetType.trim()) next.set('targetType', targetType.trim());
+    if (targetId.trim()) next.set('targetId', targetId.trim());
+    setParams(next);
+  };
+  const clearFilters = () => setParams({});
+  const page = (nextBefore: string | null) => {
+    const next = new URLSearchParams(params);
+    if (nextBefore) next.set('before', nextBefore);
+    else next.delete('before');
     setParams(next);
   };
 
-  return <section className="panel stack" aria-label={m.allCustomerRequests}>
-    <header className="stack"><h2>{m.allCustomerRequests}</h2><p>{m.allCustomerRequestsHelp}</p></header>
-    <form className="stack" onSubmit={applyFilters}>
-      <Field label={m.adminRequestUsername} value={username} onChange={event => setUsername(event.target.value)} maxLength={64} />
-      <div className="field"><label htmlFor="admin-request-state">{m.adminRequestState}</label><select id="admin-request-state" value={state} onChange={event => setState(event.target.value)}><option value="">{m.allValues}</option>{requestStates.map(value => <option key={value} value={value}>{m.requestStateText[value]}</option>)}</select></div>
-      <Field label={m.adminRequestModel} value={model} onChange={event => setModel(event.target.value)} maxLength={128} />
-      <div className="actions"><Button type="submit">{m.search}</Button><Button className="secondary" type="button" disabled={!hasFilters} onClick={() => setParams({ limit: '50' })}>{m.clearFilters}</Button></div>
-    </form>
-    {result.isPending ? <Pending /> : result.isError ? <ErrorBox error={result.error} retry={() => { void result.refetch(); }} /> : result.data.requests.length === 0 ? <Empty title={hasFilters ? m.adminRequestsNoMatches : m.adminRequestsEmpty} /> : <DataList caption={m.allCustomerRequests}>{result.data.requests.map(request => <article className="data-row" key={request.id}>
-      <div className="request-heading"><h3><Link to={`/admin/pelanggan?customer=${encodeURIComponent(request.username)}&tab=summary`}>{request.username}</Link></h3><Badge status={request.state} />{request.estimated && <Badge status="SETTLED_ESTIMATED" />}</div>
-      <dl><dt>{m.time}</dt><dd>{formatDate(request.createdAt)}</dd><dt>{m.requestId}</dt><dd className="mono">{request.id}</dd><dt>{m.adminRequestKey}</dt><dd>{request.keyName ?? m.adminRequestNoKey}</dd><dt>{m.model}</dt><dd className="mono">{request.model}</dd><dt>{m.protocol}</dt><dd>{request.protocol}</dd><dt>{m.stream}</dt><dd>{request.stream ? m.streamYes : m.streamNo}</dd>
-        {request.final ? <><dt>{m.adminRequestDebit}</dt><dd className="number">{formatCredits(request.debitMicro ?? '0')} {m.credits}</dd></> : <><dt>{m.adminRequestHeld}</dt><dd className="number">{formatCredits(request.heldMicro)} {m.credits}</dd></>}
-      </dl>
-      {request.estimated && <p>{m.adminRequestEstimate}</p>}
-      <section className="stack" aria-label={m.adminRequestOutcome}><h4>{m.adminRequestOutcome}</h4><p>{requestOutcomeLabel(request.outcome)}</p></section>
-      <details><summary>{m.chargedUsage}</summary>{request.usage === null ? <p>{m.adminRequestNoUsage}</p> : <dl>{([[m.input, request.usage.input], [m.output, request.usage.output], [m.cacheRead, request.usage.cacheRead], [m.cacheWrite, request.usage.cacheWrite]] as const).map(([label, count]) => <div key={label}><dt>{label}</dt><dd>{grouped(String(count))}</dd></div>)}</dl>}</details>
+  return <><PageTitle subtitle={m.auditSubtitle}>{m.audit}</PageTitle>
+    <section className="panel stack" aria-label={m.auditFilters}>
+      <form className="stack" onSubmit={applyFilters}>
+        <div className="field"><label htmlFor="audit-action">{m.auditActionFilter}</label><select id="audit-action" value={actionChoice} onChange={event => setActionChoice(event.target.value)}><option value="">{m.auditActionAll}</option>{auditActionGroups.map(prefix => <option key={prefix} value={prefix}>{m.auditActionGroups[prefix]}</option>)}<option value="__custom">{m.auditActionCustom}</option></select></div>
+        {actionChoice === '__custom' && <Field label={m.auditCustomAction} help={m.auditCustomActionHelp} value={customAction} onChange={event => setCustomAction(event.target.value)} maxLength={64} />}
+        <Field label={m.auditActorUsername} value={actor} onChange={event => setActor(event.target.value)} maxLength={64} />
+        <Field label={m.auditTargetType} value={targetType} onChange={event => setTargetType(event.target.value)} maxLength={64} />
+        <Field label={m.auditTargetId} value={targetId} onChange={event => setTargetId(event.target.value)} maxLength={200} />
+        <div className="actions"><Button type="submit">{m.search}</Button><Button className="secondary" type="button" disabled={!hasFilters} onClick={clearFilters}>{m.clearFilters}</Button></div>
+      </form>
+    </section>
+    {result.isPending ? <Pending /> : result.isError ? <ErrorBox error={result.error} retry={() => { void result.refetch(); }} /> : result.data.events.length === 0 ? <Empty title={hasFilters ? m.auditNoMatches : m.noAudit} /> : <DataList caption={m.audit}>{result.data.events.map(event => <article className="data-row" key={event.id}>
+      <div className="request-heading"><h2>{auditActionLabel(event.action)}</h2><Badge status={event.actorKind} /></div><dl><dt>{m.time}</dt><dd>{formatDate(event.createdAt)}</dd><dt>{m.actor}</dt><dd>{event.actorKind === 'SYSTEM' ? m.system : event.actorUsername ?? m.auditUnknownActor}</dd><dt>{m.target}</dt><dd>{event.targetType}: {event.targetId ?? m.auditUnknownTarget}</dd><dt>{m.auditId}</dt><dd className="mono">{event.id}</dd></dl>
     </article>)}</DataList>}
-    {result.isSuccess && result.data.requests.length > 0 && <nav className="pagination" aria-label={m.allCustomerRequests}>
-      {before && <Button className="secondary" onClick={() => { const next = new URLSearchParams(params); next.delete('before'); setParams(next); }}>{m.first}</Button>}
-      {result.data.nextBefore && <Button className="secondary" onClick={() => { const next = new URLSearchParams(params); next.set('before', result.data.nextBefore!); setParams(next); }}>{m.next}</Button>}
+    {result.isSuccess && (before || result.data.nextBefore || result.data.events.length > 0) && <nav className="pagination" aria-label={m.audit}>
+      {before && <Button className="secondary" disabled={result.isFetching} onClick={() => page(null)}>{m.first}</Button>}
+      {result.data.nextBefore && <Button className="secondary" disabled={result.isFetching} onClick={() => page(result.data.nextBefore)}>{m.next}</Button>}
+      {result.data.events.length > 0 && <small>{m.auditPageSize}</small>}
     </nav>}
-  </section>;
+  </>;
 }
 
 export function UnresolvedPage() {
@@ -116,13 +131,4 @@ export function OverdraftPage() {
   </form></section>
   {confirm && <Modal title={m.confirmOverdraft} busy={action.busy} onClose={close}><p>{m.financialConfirm}</p><p>{tokens} {m.credits}</p>{action.error && <ErrorBox error={action.error} />}<div className="actions"><Button className="secondary" disabled={action.busy} onClick={close}>{m.cancel}</Button><Button busy={action.busy} onClick={() => { void action.run(async () => { await post('/admin/api/settings/overdraft', { tokens }); close(); setTokens(''); await setting.refetch(); }); }}>{m.save}</Button></div></Modal>}
   {action.dialog}</>;
-}
-
-export function AuditPage() {
-  const [params, setParams] = useSearchParams();
-  const before = params.get('before');
-  const result = useResource<{ events: AuditEvent[] }>(`/admin/api/audit${before ? `?before=${encodeURIComponent(before)}` : ''}`);
-  return <><PageTitle subtitle={m.auditSubtitle}>{m.audit}</PageTitle>{result.isPending ? <Pending /> : result.isError ? <ErrorBox error={result.error} retry={() => { void result.refetch(); }} /> : result.data.events.length === 0 ? <Empty title={m.noAudit} /> : <DataList caption={m.audit}>{result.data.events.map(event => <article className="data-row" key={event.id}>
-    <div className="request-heading"><h2>{event.action}</h2><Badge status={event.actorKind} /></div><dl><dt>{m.time}</dt><dd>{formatDate(event.createdAt)}</dd><dt>{m.actor}</dt><dd>{event.actorUser ?? m.system}</dd><dt>{m.target}</dt><dd>{event.targetType}: {event.targetId}</dd><dt>{m.auditId}</dt><dd>{event.id}</dd></dl>
-  </article>)}</DataList>} {result.isSuccess && result.data.events.length > 0 && <nav className="pagination" aria-label={m.audit}>{before && <Button className="secondary" onClick={() => setParams({})}>{m.first}</Button>}<Button className="secondary" onClick={() => setParams({ before: result.data.events[result.data.events.length - 1].id })}>{m.next}</Button></nav>}</>;
 }

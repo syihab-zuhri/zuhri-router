@@ -1,9 +1,17 @@
 # Changelog: Router AI Komersial
 
-Version: 0.39.0
+Version: 0.40.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
-Updated: 2026-11-18, Asia/Jakarta
+Updated: 2026-11-19, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.40.0: Tab Request di detail pelanggan dan filter audit (web)
+
+Source: SCR-015 (tab Request) dan SCR-018 (audit) di `docs/UX.md`; dikerjakan Hermes (`HERMES_TASK.md` Tahap tujuh), diperiksa dan dilengkapi Claude. Belum terpasang di zrouter.web.id.
+
+- Detail pelanggan mendapat tab Request di antara Pemakaian dan Transaksi, sesuai urutan di UX.md. Daftarnya komponen bersama dengan daftar lintas pelanggan di Rekonsiliasi (`web/src/admin-request-list.tsx`); di tab ini username tetap dan kursornya memakai parameter `requestBefore`.
+- Layar Audit: filter kelompok atau awalan aksi (termasuk isian bebas), username pelaku, jenis dan ID target; nama pelaku menggantikan UUID; nama aksi dalam bahasa admin dengan nama mentah sebagai cadangan; paginasi memakai `nextBefore` dari server.
+- `web/test/unit/audit-actions.test.ts` (baru) memindai `server/src` dan gagal bila ada aksi audit tanpa label atau tanpa kelompok filter, atau ada kelompok tanpa aksi.
 
 ## 0.39.0: Kill switch dan daftar request lintas pelanggan (server)
 

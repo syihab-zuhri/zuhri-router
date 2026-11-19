@@ -103,7 +103,8 @@ async function mockAdminApi(page: Page, isSignedIn: () => boolean, onSecondFacto
     if (path === '/admin/api/audit') {
       return route.fulfill({
         json: {
-          events: [{ id: '50', actorUser: 'admin_return', actorKind: 'ADMIN', action: 'pack.create', targetType: 'pack', targetId: 'p-1', summary: {}, createdAt: '2026-11-15T10:00:00.000Z' }],
+          events: [{ id: '50', actorUser: 'admin_return', actorUsername: 'admin_return', actorKind: 'ADMIN', action: 'pack.create', targetType: 'pack', targetId: 'p-1', summary: {}, createdAt: '2026-11-15T10:00:00.000Z' }],
+          nextBefore: '50',
         },
       });
     }

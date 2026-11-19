@@ -31,11 +31,12 @@ async function mount(page: Page, module: string, name: string) {
 
 const customer = { username: 'pelanggan', tenantStatus: 'ACTIVE', version: '1', currency: 'TOKEN', postedMicro: '9007199254740993000000', heldMicro: '0', availableMicro: '9007199254740993000000', entries: [] };
 
-test('detail pelanggan menyediakan lima tab yang bertahan di query string', async ({ page }) => {
+test('detail pelanggan menyediakan enam tab yang bertahan di query string', async ({ page }) => {
   await page.route('**/admin/api/customers?*', route => route.fulfill({ json: { customers: [{ username: 'pelanggan', tenantStatus: 'ACTIVE', createdAt: '2026-11-15T00:00:00.000Z', postedMicro: customer.postedMicro, heldMicro: customer.heldMicro }], nextAfter: null } }));
   await page.route('**/admin/api/customers/pelanggan', route => route.fulfill({ json: customer }));
   await page.route('**/admin/api/customers/pelanggan/usage?*', route => route.fulfill({ json: { username: 'pelanggan', days: 7, byDay: [], byModel: [], byKey: [], recent: [] } }));
   await page.route('**/admin/api/customers/pelanggan/keys?*', route => route.fulfill({ json: { keys: [], nextAfter: null } }));
+  await page.route('**/admin/api/requests?*', route => route.fulfill({ json: { requests: [], nextBefore: null } }));
   await page.route('**/__admin-test**', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html lang="id"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>' }));
   await mount(page, 'admin-customers', 'CustomersPage');
   await expect(page.getByRole('button', { name: m.customerDetails })).toBeVisible();
@@ -43,11 +44,15 @@ test('detail pelanggan menyediakan lima tab yang bertahan di query string', asyn
   await expect(page).toHaveURL(/customer=pelanggan/);
   await expect(page).toHaveURL(/tab=summary/);
   await expect(page.getByRole('tablist', { name: m.customerDetailTabs })).toBeVisible();
-  for (const label of [m.summary, m.balanceTab, m.usageTab, m.ledger, m.apiKeys]) {
+  for (const label of [m.summary, m.balanceTab, m.usageTab, m.customerRequestTab, m.ledger, m.apiKeys]) {
     await expect(page.getByRole('tab', { name: label })).toBeVisible();
   }
   const usageTab = page.getByRole('tab', { name: m.usageTab });
   await usageTab.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: m.customerRequestTab })).toBeFocused();
+  await expect(page.getByRole('tab', { name: m.customerRequestTab })).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL(/tab=requests/);
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab', { name: m.ledger })).toBeFocused();
   await expect(page.getByRole('tab', { name: m.ledger })).toHaveAttribute('aria-selected', 'true');
@@ -68,6 +73,36 @@ test('detail pelanggan menyediakan lima tab yang bertahan di query string', asyn
     }).filter(element => element.right > innerWidth + 1 && !element.insideTabs).slice(0, 20),
   }));
   expect(overflow.document, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.viewport);
+});
+
+test('tab Request meminta riwayat dengan username tetap dan menjaga cursor per pelanggan', async ({ page }) => {
+  const calls: URL[] = [];
+  await page.route('**/admin/api/customers?*', route => route.fulfill({ json: { customers: [{ username: 'pelanggan', tenantStatus: 'ACTIVE', createdAt: '2026-11-15T00:00:00.000Z', postedMicro: customer.postedMicro, heldMicro: customer.heldMicro }], nextAfter: null } }));
+  await page.route('**/admin/api/customers/pelanggan', route => route.fulfill({ json: customer }));
+  await page.route('**/admin/api/requests?*', route => {
+    const url = new URL(route.request().url()); calls.push(url);
+    return route.fulfill({ json: url.searchParams.has('before') ? {
+      requests: [{ id: 'req-old', username: 'pelanggan', keyName: null, model: 'model/lama', protocol: 'CHAT', stream: false, state: 'RESOLVED', outcome: 'resolved_by_admin', final: true, heldMicro: '0', debitMicro: '0', estimated: false, usage: null, createdAt: '2026-11-17T00:00:00.000Z' }], nextBefore: null,
+    } : {
+      requests: [{ id: 'req-new', username: 'pelanggan', keyName: 'Key uji', model: 'model/baru', protocol: 'CHAT', stream: true, state: 'SETTLED', outcome: 'completed', final: true, heldMicro: '0', debitMicro: '250000', estimated: false, usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 }, createdAt: '2026-11-18T00:00:00.000Z' }], nextBefore: '2026-11-18T00:00:00.000Z',
+    } });
+  });
+  await mount(page, 'admin-customers', 'CustomersPage');
+  await page.getByRole('button', { name: m.customerDetails }).click();
+  await page.getByRole('tab', { name: m.customerRequestTab }).click();
+  await expect(page).toHaveURL(/tab=requests/);
+  const requests = page.getByRole('region', { name: m.customerRequests });
+  await expect(requests.getByText('model/baru')).toBeVisible();
+  expect(calls.at(-1)?.searchParams.get('username')).toBe('pelanggan');
+  expect(calls.at(-1)?.searchParams.get('state')).toBeNull();
+  await requests.getByRole('button', { name: m.next, exact: true }).click();
+  await expect(requests.getByText('model/lama')).toBeVisible();
+  expect(calls.at(-1)?.searchParams.get('username')).toBe('pelanggan');
+  expect(calls.at(-1)?.searchParams.get('before')).toBe('2026-11-18T00:00:00.000Z');
+  await expect(requests.getByText(m.requestOutcomeText.resolved_by_admin)).toBeVisible();
+  await expect(requests.getByRole('link')).toHaveCount(0);
+  await page.setViewportSize({ width: 360, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
 
 test('API key dapat dicabut langsung dari baris pelanggan lewat konfirmasi dan step-up', async ({ page }) => {

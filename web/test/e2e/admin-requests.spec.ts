@@ -51,7 +51,7 @@ test('daftar request lintas pelanggan: baris, filter, paginasi dan tautan ke pel
 
   await list.getByRole('button', { name: m.next, exact: true }).click();
   await expect(list.getByRole('link', { name: 'sari' })).toBeVisible();
-  expect(calls.at(-1)!.get('before')).toBe('2026-11-18T09:00:00.000Z');
+  await expect.poll(() => calls.at(-1)?.get('before')).toBe('2026-11-18T09:00:00.000Z');
   await list.getByRole('button', { name: m.first, exact: true }).click();
   await expect.poll(() => calls.at(-1)?.get('before') ?? null).toBeNull();
 

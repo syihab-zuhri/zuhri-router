@@ -164,6 +164,36 @@ Bukti terbaru: `web/evidence/stage-five-local.log`, `web/evidence/stage-five-dis
 
 Status: Tahap lima dikerjakan berurutan dan diverifikasi. Build lokal siap dipasang dari sisi web; belum ada deployment atau perubahan ke server.
 
+## Tahap tujuh (2026-11-18 malam)
+
+### Ditulis
+
+1. `web/src/admin-request-list.tsx`: daftar metadata bersama dipakai rekonsiliasi dan tab Request detail pelanggan. Username pada tab detail tetap dan dikirim untuk setiap cursor; cursor tab memakai `requestBefore`. Isi prompt/respons tidak ditampilkan.
+2. `web/src/admin-customers.tsx`: tab Request ditambahkan mengikuti urutan, ARIA/keyboard tab, dan query string `tab=requests` yang sudah dipakai tab detail.
+3. `web/src/admin-operations.tsx`: audit menyaring action prefix/custom, username pelaku, tipe target dan ID target. Filter/cursor tetap di URL; paging memakai `nextBefore`. Aksi yang diketahui diterjemahkan; aksi baru tetap menampilkan nama mentah. Pelaku memakai `actorUsername` atau label netral, tidak menggunakan UUID.
+4. `web/src/messages.ts`: teks baru yang terlihat: tab “Request”; judul “Request pelanggan” dan keterangan metadata tanpa prompt/respons; label filter username, kelompok/awalan aksi, username pelaku, jenis/ID target; pilihan kelompok pengaturan, kode redeem, pelanggan, API key, request, keamanan admin, undangan, sesi, password, akun, paket, model, harga, ledger, upstream dan route; label 33 aksi audit yang telah ditemukan di `server/src`; fallback “Pelaku tidak diketahui”/“Target tidak tersedia”; empty no-match dan jumlah 50 baris. Tombol Search/Clear filters/First/Next memakai teks bersama yang sudah ada.
+5. `web/test/e2e/admin-customers.spec.ts`: enam tab, urutan, keyboard, query, username tetap, cursor dan tampilan 360 px. `admin-operations.spec.ts`: filter, label known/raw-unknown, actor username tanpa UUID, target, paging server, loading, empty, no-match, error/retry serta 360 px.
+6. Test penunjang: `admin-requests.spec.ts` kini menunggu query cursor async; fixture audit `return-to.spec.ts` diberi `actorUsername` dan `nextBefore` sesuai kontrak server. `RouteFocus`, `customer-tabs-focus.spec.ts`, teks panduan dan `docs/UI_REFERENCES.md` tidak diubah.
+7. Referensi UI yang sudah tercatat di `docs/UI_REFERENCES.md`: UAR-019 untuk tab detail, UAR-024 untuk filter ber-URL dan UAR-025 untuk input pencarian/filter. Adaptasi memakai Field, select, Button dan DataList proyek yang sudah ada; tidak menambah dependency atau custom visual gap.
+
+Tidak mengubah `server/`, `HERMES_TASK.md`, file Antigravity terlarang, atau dokumen lain. Tidak ada commit/deploy, upstream berbayar, email nyata atau dependency baru.
+
+### Dijalankan dan lulus
+
+- Tes tab sebelum implementasi RED karena tab belum ada; sesudahnya SCR-015 test lulus 2/2 dan enam-tab/URL/keyboard 1/1.
+- `npm run typecheck`: exit 0; `npm test`: 5/5.
+- Riwayat E2E dipisahkan menurut source dan run: `proc_866a735838ab` 69/73 ialah run awal sebelum koreksi cursor async dan fixture audit; `stage-seven-e2e-final.txt` 71/73 memperlihatkan Vite dynamic-import error; `stage-seven-e2e-rerun.txt` 72/73 memperlihatkan Vite dynamic-import error dan pesan sesi admin tak muncul. Tes login admin terkait lulus terisolasi 1/1. Setelahnya, full E2E pada source terkini lulus 73/73, exit 0; bukti per-test dan `EXIT_CODE=0` ada di `web/evidence/stage-seven-e2e-verified.txt`.
+- Test audit filter/awalan khusus lulus 5/5 pengulangan serial. Tes Request/customer tabs, audit state/cursor, dan focus dijalankan serial; full E2E final mencakup semua 73 test.
+- `npm run typecheck`: exit 0; `npm test`: 5/5; bukti final di `web/evidence/stage-seven-typecheck-final.log` dan `stage-seven-unit-final.log`.
+- `npm run test:local`: exit 0, `local-browser-verify: PASS`; `web/evidence/stage-seven-local-final.log`. Ini memakai API lokal untuk flow yang tersedia, tidak mencakup backend request/audit baru.
+- `npm run test:browser`: exit 0, build dan `same-origin-dist-verify: PASS`; `web/evidence/stage-seven-browser-final.log`.
+- `hermes verify --json`: exit 0, unit 5/5/readiness HTTP 200; `web/evidence/stage-seven-hermes-verify-final.json`. `git diff --check` lulus; `web/evidence/stage-seven-diffcheck-final.log`.
+- Perbandingan programatis action literal server: 33 nama, 33 label, tidak ada action yang belum dilokalkan.
+- Suite awal 69/73 mengungkap assertion cursor async dan mock Audit yang tidak mengikuti kontrak baru; keduanya diperbaiki. Dua failure lain (direct route dan Vite dynamic import pada suite panjang) lulus saat terisolasi 2/2; full suite final pada source terkini lulus 73/73.
+- Tidak menjalankan Playwright bersamaan dengan Antigravity; proses diperiksa dan full suite memakai satu worker.
+
+Build memberi warning dependency bundler `[MODULE_LEVEL_DIRECTIVE]` untuk `use client`, tetapi build/dist PASS. `a11y-audit.mjs` tidak dijalankan karena menulis artifact bersama Antigravity dan meliputi seluruh layar; keyboard, fokus tab, 360 px dan full E2E telah diverifikasi, tetapi belum ada axe audit khusus layar audit. `web/evidence/stage-seven-summary.md` memuat rincian dan batas verifikasi.
+
 ## Permintaan ke Claude
 
 Tidak ada kebutuhan kontrak server baru untuk tahap ini. Untuk tahap dua: bila diinginkan integrasi backend browser SCR-017/018, siapkan seed request unresolved dengan hold konsisten di schema privat dan step-up test yang sesuai. Jangan memakai atau menghentikan container bersama `router-spike-pg`. Tahap tiga lanjutan belum dipasang ke layanan publik.

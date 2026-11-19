@@ -80,16 +80,77 @@ test('batas lebih-pakai memakai token integer dan menunggu step-up sebelum tersi
   await expect(page.getByText('25 kredit token', { exact: true })).toBeVisible();
 });
 
+test('audit menerjemahkan aksi, memfilter aksi/pelaku/target dan memakai username serta cursor server', async ({ page }) => {
+  const calls: URL[] = [];
+  await page.route('**/admin/api/audit**', route => {
+    const url = new URL(route.request().url()); calls.push(url);
+    if (url.searchParams.get('targetId') === 'tidak-ada' || url.searchParams.has('before')) return route.fulfill({ json: { events: [], nextBefore: null } });
+    const customAction = url.searchParams.get('action') === 'vendor.custom.';
+    return route.fulfill({ json: { events: [{ id: '81', actorUser: '0e1e24d7-0000-4000-8000-123456789abc', actorUsername: 'admin_uji', actorKind: 'ADMIN', action: customAction ? 'vendor.custom.change' : 'ledger.admin_topup', targetType: 'tenant', targetId: 'tenant_uji', summary: { amountMicro: '25000000' }, createdAt: '2026-11-14T00:00:00.000Z' }], nextBefore: '80' } });
+  });
+  await mount(page, 'AuditPage');
+  await expect(page.getByText(m.auditActionText['ledger.admin_topup'], { exact: true })).toBeVisible();
+  await expect(page.getByText('ledger.admin_topup', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('admin_uji', { exact: true })).toBeVisible();
+  await expect(page.getByText('0e1e24d7-0000-4000-8000-123456789abc', { exact: true })).toHaveCount(0);
+  const actionFilter = page.getByLabel(m.auditActionFilter);
+  for (const value of ['setting.', 'voucher.', 'tenant.', 'api_key.', 'request.']) await expect(actionFilter.locator(`option[value="${value}"]`)).toHaveCount(1);
+  await actionFilter.selectOption('request.');
+  await page.getByLabel(m.auditActorUsername).fill('admin_uji');
+  await page.getByLabel(m.auditTargetType).fill('request');
+  await page.getByLabel(m.auditTargetId).fill('req_1');
+  await page.getByRole('button', { name: m.search, exact: true }).click();
+  await expect.poll(() => calls.at(-1)?.searchParams.get('action')).toBe('request.');
+  expect(calls.at(-1)?.searchParams.get('actor')).toBe('admin_uji');
+  expect(calls.at(-1)?.searchParams.get('targetType')).toBe('request');
+  expect(calls.at(-1)?.searchParams.get('targetId')).toBe('req_1');
+  await page.getByRole('button', { name: m.next, exact: true }).click();
+  await expect.poll(() => calls.at(-1)?.searchParams.get('before')).toBe('80');
+  expect(calls.at(-1)?.searchParams.get('actor')).toBe('admin_uji');
+  await expect(page.getByRole('heading', { name: m.auditNoMatches, exact: true })).toBeVisible();
+  await page.getByLabel(m.auditTargetId).fill('tidak-ada');
+  await page.getByRole('button', { name: m.search, exact: true }).click();
+  await expect.poll(() => calls.at(-1)?.searchParams.get('targetId')).toBe('tidak-ada');
+  await expect(page).toHaveURL(/targetId=tidak-ada/);
+  await expect(page.getByRole('heading', { name: m.auditNoMatches, exact: true })).toBeVisible();
+  await page.getByLabel(m.auditActionFilter).selectOption('__custom');
+  await expect(page.getByLabel(m.auditCustomAction)).toBeVisible();
+  await page.getByLabel(m.auditCustomAction).fill('vendor.custom.');
+  await page.getByLabel(m.auditTargetId).fill('target-uji');
+  await page.getByRole('button', { name: m.search, exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'vendor.custom.change', exact: true })).toBeVisible();
+  await expect.poll(() => calls.at(-1)?.searchParams.get('action')).toBe('vendor.custom.');
+  await page.setViewportSize({ width: 360, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+});
+
+test('audit membedakan loading dan daftar yang memang kosong', async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/admin/api/audit**', async route => { await gate; return route.fulfill({ json: { events: [], nextBefore: null } }); });
+  await mount(page, 'AuditPage');
+  await expect(page.getByText(m.loading, { exact: true })).toBeVisible();
+  release();
+  await expect(page.getByRole('heading', { name: m.noAudit, exact: true })).toBeVisible();
+});
+
+test('audit memberi pesan dan aksi ulang saat server gagal', async ({ page }) => {
+  await page.route('**/admin/api/audit**', route => route.fulfill({ status: 500, json: { error: { code: 'internal_error' } } }));
+  await mount(page, 'AuditPage');
+  await expect(page.getByRole('alert')).toContainText('Server belum dapat menyelesaikan tindakan. Muat ulang data dan periksa hasil sebelum mencoba lagi.');
+  await expect(page.getByRole('alert').getByRole('button', { name: m.retry, exact: true })).toBeVisible();
+});
+
 test('audit memuat metadata dan meneruskan cursor sebelum ke server', async ({ page }) => {
   const requests: URL[] = [];
   await page.route('**/admin/api/audit**', route => {
     const url = new URL(route.request().url()); requests.push(url);
-    return route.fulfill({ json: { events: url.searchParams.has('before') ? [] : [{ id: '81', actorUser: 'admin_uji', actorKind: 'ADMIN', action: 'ledger.admin_topup', targetType: 'tenant', targetId: 'tenant_uji', summary: { amountMicro: '25000000' }, createdAt: '2026-11-14T00:00:00.000Z' }] } });
+    return route.fulfill({ json: { events: url.searchParams.has('before') ? [] : [{ id: '81', actorUser: 'admin_uji', actorUsername: 'admin_uji', actorKind: 'ADMIN', action: 'ledger.admin_topup', targetType: 'tenant', targetId: 'tenant_uji', summary: { amountMicro: '25000000' }, createdAt: '2026-11-14T00:00:00.000Z' }], nextBefore: url.searchParams.has('before') ? null : '80' } });
   });
   await mount(page, 'AuditPage');
-  await expect(page.getByText('ledger.admin_topup', { exact: true })).toBeVisible();
+  await expect(page.getByText(m.auditActionText['ledger.admin_topup'], { exact: true })).toBeVisible();
   await expect(page.getByText('admin_uji', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: m.next, exact: true }).click();
-  await expect.poll(() => requests.at(-1)?.searchParams.get('before')).toBe('81');
+  await expect.poll(() => requests.at(-1)?.searchParams.get('before')).toBe('80');
   await expect(page.getByRole('heading', { name: m.noAudit, exact: true })).toBeVisible();
 });
