@@ -915,7 +915,6 @@ try {
   );
 
   await assertCleanSecretHygiene(page, secrets, 'admin-requests-audit');
-  await ctx.close();
 
   // ---- 5. Customer portal /pemakaian + GET /api/requests?limit=3 pagination across identical-timestamp & sub-ms cluster ----
   const custCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
@@ -960,14 +959,85 @@ try {
   );
   const usagePage2Ids = await extractUsageIds();
   assertExactIdSet([...usagePage1Ids, ...usagePage2Ids], custAExpectedIds, 'UI /pemakaian pelanggan (50 + 3)');
+
+  // ---- 6. Cursor stability while new gateway requests keep arriving between page fetches ----
+  const fetchPage = (targetPage, endpoint, limit, before) => targetPage.evaluate(
+    async ({ ep, lim, cur }) => {
+      const q = new URLSearchParams({ limit: String(lim) });
+      if (cur) q.set('before', cur);
+      const res = await fetch(`${ep}?${q.toString()}`);
+      if (res.status !== 200) throw new Error(`GET ${ep} HTTP ${res.status}`);
+      return res.json();
+    },
+    { ep: endpoint, lim: limit, cur: before },
+  );
+
+  // 6a. /admin/api/requests?limit=5 with live gateway requests interleaved between pages
+  const beforeAdminInterleaveIds = (await pool.query('select id from request')).rows.map(r => r.id);
+  const adminInterleaveCollected = [];
+  const arrivedDuringAdminWalk = [];
+  {
+    let before = null;
+    for (let pageNo = 0; pageNo < 100; pageNo++) {
+      const body = await fetchPage(page, '/admin/api/requests', 5, before);
+      for (const r of body.requests) adminInterleaveCollected.push(r.id);
+      if (!body.nextBefore) break;
+      if (arrivedDuringAdminWalk.length < 6) {
+        const useCustA = arrivedDuringAdminWalk.length % 2 === 0;
+        const newId = await callNormal(useCustA ? keyASecret : keyBSecret, useCustA ? modelAlpha : modelBeta);
+        await waitForSettled(pool, newId);
+        arrivedDuringAdminWalk.push(newId);
+      }
+      before = body.nextBefore;
+    }
+  }
+  assert.equal(arrivedDuringAdminWalk.length, 6, 'Harus ada 6 request baru disisipkan selama penelusuran admin');
+  assertExactIdSet(adminInterleaveCollected, beforeAdminInterleaveIds, 'Interleaved walk /admin/api/requests limit=5');
+  for (const newId of arrivedDuringAdminWalk) {
+    assert.equal(adminInterleaveCollected.includes(newId), false, `Request baru ${newId} tidak boleh muncul pada halaman lanjutan /admin/api/requests`);
+  }
+  const freshAdminHead = (await fetchPage(page, '/admin/api/requests', 10, null)).requests.map(r => r.id);
+  for (const newId of arrivedDuringAdminWalk) {
+    assert.ok(freshAdminHead.includes(newId), `Request baru ${newId} harus muncul di halaman pertama terbaru /admin/api/requests`);
+  }
+
+  // 6b. /api/requests?limit=5 (custA) with live gateway requests interleaved between pages
+  const beforeCustInterleaveIds = (await pool.query('select id from request where tenant_id=$1', [custA.tenantId])).rows.map(r => r.id);
+  const custInterleaveCollected = [];
+  const arrivedDuringCustWalk = [];
+  {
+    let before = null;
+    for (let pageNo = 0; pageNo < 100; pageNo++) {
+      const body = await fetchPage(custPage, '/api/requests', 5, before);
+      for (const r of body.requests) custInterleaveCollected.push(r.id);
+      if (!body.nextBefore) break;
+      if (arrivedDuringCustWalk.length < 6) {
+        const newId = await callNormal(keyASecret, modelAlpha);
+        await waitForSettled(pool, newId);
+        arrivedDuringCustWalk.push(newId);
+      }
+      before = body.nextBefore;
+    }
+  }
+  assert.equal(arrivedDuringCustWalk.length, 6, 'Harus ada 6 request baru disisipkan selama penelusuran pelanggan');
+  assertExactIdSet(custInterleaveCollected, beforeCustInterleaveIds, 'Interleaved walk /api/requests limit=5');
+  for (const newId of arrivedDuringCustWalk) {
+    assert.equal(custInterleaveCollected.includes(newId), false, `Request baru ${newId} tidak boleh muncul pada halaman lanjutan /api/requests`);
+  }
+  const freshCustHead = (await fetchPage(custPage, '/api/requests', 10, null)).requests.map(r => r.id);
+  for (const newId of arrivedDuringCustWalk) {
+    assert.ok(freshCustHead.includes(newId), `Request baru ${newId} harus muncul di halaman pertama terbaru /api/requests`);
+  }
+
   await assertCleanSecretHygiene(custPage, secrets, 'customer-usage-cursor');
   await custCtx.close();
+  await ctx.close();
 
   assert.deepEqual(pageErrors, [], `Ada pageerror browser: ${pageErrors.join('; ')}`);
   assert.deepEqual(serverErrors, [], `Ada respons >=500: ${serverErrors.join('; ')}`);
   assert.deepEqual(await ledger.invariantViolations(pool), [], 'Ada pelanggaran invariant ledger');
 
-  process.stdout.write('admin-requests-local-verify: PASS (rekonsiliasi filters/badges/links, sub-ms+same-ts cursor API+UI across rekonsiliasi/Request-tab/pemakaian, audit groups/actor/targetId/nextBefore, invariantViolations=[])\n');
+  process.stdout.write('admin-requests-local-verify: PASS (rekonsiliasi filters/badges/links, sub-ms+same-ts cursor API+UI, interleaved live writes cursor stability, audit groups/actor/targetId/nextBefore, invariantViolations=[])\n');
 } finally {
   mock?.closeHangs();
   mock?.server.closeAllConnections();

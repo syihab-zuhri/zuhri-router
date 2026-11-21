@@ -1078,5 +1078,155 @@ Total: 15/15 lulus dalam 698.15s
   - [`admin-requests-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-requests-local-verify.txt): `admin-requests-local-verify: PASS (rekonsiliasi filters/badges/links, sub-ms+same-ts cursor API+UI across rekonsiliasi/Request-tab/pemakaian, audit groups/actor/targetId/nextBefore, invariantViolations=[])`.
   - [`a11y-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/a11y-audit.txt): `170` kombinasi layar-lebar diaudit, `0` temuan unik (`a11y-audit: PASS (0 findings)`).
 
+---
+
+## 2026-11-20 / 2026-11-21 — Tugas sepuluh: Rincian audit server nyata, kursor saat request baru terus masuk, dan titik jenuh pool 3x berulang
+
+Cabang: `antigravity/akun` (dimajukan dari `origin/main` di `ef720aa` — tidak di-push).
+Commit per bagian:
+- Bagian A: `5a8734e` (`akun: add real-server admin audit details verification script (Tugas 10 Part A)`)
+- Bagian B: `98dbdaa` (`akun: verify request cursor stability while live gateway requests arrive (Tugas 10 Part B)`)
+- Bagian C: `0cbf469` (`akun: add 3x repeated pool saturation sweep (20/40/80) with median and range reporting (Tugas 10 Part C)`)
+- Bagian D: dilewati (Hermes Tahap sembilan belum ada di `origin/main` pada `ef720aa` maupun `docs/handoff/claude-log.md` hingga 2026-11-21 pagi).
+
+### Bagian A — Rincian audit pada server nyata (`5a8734e`)
+- **Ditulis**:
+  - [`web/scripts/admin-audit-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-audit-local-verify.mjs) (baru; seluruh teks UI dari [`web/src/messages.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/messages.ts), skema privat `web_admin_audit_*`):
+    - Membuat event audit nyata melalui endpoint API admin terautentikasi (dengan 2FA): tambah saldo (`POST /admin/api/topups` +25 kredit -> `amountMicro`, `saleRef`), tangguhkan & pulihkan pelanggan (`POST /admin/api/customers/:username/suspend|restore` -> `reason`, `previousStatus`, `nextStatus`), ubah batas lebih-pakai (`50 -> 125` kredit -> `beforeMicro`, `afterMicro`), dan selesaikan satu request `UNRESOLVED` (dibuat lewat proses anak gateway yang di-`SIGKILL` + `recoverStuck(pool, 0)`, lalu `POST /admin/api/requests/:id/resolve` 3 kredit -> `debitMicro`, `reason`).
+    - Di `/admin/audit`, membuka `<details class="audit-details">` ("Rincian") pada tiap event dan memastikan label cocok dengan `m.amount`, `m.saleRef`, `m.auditReason`, `m.auditPreviousStatus`, `m.auditNextStatus`, `m.auditBefore`, `m.auditAfter`, `m.adminRequestDebit`, nilai mikro tampil sebagai kredit token yang benar (`25 kredit token`, `50 kredit token`, `125 kredit token`, `3 kredit token`), dan kode status diterjemahkan (`Aktif`, `Ditangguhkan`).
+    - Memastikan event tanpa ringkasan (`request.mark_unresolved`, `admin.bootstrap`) tidak memiliki `<details class="audit-details">` ("Rincian").
+    - Mengakhiri dengan pemeriksaan kebersihan rahasia, `0` `pageerror`, `0` respons `>=500`, dan `invariantViolations(pool) === []`.
+- **Dijalankan**:
+  - `source .antigravity-env.sh && cd web && node scripts/admin-audit-local-verify.mjs` (mandiri dan otomatis ditemukan di `verify-all.mjs` penuh).
+- **Lulus**:
+  - Lulus (`exit 0`, `15.55s` di `verify-all.mjs`): `admin-audit-local-verify: PASS (topup/suspend/restore/overdraft/resolve details, micro formatting, status labels, empty summary without Rincian, invariantViolations=[])`.
+
+### Bagian B — Kursor saat request baru terus masuk (`98dbdaa`)
+- **Ditulis**:
+  - Memperbarui [`web/scripts/admin-requests-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-requests-local-verify.mjs) (tahap 6):
+    - Menelusuri `GET /admin/api/requests?limit=5` (admin) sambil menyisipkan 6 request gateway baru (bergantian `custA` dan `custB`) di antara pengambilan halaman; memastikan seluruh request yang sudah ada sebelum penelusuran muncul tepat sekali tanpa duplikat, tidak ada satu pun dari 6 request baru yang muncul di halaman lanjutan, dan ke-6 request baru tampil pada halaman pertama terbaru.
+    - Menelusuri `GET /api/requests?limit=5` (`custA`) sambil menyisipkan 6 request gateway baru `custA` di antara pengambilan halaman dengan verifikasi yang sama.
+- **Dijalankan**:
+  - `source .antigravity-env.sh && cd web && node scripts/admin-requests-local-verify.mjs` (mandiri dan di dalam `verify-all.mjs` penuh).
+- **Lulus**:
+  - Lulus (`exit 0`, `25.22s` di `verify-all.mjs`): `admin-requests-local-verify: PASS (rekonsiliasi filters/badges/links, sub-ms+same-ts cursor API+UI, interleaved live writes cursor stability, audit groups/actor/targetId/nextBefore, invariantViolations=[])`.
+
+### Bagian C — Titik jenuh pool 3x berulang (`0cbf469`)
+- **Ditulis**:
+  - Memperbarui [`server/scripts/bench-gateway.ts`](file:///mnt/d/router.dev.zuhri-antigravity/server/scripts/bench-gateway.ts) dengan mode `--pool-sweep` dan `--repeats <n>` (bawaan `3`) yang menjalankan `c=20/t=20`, `c=30/t=30`, dan `c=50/t=50` pada `--pool-max 20`, `40`, dan `80` (masing-masing `non-stream` dan `stream`, 3 pengulangan per kombinasi) lalu melaporkan median, rentang (`min .. max`), serta ketiga nilai mentah untuk `Overhead TTFB p95` dan `PoolWait/req avg`.
+- **Dijalankan**:
+  - `cd server && npm run typecheck`
+  - `ps aux | grep -E "verify-all|playwright|vite"` -> kosong (`NO_OTHER_LOAD`).
+  - `source .antigravity-env.sh && cd server && node scripts/bench-gateway.ts --pool-sweep --repeats 3`
+- **Lulus**:
+  - `typecheck`: lulus (`exit 0`).
+  - `bench-gateway.ts --pool-sweep --repeats 3`: lulus (`exit 0`, `invariantViolations=[]`, `active holds = 0`).
+  - **Spesifikasi mesin**: `OS=linux 6.18.33.2-microsoft-standard-WSL2 (x64) | CPU=13th Gen Intel(R) Core(TM) i5-13420H (12 vCPU) | RAM=7.61 GiB | Node=v24.21.0 | DB=PostgreSQL 18.7 (Debian 18.7-1.pgdg13+2) on x86_64-pc-linux-gnu | SweepPools=20,40,80 | Repeats=3`
+  - **Tabel titik jenuh pool (median, rentang, dan 3 pengulangan)**:
+
+| Mode | Concurrency / Tenants | PoolMax | Overhead TTFB p95 (median) | Overhead TTFB p95 (range) | Overhead TTFB p95 (3 runs) | PoolWait/req avg (median) | PoolWait/req avg (range) | PoolWait/req avg (3 runs) |
+|---|---|---:|---:|---:|---|---:|---:|---|
+| non-stream | c=20/t=20 | 20 | 70.70 ms | 42.93 ms .. 76.55 ms | 42.93 ms / 70.70 ms / 76.55 ms | 0.10 ms | 0.10 ms .. 0.11 ms | 0.11 ms / 0.10 ms / 0.10 ms |
+| non-stream | c=20/t=20 | 40 | 82.45 ms | 68.14 ms .. 82.61 ms | 82.61 ms / 68.14 ms / 82.45 ms | 0.10 ms | 0.10 ms .. 0.13 ms | 0.13 ms / 0.10 ms / 0.10 ms |
+| non-stream | c=20/t=20 | 80 | 87.32 ms | 66.65 ms .. 88.16 ms | 66.65 ms / 87.32 ms / 88.16 ms | 0.09 ms | 0.07 ms .. 0.10 ms | 0.07 ms / 0.09 ms / 0.10 ms |
+| non-stream | c=30/t=30 | 20 | 104.60 ms | 100.83 ms .. 109.33 ms | 104.60 ms / 100.83 ms / 109.33 ms | 18.60 ms | 18.03 ms .. 19.42 ms | 19.42 ms / 18.03 ms / 18.60 ms |
+| non-stream | c=30/t=30 | 40 | 122.42 ms | 108.06 ms .. 148.18 ms | 148.18 ms / 108.06 ms / 122.42 ms | 0.12 ms | 0.10 ms .. 1.61 ms | 1.61 ms / 0.10 ms / 0.12 ms |
+| non-stream | c=30/t=30 | 80 | 120.79 ms | 111.78 ms .. 123.30 ms | 123.30 ms / 120.79 ms / 111.78 ms | 0.09 ms | 0.08 ms .. 1.82 ms | 1.82 ms / 0.09 ms / 0.08 ms |
+| non-stream | c=50/t=50 | 20 | 164.74 ms | 159.98 ms .. 171.27 ms | 159.98 ms / 171.27 ms / 164.74 ms | 75.92 ms | 75.45 ms .. 77.76 ms | 77.76 ms / 75.92 ms / 75.45 ms |
+| non-stream | c=50/t=50 | 40 | 190.55 ms | 160.66 ms .. 198.94 ms | 160.66 ms / 198.94 ms / 190.55 ms | 11.64 ms | 11.47 ms .. 12.00 ms | 11.64 ms / 11.47 ms / 12.00 ms |
+| non-stream | c=50/t=50 | 80 | 187.51 ms | 181.09 ms .. 242.20 ms | 242.20 ms / 187.51 ms / 181.09 ms | 0.09 ms | 0.09 ms .. 4.30 ms | 4.30 ms / 0.09 ms / 0.09 ms |
+| stream | c=20/t=20 | 20 | 71.01 ms | 61.38 ms .. 71.97 ms | 71.97 ms / 71.01 ms / 61.38 ms | 9.96 ms | 9.65 ms .. 10.20 ms | 9.96 ms / 10.20 ms / 9.65 ms |
+| stream | c=20/t=20 | 40 | 83.36 ms | 70.01 ms .. 93.10 ms | 93.10 ms / 70.01 ms / 83.36 ms | 0.14 ms | 0.13 ms .. 0.15 ms | 0.14 ms / 0.13 ms / 0.15 ms |
+| stream | c=20/t=20 | 80 | 85.23 ms | 83.90 ms .. 87.08 ms | 87.08 ms / 85.23 ms / 83.90 ms | 0.15 ms | 0.14 ms .. 0.16 ms | 0.16 ms / 0.15 ms / 0.14 ms |
+| stream | c=30/t=30 | 20 | 122.04 ms | 115.55 ms .. 127.20 ms | 122.04 ms / 115.55 ms / 127.20 ms | 40.08 ms | 38.14 ms .. 41.32 ms | 38.14 ms / 40.08 ms / 41.32 ms |
+| stream | c=30/t=30 | 40 | 101.59 ms | 88.03 ms .. 104.61 ms | 104.61 ms / 101.59 ms / 88.03 ms | 8.48 ms | 6.13 ms .. 8.56 ms | 8.48 ms / 8.56 ms / 6.13 ms |
+| stream | c=30/t=30 | 80 | 91.85 ms | 83.29 ms .. 124.13 ms | 124.13 ms / 83.29 ms / 91.85 ms | 0.11 ms | 0.10 ms .. 2.43 ms | 2.43 ms / 0.10 ms / 0.11 ms |
+| stream | c=50/t=50 | 20 | 154.24 ms | 124.29 ms .. 165.10 ms | 124.29 ms / 154.24 ms / 165.10 ms | 99.18 ms | 93.71 ms .. 99.76 ms | 99.18 ms / 93.71 ms / 99.76 ms |
+| stream | c=50/t=50 | 40 | 168.56 ms | 167.32 ms .. 180.37 ms | 168.56 ms / 167.32 ms / 180.37 ms | 38.83 ms | 33.64 ms .. 40.55 ms | 38.83 ms / 33.64 ms / 40.55 ms |
+| stream | c=50/t=50 | 80 | 188.04 ms | 169.48 ms .. 207.24 ms | 207.24 ms / 169.48 ms / 188.04 ms | 4.47 ms | 4.24 ms .. 7.34 ms | 7.34 ms / 4.47 ms / 4.24 ms |
+
+### Bagian D — Refetch status jeda tanpa muat ulang (dilewati)
+- **Status**: Dilewati sesuai instruksi. Hingga 2026-11-21 pagi (`git fetch origin main`), `origin/main` masih di `ef720aa` dan `docs/handoff/claude-log.md` belum mencatat penggabungan Hermes Tahap sembilan.
+
+### Untuk Claude
+1. **Rekomendasi `DATABASE_POOL_MAX` produksi dari sweep 3x Bagian C (temuan utama)**:
+   - **Pertahankan bawaan produksi `DATABASE_POOL_MAX = 20` untuk saat ini (jangan dinaikkan ke 40 atau 80 secara buta)**.
+   - Pengulangan 3x konsisten memperlihatkan pola fisika koneksi PostgreSQL (12 vCPU, process-per-connection): menaikkan `PoolMax` dari `20 -> 40 -> 80` memang memangkas `PoolWait/req avg` di Node (`c=50/t=50` non-stream `75.92 -> 11.64 -> 0.09 ms`, stream `99.18 -> 38.83 -> 4.47 ms`), **tetapi tidak menurunkan `Overhead TTFB p95` ujung-ke-ujung** — malah median p95 `PoolMax=20` **lebih baik** daripada `40`/`80` pada hampir semua titik (`c=20`: `70.70` vs `82.45`/`87.32 ms`; `c=30` non-stream: `104.60` vs `122.42`/`120.79 ms`; `c=50` non-stream: `164.74` vs `190.55`/`187.51 ms`; `c=50` stream: `154.24` vs `168.56`/`188.04 ms`). Satu-satunya titik di mana `40`/`80` unggul adalah `stream c=30/t=30` (`122.04` -> `101.59`/`91.85 ms`, karena `Settlement` asinkron stream bersaing tipis dengan `Admission` pada `pool=20`).
+   - Penyebab: di atas ~20 backend aktif pada mesin <=12 vCPU, menghilangkan antrean ringan di memori Node hanya memindahkan antrean ke penjadwalan CPU, lock manager, dan WAL flush PostgreSQL (thrashing). Pada VPS pilot ber-vCPU lebih kecil, `PoolMax=40/80` berisiko memperburuk p95 lebih jauh.
+   - Pengungkit utama NFR-002 tetap **pemangkasan jumlah query per request** (masih `28` non-stream / `29` stream, terutama Admission `14` query), yang menurunkan baik waktu pegang koneksi maupun beban CPU/WAL PostgreSQL.
+2. **Stabilitas kursor & rincian audit server nyata (Bagian A & B)**:
+   - Tidak ditemukan bug server: seluruh label/format mikro-kredit/terjemahan status di `/admin/audit` cocok dengan ringkasan server, event tanpa ringkasan tidak merender "Rincian", dan kursor mikrodetik+ID stabil 100% saat 6 request gateway baru terus masuk di antara halaman pada `/admin/api/requests` maupun `/api/requests`.
+3. **Timeout 5000ms intermiten pada Playwright di WSL2 `/mnt/d/`**:
+   - Pada `verify-all.mjs` penuh (`15/16`), 2 test Hermes (`customer-tabs-focus.spec.ts:33`, `service-paused.spec.ts:6`) terkena timeout 5000ms tepat sesudah `page.goto(...)`; saat `--only playwright` diulang, kedua test tersebut lulus sementara 3 test lain (`return-to.spec.ts:391`, `return-to.spec.ts:462`, `service-paused.spec.ts:42`) terkena timeout 5000ms yang sama. Seluruh test Antigravity lulus 100% di kedua run dan tidak ada perubahan pada `web/src/**` maupun `web/test/**` di Tugas sepuluh.
+
+### Keluaran `verify-all.mjs` penuh akhir (`2026-11-21`)
+Pemeriksaan sebelum jalan: `ps aux | grep -E "verify-all|playwright|vite"` kosong (`NO_OTHER_LOAD`).
+Perintah: `source .antigravity-env.sh && cd web && node scripts/verify-all.mjs`
+
+```text
+[1/16] RUN   typecheck-server
+[1/16] PASS  typecheck-server (2.85s) (exit 0) -> web/evidence/verify-all/typecheck-server.txt
+[2/16] RUN   typecheck-web
+[2/16] PASS  typecheck-web (3.24s) (exit 0) -> web/evidence/verify-all/typecheck-web.txt
+[3/16] RUN   server-test
+[3/16] PASS  server-test (174.00s) (exit 0) -> web/evidence/verify-all/server-test.txt
+[4/16] RUN   unit
+[4/16] PASS  unit (1.36s) (exit 0) -> web/evidence/verify-all/unit.txt
+[5/16] RUN   playwright
+[5/16] FAIL  playwright (240.30s) (exit 1) -> web/evidence/verify-all/playwright.txt
+[6/16] RUN   test-local
+[6/16] PASS  test-local (12.60s) (exit 0) -> web/evidence/verify-all/test-local.txt
+[7/16] RUN   test-browser
+[7/16] PASS  test-browser (11.82s) (exit 0) -> web/evidence/verify-all/test-browser.txt
+[8/16] RUN   account-local-verify
+[8/16] PASS  account-local-verify (13.97s) (exit 0) -> web/evidence/verify-all/account-local-verify.txt
+[9/16] RUN   admin-audit-local-verify
+[9/16] PASS  admin-audit-local-verify (15.55s) (exit 0) -> web/evidence/verify-all/admin-audit-local-verify.txt
+[10/16] RUN   admin-catalog-local-verify
+[10/16] PASS  admin-catalog-local-verify (19.03s) (exit 0) -> web/evidence/verify-all/admin-catalog-local-verify.txt
+[11/16] RUN   admin-customers-local-verify
+[11/16] PASS  admin-customers-local-verify (19.01s) (exit 0) -> web/evidence/verify-all/admin-customers-local-verify.txt
+[12/16] RUN   admin-overview-local-verify
+[12/16] PASS  admin-overview-local-verify (13.45s) (exit 0) -> web/evidence/verify-all/admin-overview-local-verify.txt
+[13/16] RUN   admin-requests-local-verify
+[13/16] PASS  admin-requests-local-verify (25.22s) (exit 0) -> web/evidence/verify-all/admin-requests-local-verify.txt
+[14/16] RUN   golden-path-local-verify
+[14/16] PASS  golden-path-local-verify (14.14s) (exit 0) -> web/evidence/verify-all/golden-path-local-verify.txt
+[15/16] RUN   portal-local-verify
+[15/16] PASS  portal-local-verify (14.88s) (exit 0) -> web/evidence/verify-all/portal-local-verify.txt
+[16/16] RUN   a11y-audit
+[16/16] PASS  a11y-audit (163.43s) (exit 0) -> web/evidence/verify-all/a11y-audit.txt
+
+langkah                      | hasil |  durasi
+-----------------------------+-------+--------
+typecheck-server             | lulus |   2.85s
+typecheck-web                | lulus |   3.24s
+server-test                  | lulus | 174.00s
+unit                         | lulus |   1.36s
+playwright                   | gagal | 240.30s
+test-local                   | lulus |  12.60s
+test-browser                 | lulus |  11.82s
+account-local-verify         | lulus |  13.97s
+admin-audit-local-verify     | lulus |  15.55s
+admin-catalog-local-verify   | lulus |  19.03s
+admin-customers-local-verify | lulus |  19.01s
+admin-overview-local-verify  | lulus |  13.45s
+admin-requests-local-verify  | lulus |  25.22s
+golden-path-local-verify     | lulus |  14.14s
+portal-local-verify          | lulus |  14.88s
+a11y-audit                   | lulus | 163.43s
+
+Total: 15/16 lulus dalam 745.17s
+```
+
+- Rincian bukti utama di [`web/evidence/verify-all`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all):
+  - [`server-test.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/server-test.txt): `145` passed, `0` failed.
+  - [`unit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/unit.txt): `6` passed, `0` failed.
+  - [`playwright.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/playwright.txt): pada run penuh `80/82` (timeout 5000ms di `customer-tabs-focus.spec.ts:33` & `service-paused.spec.ts:6`); pada pengulangan `--only playwright` `79/82` (kedua kasus tadi lulus; timeout 5000ms berpindah ke `return-to.spec.ts:391`, `return-to.spec.ts:462`, `service-paused.spec.ts:42`). Seluruh uji Antigravity lulus 100% di kedua run.
+  - [`admin-audit-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-audit-local-verify.txt): `admin-audit-local-verify: PASS (topup/suspend/restore/overdraft/resolve details, micro formatting, status labels, empty summary without Rincian, invariantViolations=[])`.
+  - [`admin-requests-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-requests-local-verify.txt): `admin-requests-local-verify: PASS (rekonsiliasi filters/badges/links, sub-ms+same-ts cursor API+UI, interleaved live writes cursor stability, audit groups/actor/targetId/nextBefore, invariantViolations=[])`.
+  - [`a11y-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/a11y-audit.txt): `170` kombinasi layar-lebar diaudit, `0` temuan unik (`a11y-audit: PASS (0 findings)`).
+
+
 
 
