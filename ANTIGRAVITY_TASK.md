@@ -460,3 +460,30 @@ Boleh: berkas Anda, berkas baru di atas, `verify-all.mjs`, `a11y-audit.mjs`. Tid
 ## Laporan
 
 Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, jangan push. Jangan menjalankan Playwright bersamaan dengan Hermes.
+
+# Tugas sebelas (2026-11-21)
+
+Tugas sepuluh diterima dan digabung. Sweep pool tiga kali sangat jelas: pool lebih besar memangkas tunggu pool, tetapi p95 tidak membaik dan malah memburuk pada hampir semua titik. `DATABASE_POOL_MAX` produksi tetap 20 (VPS hanya 2 vCPU). Pengungkit berikutnya adalah pemangkasan query per request, yang dikerjakan Claude. Hermes Tahap sembilan kini ada di `main` (terpasang `r11210751`). Log Tugas sepuluh yang masih di-stage sudah di-commit Claude sebagai `65afe36` di cabang Anda.
+
+    cd /mnt/d/router.dev.zuhri-antigravity && source .antigravity-env.sh
+    git checkout antigravity/akun && git pull --ff-only origin main
+
+## A. Banner jeda tanpa muat ulang (Tugas sepuluh D)
+
+Kerjakan Tugas sepuluh D di `admin-overview-local-verify.mjs`. Tambahkan juga: banner muncul sesudah tab kembali terlihat (`visibilitychange`) tanpa berpindah halaman; elemen banner tetap elemen yang sama sesudah berpindah halaman; bila `/api/me` gagal sekali saat pembacaan ulang (misalnya lewat `page.route` pada satu request), halaman tidak berganti menjadi layar galat dan banner terakhir tetap tampil.
+
+## B. Semua jenis rincian audit pada server nyata (`admin-audit-local-verify.mjs`)
+
+Server menulis `summary` di 28 tempat dengan 38 kunci (`web/test/unit/audit-actions.test.ts` memindainya). Picu sebanyak mungkin aksi itu lewat API atau UI pada skema privat: upstream (buat, ubah, status, arsip), route (buat, ubah), paket (buat, ubah), voucher (terbit, cabut, redeem), harga (simpan draft, terbit, pensiun), API key (buat, ubah, cabut), undangan dan aktivasi, tutup akun, batas lebih-pakai, saldo, penyelesaian request, faktor kedua admin. Untuk setiap event di `/admin/audit`, buka "Rincian" dan pastikan tidak ada label yang sama dengan nama kunci mentah, nilai boolean tampil `m.auditYes` atau `m.auditNo`, dan nilai `*Micro` tampil sebagai kredit token. Catat aksi yang tidak dapat dipicu secara lokal beserta alasannya.
+
+## C. Penyebab Playwright kadang gagal pada run panjang
+
+Tiga agen melihat gejala yang sama pada run penuh, lalu lulus saat diulang sendirian: timeout 5000 ms tepat sesudah `page.goto`, `Failed to fetch dynamically imported module: .../src/main.tsx`, dan `net::ERR_NETWORK_CHANGED`. Kandidat penyebab: (1) Vite dev server membaca dari `/mnt/d` (drvfs) dan lambat mentransformasi modul; (2) jaringan WSL mirrored (Wi-Fi, IPv6, Tailscale) mengubah alamat, sehingga Chrome membatalkan request yang sedang jalan, termasuk ke 127.0.0.1; (3) beban dari proses lain. Ukur dulu: jalankan Playwright penuh tiga kali sambil merekam `ip -ts monitor address link route` dan waktu tiap test, lalu cocokkan waktu kegagalan dengan event jaringan dan dengan waktu muat modul Vite. Baru sesudah itu coba perbaikan yang ditunjuk oleh data, misalnya `server.warmup` Vite atau menjalankan e2e terhadap build. Bandingkan jumlah kegagalan dari tiga run penuh sebelum dan sesudah perbaikan. Jangan menambah `retries` dan jangan memperpanjang timeout untuk menyembunyikan gejala.
+
+## Batas berkas
+
+Boleh: berkas Anda, `verify-all.mjs`, `a11y-audit.mjs`, dan khusus bagian C `web/playwright.config.ts` dan `web/vite.config.ts` (catat alasan setiap baris yang diubah). Tidak boleh: `server/src/**`, migrasi, `package.json`, lockfile, dependency baru, berkas Hermes lain (`web/src/**`, `web/test/**`), upstream nyata, situs publik.
+
+## Laporan
+
+Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, termasuk log, lalu jangan push. Hermes sedang mengerjakan Tahap sepuluh di folder utama dan juga menjalankan Playwright; sebelum menjalankan Playwright, benchmark atau verify-all, periksa dengan `ps` bahwa tidak ada proses test lain.
