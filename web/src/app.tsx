@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { ApiError, post } from './api.ts';
 import { am, m, ov } from './messages.ts';
@@ -58,9 +58,21 @@ function Shell({ admin = false }: { admin?: boolean }) {
   const [open, setOpen] = useState(false); const action = useAction(admin); const navigate = useNavigate();
   const probe = useResource<unknown>(admin ? '/admin/api/packs' : '/api/me');
   const location = useLocation();
+  const previousPath = useRef(location.pathname);
   useEffect(() => { setOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    const routeChanged = previousPath.current !== location.pathname;
+    previousPath.current = location.pathname;
+    if (admin) return;
+    if (routeChanged) void probe.refetch();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void probe.refetch();
+    };
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => document.removeEventListener('visibilitychange', refreshWhenVisible);
+  }, [admin, location.pathname, probe.refetch]);
   if (probe.isPending) return <main className="standalone"><Pending /></main>;
-  if (probe.isError) {
+  if (probe.isError && probe.data === undefined) {
     if (probe.error instanceof ApiError && probe.error.status === 401) return <Navigate to={admin ? '/admin/masuk' : '/masuk'} replace state={{ expired: true, returnTo: location.pathname + location.search }} />;
     return <main className="standalone"><PageTitle>{m.failed}</PageTitle><ErrorBox error={probe.error} retry={() => void probe.refetch()} /></main>;
   }

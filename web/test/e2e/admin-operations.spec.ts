@@ -136,7 +136,7 @@ test('audit membedakan loading dan daftar yang memang kosong', async ({ page }) 
 
 test('audit menampilkan rincian terlokalisasi, nilai mikro-kredit, JSON pendek, dan melewati summary kosong', async ({ page }) => {
   await page.route('**/admin/api/audit**', route => route.fulfill({ json: { events: [
-    { id: 'detail-1', actorUser: 'admin_uji', actorUsername: 'admin_uji', actorKind: 'ADMIN', action: 'tenant.suspend', targetType: 'tenant', targetId: 'tenant_uji', summary: { reason: 'Pemeriksaan selesai', previousStatus: 'ACTIVE', nextStatus: 'CLOSED', amountMicro: '25000000', customField: 'nilai mentah', method: 'SUSPENDED', nested: { key: 'value', large: 'x'.repeat(240) } }, createdAt: '2026-11-14T00:00:00.000Z' },
+    { id: 'detail-1', actorUser: 'admin_uji', actorUsername: 'admin_uji', actorKind: 'ADMIN', action: 'tenant.suspend', targetType: 'tenant', targetId: 'tenant_uji', summary: { reason: 'Pemeriksaan selesai', previousStatus: 'ACTIVE', nextStatus: 'CLOSED', amountMicro: '25000000', customField: 'nilai mentah', method: 'SUSPENDED', keyReplaced: true, isPromo: false, nested: { key: 'value', large: 'x'.repeat(240) } }, createdAt: '2026-11-14T00:00:00.000Z' },
     { id: 'detail-2', actorUser: null, actorUsername: null, actorKind: 'SYSTEM', action: 'request.recover_release', targetType: 'request', targetId: 'request_uji', summary: {}, createdAt: '2026-11-14T00:00:01.000Z' },
   ], nextBefore: null } }));
   await mount(page, 'AuditPage');
@@ -152,7 +152,9 @@ test('audit menampilkan rincian terlokalisasi, nilai mikro-kredit, JSON pendek, 
   await expect(details).toContainText('Status berikutnya');
   await expect(details).toContainText('Ditutup');
   // A status code under a key that is not a status key stays raw.
-  await expect(details.locator('div').filter({ hasText: 'method' }).locator('dd')).toHaveText('SUSPENDED');
+  await expect(details.locator('div').filter({ hasText: m.auditMethod }).locator('dd')).toHaveText('SUSPENDED');
+  await expect(details.locator('div').filter({ hasText: m.auditKeyReplaced }).locator('dd')).toHaveText(m.auditYes);
+  await expect(details.locator('div').filter({ hasText: m.auditIsPromo }).locator('dd')).toHaveText(m.auditNo);
   await expect(details).toContainText('Nominal');
   await expect(details).toContainText('25 kredit token');
   await expect(details).toContainText('customField');

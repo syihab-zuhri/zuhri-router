@@ -28,6 +28,35 @@ const auditSummaryLabels: Record<string, string> = {
   beforeMicro: m.auditBefore,
   afterMicro: m.auditAfter,
   saleRef: m.saleRef,
+  after: m.auditAfter,
+  anthropic: m.auditAnthropic,
+  before: m.auditBefore,
+  chat: m.auditChat,
+  displayPriceIdr: m.auditDisplayPriceIdr,
+  entryId: m.auditEntryId,
+  from: m.auditFrom,
+  isPromo: m.auditIsPromo,
+  keyReplaced: m.auditKeyReplaced,
+  method: m.auditMethod,
+  modelId: m.auditModelId,
+  multiplier: m.auditMultiplier,
+  name: m.auditName,
+  previousVersion: m.auditPreviousVersion,
+  priority: m.auditPriority,
+  recipientBound: m.auditRecipientBound,
+  responses: m.auditResponses,
+  seq: m.auditSequence,
+  tenantId: m.auditTenantId,
+  to: m.auditTo,
+  tokens: m.auditTokens,
+  upstream: m.auditUpstream,
+  upstreamModel: m.auditUpstreamModel,
+  version: m.auditVersion,
+  email: m.email,
+  username: m.username,
+  kind: m.kind,
+  protocol: m.protocol,
+  urlChanged: m.auditUrlChanged,
 };
 // Only these keys carry a status code; any other string (a reason, a name) is shown exactly as written.
 const auditStatusKeys = new Set(['previousStatus', 'nextStatus', 'from', 'to']);
@@ -46,6 +75,7 @@ function auditSummaryEntries(summary: unknown): { key: string; label: string; va
       return { key, label, value: json.length > 160 ? `${json.slice(0, 157)}…` : json };
     }
     if (typeof value === 'string') return { key, label, value: auditStatusKeys.has(key) ? auditStatusLabel(value) : value };
+    if (typeof value === 'boolean') return { key, label, value: value ? m.auditYes : m.auditNo };
     return { key, label, value: value === null ? 'null' : String(value) };
   });
 }

@@ -27,7 +27,8 @@ test('upstream tidak mengisi ulang key dan perubahan URL meminta key baru', asyn
   await upstreamForm.locator('input[type="password"]').fill('synthetic-key-material');
   await upstreamForm.getByLabel(m.reason).fill('Migrasi upstream uji');
   await upstreamForm.getByRole('button', { name: m.save, exact: true }).click();
-  await expect(page.getByText('Tersimpan di', { exact: false })).toBeVisible();
+  await expect.poll(() => writes.length).toBe(1);
+  await expect(page.getByText(m.upstreamSaved, { exact: true })).toBeVisible();
   expect(writes).toHaveLength(1);
   expect(writes[0]).toMatchObject({ expectedVersion: '4', baseUrls: { CHAT: 'https://other.example.test/v1' }, apiKey: 'synthetic-key-material' });
   expect(JSON.stringify(writes[0])).not.toContain('old-secret');

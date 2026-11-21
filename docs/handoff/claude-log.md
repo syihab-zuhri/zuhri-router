@@ -272,3 +272,15 @@ Isi: Hermes Tahap delapan, Antigravity Tugas delapan, kursor request mikrodetik,
 - Angka pool: pada `c=50/t=50`, pool 20 membuat request menunggu koneksi rata-rata sekitar 110 ms (non-stream) dan 122 ms (stream); pool 80 menghapus antrean itu. Pada `c=10/t=10` pool belum jenuh. Angka satu kali jalan berisik (pool 80 tampak lebih lambat di `c=10`), jadi Tugas sepuluh C mengulang tiga kali.
 - `DATABASE_POOL_MAX` (bawaan 20, 1 sampai 90) di `server/src/main.ts`, `deploy/compose.yml`, `deploy/compose.tunnel.yml`, dan `deploy/README.md`. Nilai produksi tetap 20 sampai angka Tugas sepuluh C ada.
 - Query per request kini 28 (non-stream) dan 29 (stream).
+
+## 2026-11-21: Tahap sembilan Hermes digabung
+
+Hermes mengerjakan pembaruan `/api/me` saat rute portal berpindah dan saat tab kembali terlihat (data terakhir dipertahankan bila pembacaan ulang gagal; sesi kedaluwarsa tetap dialihkan lewat `useResource`), label untuk semua kunci `summary` audit, test unit pemindai, dan perbaikan test upstream yang sebelumnya menunggu teks yang sudah tampak sebelum submit. Claude memeriksa dan memperbaiki:
+
+- Test pemindai `summary` memakai pola `\{([^{}]*)\}`, sehingga summary yang berisi template literal `${...}` (`route.update`, `pack.update`) tidak terbaca. Kunci tiruan yang ditambahkan ke `route.update` tidak membuat test gagal. Pola kini menerima template literal dan test gagal bila jumlah `summary:` di sebuah berkas tidak sama dengan yang terbaca (summary berbentuk variabel, spread atau fungsi). Hasilnya dicocokkan dengan pemindai terpisah: 28 pemanggilan audit, 38 kunci, semuanya berlabel.
+- Nilai boolean di rincian audit tampil `true`/`false`; kini "Ya"/"Tidak" (`m.auditYes`, `m.auditNo`), dengan test e2e.
+- Label: `seq` (nomor versi harga yang dipensiunkan) "Urutan harga" menjadi "Versi harga"; `chat`, `anthropic` dan `responses` (base URL per protokol di `upstream.create`) menjadi "Base URL Chat", "Base URL Anthropic", "Base URL Responses".
+
+Teks baru: `auditYes`, `auditNo`. Teks berubah: `auditSequence`, `auditChat`, `auditAnthropic`, `auditResponses`. Banner Hermes Tahap sembilan kini ada di `main`, jadi Antigravity Tugas sepuluh D dapat dikerjakan.
+
+Bukti: suite server 145/145; `verify-all.mjs` 12/14 pada jalan pertama. Dua kegagalan berasal dari lingkungan: `portal.spec.ts` aktivasi dengan "Failed to fetch dynamically imported module" dan `admin-catalog-local-verify` dengan `net::ERR_NETWORK_CHANGED`. Tidak ada event Docker pada jam itu; laptop memakai jaringan WSL mirrored (Wi-Fi, IPv6, Tailscale), yang dapat membuat Chrome membatalkan request ke 127.0.0.1. Jalan ulang: `portal`, `admin-operations`, `service-paused` dan `upstream` 21/21, `admin-catalog-local-verify` PASS. Langkah lain lulus pada jalan pertama: Playwright 82/83, enam skrip server nyata lainnya, audit aksesibilitas 0 temuan.

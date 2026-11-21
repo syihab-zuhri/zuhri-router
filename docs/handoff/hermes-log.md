@@ -218,6 +218,38 @@ Build memberi warning dependency bundler `[MODULE_LEVEL_DIRECTIVE]` untuk `use c
 
 Status: seluruh butir Tahap delapan dan rangkaian verifikasi yang diminta lulus. Build web siap dipasang; belum ada deployment/image, perubahan server, commit atau push.
 
+## Tahap sembilan (2026-11-19)
+
+### Ditulis
+
+1. `web/src/app.tsx`: shell portal memperbarui `/api/me` pada perubahan path dan saat tab kembali terlihat; tanpa indikator muat ulang tambahan. Data profil/banner yang terakhir berhasil dibaca tetap dipakai saat refetch gagal; halaman galat shell hanya menggantikan layar bila belum ada data.
+2. `web/src/admin-operations.tsx`: semua 35 kunci summary audit yang tertulis pada `server/src` kini memiliki label admin. Status tetap diterjemahkan hanya pada kunci status dan kunci tak dikenal tetap ditampilkan mentah.
+3. `web/test/e2e/service-paused.spec.ts`: regresi untuk refetch status saat navigasi dan `visibilitychange`, mempertahankan identitas elemen banner, menyimpan status terakhir saat jaringan gagal, serta perubahan kembali ke status berjalan.
+4. `web/test/unit/audit-actions.test.ts`: pemindaian source server memeriksa sekurangnya 35 nama kunci summary dan memastikan setiap kunci ada pada peta label rincian audit, termasuk ringkasan bercabang.
+5. `web/test/e2e/admin-operations.spec.ts`: assertion `method` diperbarui agar memakai label baru.
+6. `web/test/e2e/upstream.spec.ts`: penantian test menunggu request POST yang sebenarnya sebelum menguji hasil; sebelumnya test menggunakan teks “Tersimpan di” yang sudah tampak sebelum submit.
+7. `web/src/messages.ts` menambah label yang terlihat: “ID entri”, “ID tenant”, “Versi”, “Versi sebelumnya”, “Metode”, “Nama”, “ID model”, “Upstream”, “Prioritas”, “Harga tampilan (Rp)”, “Dari”, “Ke”, “Promo”, “API key diganti”, “Terikat ke penerima”, “Responses”, “Urutan harga”, “Jumlah kredit token”, “Model upstream”, “Anthropic”, “Chat”, “Pengali”, dan “Base URL berubah”. Kunci `email` dan `username` memakai label bersama yang sudah ada; `kind` dan `protocol` memakai label bersama masing-masing.
+
+Tidak mengubah berkas Antigravity atau `server/`. Tidak ada dependency baru, commit, deploy, permintaan upstream berbayar, atau email nyata.
+
+### Dijalankan dan hasil
+
+- Butir 1 RED: test baru gagal dengan assertion jumlah panggilan `/api/me` tidak bertambah setelah `visibilitychange` (`Expected > 2, Received 2`). GREEN sesudah listener `visibilitychange` dan refetch saat perubahan path: test fokus `service-paused.spec.ts` lulus 1/1. Test ini juga memeriksa status berubah, banner dipertahankan pada galat jaringan dan objek banner yang sama tetap terpasang.
+- Butir 2 RED: test guard baru gagal dan melaporkan kunci summary tanpa label; sesudah label ditambahkan test lulus. Test guard memindai object summary dan cabang ternary di `server/src`, memverifikasi sedikitnya 35 kunci terhadap peta label di `admin-operations.tsx`.
+- `npm run typecheck`: lulus.
+- `npm test`: 7/7 lulus.
+- `hermes verify --json --timeout 600 --ready-timeout 60`: exit 0; build dan typecheck lulus, unit 7/7, Vite readiness HTTP 200. Build mengeluarkan warning non-blocking `[MODULE_LEVEL_DIRECTIVE]` dari dependency React Query/React Router.
+- `npm run test:local`: exit 0, `local-browser-verify: PASS`.
+- `npm run test:browser`: exit 0; build sukses dan `same-origin-dist-verify: PASS`. Ada warning bundler dependency `[MODULE_LEVEL_DIRECTIVE]`.
+- `git diff --check`: lulus.
+- E2E penuh dijalankan serial, tidak bersamaan dengan Antigravity. Run awal `proc_e40fe54deaaf` berakhir exit 1: 77/83 lulus, 6 gagal (`admin-operations` label `method`, `catalogue`, `portal` kebijakan token, `return-to` direct routes, `upstreams` daftar model, `usage` heading); run itu terjadi sebelum assertion label admin diselaraskan dengan teks baru dan sebelum beberapa failure diisolasi. Run antara `proc_6425732b0f2b` berakhir exit 1: 82/83 lulus, satu gagal pada navigasi `/admin` di `admin-overview.spec.ts`; error context menunjukkan `ERR_NETWORK_CHANGED`, lalu tes yang sama lulus ketika diisolasi 1/1. Run `proc_8feff38dd2e2` juga berakhir exit 1: 82/83 lulus, satu gagal pada test query tunggal portal di `return-to.spec.ts`; test tersebut lulus 1/1 saat diisolasi. Batch selektif enam spec `proc_0824ed2c171d` dihentikan oleh `process.kill` (SIGTERM, exit -15) sebelum menghasilkan hasil test; bukan run gagal assertion dan tidak dihitung sebagai verifikasi. Sesudah perubahan test upstream untuk menunggu POST sebenarnya, run final `CI=1 npm run test:e2e -- --workers=1 --reporter=line` berakhir exit 0: 83/83 lulus, bukti proses `proc_fc13fbeaf8f9` (3,7 menit). Run antara `proc_8af238a5dfbf` berakhir exit 1: 80/83 lulus, gagal dua test `return-to.spec.ts` dan test upstream yang memeriksa `writes` sebelum request selesai. Run `proc_dd056973ed7c` 81/83 (gagal fokus Shell di `admin-requests.spec.ts` dan direct-route `return-to.spec.ts`; masing-masing lulus saat diisolasi), serta run 80/83 dan 82/83 lainnya. Beberapa run sempat mencatat error `Failed to fetch dynamically imported module: http://127.0.0.1:5173/src/main.tsx`; failure yang tersisa lulus saat diuji ulang/diisolasi.
+- Verifikasi serial terisolasi juga lulus: `return-to.spec.ts` 12/12; `portal.spec.ts` 8/8; `admin-operations.spec.ts` 8/8; `admin-overview.spec.ts` dan `portal.spec.ts` 17/17; `upstream.spec.ts` 2/2. Test fokus login dan direct returnTo yang sempat gagal pada run panjang masing-masing lulus ketika dijalankan tersendiri.
+- `web/test/e2e/upstream.spec.ts` diselaraskan untuk menunggu request POST yang sebenarnya sebelum mengecek hasil simpan, bukan teks key tersimpan yang memang tampak sebelum submit. `CI=1 npx playwright test test/e2e/upstream.spec.ts --workers=1 --reporter=line`: 2/2 lulus.
+- Test regresi Tahap sembilan: `service-paused.spec.ts` fokus 1/1 lulus setelah perubahan; seluruh E2E final 83/83 juga mencakup tiga test terkait status layanan.
+
+Status: semua acceptance Tahap sembilan diverifikasi lulus: typecheck, unit 7/7, E2E 83/83, `test:local` PASS, `test:browser` PASS, build/readiness `hermes verify` PASS. Tidak ada perubahan server, dependency, commit, deployment atau akses upstream.
+
 ## Permintaan ke Claude
+
 
 Tidak ada kebutuhan kontrak server baru untuk tahap ini. Untuk tahap dua: bila diinginkan integrasi backend browser SCR-017/018, siapkan seed request unresolved dengan hold konsisten di schema privat dan step-up test yang sesuai. Jangan memakai atau menghentikan container bersama `router-spike-pg`. Tahap tiga lanjutan belum dipasang ke layanan publik.
