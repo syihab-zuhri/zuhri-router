@@ -1230,3 +1230,190 @@ Total: 15/16 lulus dalam 745.17s
 
 
 
+
+---
+
+## 2026-11-21 — Tugas sebelas: Banner jeda tanpa muat ulang, verifikasi seluruh 30 aksi/38 kunci rincian audit pada server nyata, dan diagnosis + perbaikan kegagalan intermiten Playwright
+
+Cabang: `antigravity/akun` (dimajukan fast-forward dari `origin/main` di `03d0448` — tidak di-push).
+Commit per bagian:
+- Bagian A: `ffe4f06` (`akun: verify live paused-service banner via navigation, visibilitychange, DOM identity, and 500 retention (Tugas 11 Part A)`)
+- Bagian B: `bf0509a` (`akun: verify all 30 server audit summary actions and 38 keys in admin-audit-local-verify (Tugas 11 Part B)`)
+- Bagian C: `7d14751` (`web: warm Vite dev modules and serve full-app e2e specs from preview build (Tugas 11 Part C)`)
+- Log laporan akhir: commit terpisah pada berkas ini.
+
+### Bagian A — Banner jeda tanpa muat ulang (`ffe4f06`)
+- **Ditulis**:
+  - Memperbarui [`web/scripts/admin-overview-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-overview-local-verify.mjs) (seluruh teks UI dari [`web/src/messages.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/messages.ts)):
+    - Membuka **dua tab pelanggan** (`custPage` di `/beranda` dan `custVisPage` di `/beranda`) **sebelum** admin menjeda layanan, memastikan keduanya awalnya menampilkan `m.serviceRunning` (`Berjalan`) dan `0` banner.
+    - Sesudah admin menjeda layanan lewat UI (step-up), **tanpa `page.reload()`**:
+      - Pada `custVisPage`, mengirim event `visibilitychange` tanpa berpindah halaman -> banner jeda (`m.servicePausedMessage`) muncul dan status Beranda berubah ke `m.servicePaused` (`Dijeda`).
+      - Pada `custPage`, berpindah halaman lewat tautan portal (`/beranda` -> `/isi-saldo`) -> banner jeda langsung muncul tanpa reload; menyimpan `elementHandle` node DOM banner, lalu berpindah ke `/api-key` dan memverifikasi node DOM banner tetap **elemen yang persis sama** (`node === orig && orig.isConnected`).
+      - Mencegat tepat **satu** `GET /api/me` dengan status `500` lewat `page.route` saat berpindah kembali ke `/beranda` -> halaman tidak berganti menjadi layar galat (`main.standalone`/`m.failed` = `0`), banner terakhir tetap tampil dengan **identitas node DOM yang sama**, dan status tetap `Dijeda`.
+    - Sesudah admin melanjutkan layanan lewat UI (step-up), berpindah halaman di dalam aplikasi tanpa reload -> banner hilang (`count === 0`) dan status Beranda kembali `Berjalan`.
+    - Tetap memeriksa `GET /api/me` tidak membocorkan alasan jeda admin, gateway `/v1/chat/completions`, `/v1/messages`, `/v1/responses` menjawab `503 service_paused` + `Retry-After: 60` saat dijeda lalu `200` saat dilanjutkan, serta `invariantViolations(pool) === []`.
+- **Dijalankan**:
+  - Pemeriksaan `ps aux` sebelum jalan: kosong (`NO_OTHER_LOAD`).
+  - Mandiri: `source .antigravity-env.sh && cd web && node scripts/admin-overview-local-verify.mjs` (sesudah commit `ffe4f06`).
+  - Di dalam `verify-all.mjs` penuh akhir.
+- **Lulus**:
+  - **Mandiri lulus** (`exit 0`): `admin-overview-local-verify: PASS (real server overview metrics, kill switch pause/503/resume/200, live customer banner via nav+visibilitychange+same-node+500-retention, negative warning, 360px, links)`.
+  - **Catatan pada `verify-all.mjs` akhir**: gagal di tahap awal `Warmup Vite gagal` (`line 273`, sebelum masuk skenario) karena badai `net::ERR_NETWORK_CHANGED` dari churn `eth8` (lihat Bagian C).
+
+### Bagian B — Semua jenis rincian audit pada server nyata (`bf0509a`)
+- **Ditulis**:
+  - Memperbarui [`web/scripts/admin-audit-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-audit-local-verify.mjs) (skema privat `web_admin_audit_*`, resolver DNS publik offline `['93.184.216.34']` untuk uji URL upstream, serta mock upstream loopback + anak proses gateway `SIGKILL` + `recoverStuck(pool, 0)` untuk request `UNRESOLVED`):
+    - Memicu **seluruh 28 panggilan `audit(..., summary: ...)` di `server/src/**` (30 nama aksi unik dan 38 kunci `summary` yang dipindai [`web/test/unit/audit-actions.test.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/unit/audit-actions.test.ts))** lewat API/UI nyata:
+      - Faktor kedua & akun: `admin.second_factor`, `invite.create`, `invite.accept`, `api_key.create`, `api_key.update`, `api_key.revoke` (pencabutan langsung dan otomatis saat tutup akun), `account.close`.
+      - Paket & voucher: `pack.create` (`isPromo: true`), `pack.update`, `voucher.issue` (baik `recipientBound: true` maupun `recipientBound: false`), `voucher.revoke`, `voucher.redeem`.
+      - Saldo & pengaturan: `ledger.admin_topup`, `ledger.adjustment`, `setting.overdraft`, `setting.gateway_pause`, `setting.gateway_resume`, `tenant.suspend`, `tenant.restore`.
+      - Harga & katalog: `price.draft_save`, `price.publish`, `price.retire`.
+      - Upstream & route: `upstream.create` (ketiga protokol `CHAT`, `ANTHROPIC`, `RESPONSES`), `upstream.update` (dua kali: `urlChanged: false / keyReplaced: false` dan `urlChanged: true / keyReplaced: true`), `upstream.status`, `upstream.archive`, `upstream.restore`, `route.create`, `route.update`.
+      - Rekonsiliasi: `request.resolve` (`CHARGE_ESTIMATED`).
+      - Event tanpa `summary` (`admin.bootstrap`, `model.create`, `session.login`, `request.mark_unresolved`) ikut diperiksa agar tidak menampilkan `<details class="audit-details">`.
+    - Menelusuri semua halaman `/admin/audit` di Chromium, membuka `"Rincian"` pada **setiap** baris ber-`summary`, dan mencocokkan terhadap data mentah `GET /admin/api/audit`:
+      - Tidak ada label `<dt>` yang sama dengan nama kunci mentah dan seluruhnya cocok dengan label terlokalisasi di [`web/src/messages.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/src/messages.ts).
+      - Nilai boolean tampil tepat sebagai `m.auditYes` (`Ya`) atau `m.auditNo` (`Tidak`).
+      - Nilai kunci `*Micro` tampil sebagai kredit token terformat (`${formatCredits(raw)} ${m.credits}`).
+      - Kode status (`previousStatus`, `nextStatus`, `from`, `to`) terjemahannya benar.
+      - Memastikan **30/30** aksi ber-`summary` dan **38/38** kunci `summary` benar-benar terverifikasi di DOM, serta `invariantViolations(pool) === []`.
+    - **Aksi yang tidak dapat dipicu secara lokal**: **tidak ada (`0`)** — seluruh 30 aksi (28 callsite `summary:`) dan 38 kunci berhasil dipicu dan diverifikasi pada server lokal.
+- **Dijalankan**:
+  - Pemeriksaan `ps aux` sebelum jalan: kosong (`NO_OTHER_LOAD`).
+  - Mandiri: `source .antigravity-env.sh && cd web && node scripts/admin-audit-local-verify.mjs`.
+  - Di dalam `verify-all.mjs` penuh akhir.
+- **Lulus**:
+  - **Lulus mandiri dan di dalam `verify-all.mjs`** (`exit 0`, `16.84s` di `verify-all.mjs`):
+    `admin-audit-local-verify: PASS (checkedRows=47, actionsWithSummary=30/30, summaryKeys=38/38, emptySummaryRows=7, boolYa=4, boolTidak=3, microFields=11, invariantViolations=[])`.
+
+### Bagian C — Penyebab Playwright kadang gagal pada run panjang (`7d14751`)
+
+#### 1. Pengukuran baseline sebelum perubahan (3 run penuh + `ip -ts monitor address link route` + probe Vite)
+- Pemeriksaan `ps aux` sebelum jalan: kosong (`NO_OTHER_LOAD`) — **kandidat (3) beban proses lain bukan syarat terjadinya kegagalan**.
+- **Probe muat modul Vite (`measure-vite-load.mjs`, `/masuk`, Chromium headless)**:
+  - Kunjungan 1 (dingin): `gotoLoad=77ms`, `headingVisible=387ms`, `totalResources=36`, modul `>=50ms`: `25` (terlambat: `115ms` `react-dom_client.js`, `105ms` `react-router.js`, `103ms` `/src/admin-overview.tsx`, `101ms` `/src/admin-operations.tsx`).
+  - Kunjungan 2–3 (hangat): `gotoLoad=39–76ms`, `headingVisible=238–274ms`, tetap `36` request HTTP terpisah ke `127.0.0.1:5183`.
+  - **Kesimpulan kandidat (1)**: transformasi Vite di `/mnt/d` (`387ms` dingin) **terlalu cepat untuk menyebabkan timeout 5000 ms sendirian**, tetapi memecah setiap `page.goto()` menjadi **36 request HTTP** selama `~240–387 ms` memperlebar jendela soket terbuka yang rentan diputus.
+- **3 run penuh baseline (`npm run test:e2e`, `83` test/run, total `249` eksekusi)**:
+  - Run 1: **GAGAL** (`82/83`, wall `226.0s`, span test `86.7s`, `eth8 DEL_IPV4` selama test = `8` burst / `5.5/menit`) — gagal pada `admin-operations.spec.ts:83` (`start=2026-11-21T01:40:46.294Z`, `dur=5130ms`, `Timeout 5000ms` menunggu `getByText('Saldo ditambah admin')`).
+  - Run 2: **LULUS** (`83/83`, wall `217.9s`, span test `78.6s`, `eth8 DEL_IPV4` selama test = `4` burst / `3.1/menit`).
+  - Run 3: **LULUS** (`83/83`, wall `216.8s`, span test `78.4s`, `eth8 DEL_IPV4` selama test = `2` burst / `1.5/menit`).
+  - Agregat baseline: **`1/249` gagal (`1/3` run gagal)**, `p50=653ms`, `p95=2938ms`, `max=8049ms` (`return-to.spec.ts:391`).
+- **Korelasi `ip -ts monitor address link route` — BUKTI AKAR MASALAH (kandidat 2)**:
+  - Dalam 11 menit baseline terekam **`2.802` baris event**, termasuk **`63` siklus penuh** pada antarmuka Wi-Fi WSL2 mirrored **`eth8`** (`192.168.1.4/24` + `fe80::d010:2f00:28c7:f2/64` + default route dihapus lalu dipasang ulang `~13 ms` kemudian dengan perubahan metric, mis. `321 -> 326`, `65 -> 70`).
+  - Pada kegagalan Run 1 (`admin-operations.spec.ts:83`, mulai `01:40:46.294Z`), tepat **`+249 ms`** kemudian (`01:40:46.543Z`–`01:40:46.574Z`), `eth8` memicu burst `DEL_ROUTE + DEL_IPV4 + ADD_IPV4 + DEL_IPV6 + ADD_IPV6 + ADD_ROUTE` persis saat Chromium sedang mengambil `/src/admin-operations.tsx` dari Vite.
+  - Di Linux, `NetworkChangeNotifierLinux` pada Chromium mendengarkan `rtnetlink` secara global (bukan hanya `lo`) dan memanggil `FlushSocketPoolsWithError(ERR_NETWORK_CHANGED)` untuk **semua** transaksi HTTP yang sedang berjalan termasuk ke `127.0.0.1`, sehingga modul ES gagal dimuat (`Failed to fetch dynamically imported module`), `#root` tetap kosong, dan 5 detik kemudian Playwright melaporkan timeout assertion. Pemeriksaan string biner `/root/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome` mengonfirmasi **tidak ada CLI flag maupun feature flag** untuk menonaktifkan `NetworkChangeNotifierLinux` atau mengabaikan `eth8`.
+- **Temuan tambahan dari `DEBUG=pw:webserver` (overhead startup 134 detik)**:
+  - Pada setiap run baseline, Playwright menghabiskan **`137.3s`** sebelum test ke-1 dimulai (`02:09:02.843Z HTTP GET http://127.0.0.1:5183/` -> `02:11:16.889Z connect ETIMEDOUT 127.0.0.1:5183` = **`134.0s`**) karena pada WSL2 mirrored mode, paket TCP SYN ke port loopback `127.0.0.1` yang belum terbuka mengalami drop (timeout kernel) alih-alih `ECONNREFUSED` cepat.
+
+#### 2. Perubahan yang diterapkan dan alasan setiap baris (`7d14751`)
+Tanpa menambah `retries` dan tanpa memperpanjang `timeout` (tetap `30_000 ms`, `expect` bawaan `5_000 ms`, `workers: 1`):
+- **[`web/vite.config.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/vite.config.ts)**:
+  - Baris 10 (`warmup: { clientFiles: ['./index.html', './src/main.tsx', './src/hooks.tsx', './src/app.tsx', './src/auth.tsx', './src/admin-*.tsx'] }`): menghangatkan transformasi modul klien saat startup Vite dev agar test tidak membayar latensi baca/transformasi dingin dari `/mnt/d` ketika soket `127.0.0.1` terbuka (uji `measure-vite-load.mjs` sesudah warmup: kunjungan dingin turun `387ms / 25 modul >=50ms` menjadi `304ms / 7 modul >=50ms`).
+- **[`web/playwright.config.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/playwright.config.ts)**:
+  - Baris 4 (`const previewOrigin = ... WEB_PREVIEW_PORT ?? 4173`): alamat server `vite preview` terpisah per env (selaras dengan `.antigravity-env.sh` dan `vite.config.ts`).
+  - Baris 6–13 (`const devOriginSpecs = ['**/admin.spec.ts', '**/admin-customers.spec.ts', '**/admin-operations.spec.ts', '**/guide.spec.ts', '**/portal.spec.ts', '**/upstreams.spec.ts']`): mengelompokkan 5 spec harness yang secara eksplisit membaca `/src/*.tsx` via Vite dev ditambah `guide.spec.ts` yang menegaskan origin `WEB_PORT` (`5183`).
+  - Baris 14 (`const serverReady = (origin: string) => (process.env.CI ? { wait: { stdout: /Local:/ } } : { url: origin, reuseExistingServer: true })`): pada mode CI (`CI=1`), langsung menjalankan Vite dan menunggu banner `Local:` di stdout untuk menghindari probe HTTP awal ke port kosong yang menggantung `134 detik` (`ETIMEDOUT`) di WSL2 mirrored; benturan port tetap ditolak cepat oleh `strictPort: true` di `vite.config.ts`. Di luar CI, perilaku `reuseExistingServer: true` tetap utuh.
+  - Baris 20–23 (`projects: [app-build, dev-harness]`): menjalankan **11 spec aplikasi penuh (43 test, ~68% durasi test)** terhadap build produksi `dist/` (`vite preview`, hanya 4 berkas statis alih-alih 36 request modul dev per `page.goto()`), sementara 6 spec `devOriginSpecs` (40 test) tetap pada `vite dev` yang sudah dihangatkan. Total tetap persis **83 test di 17 berkas**.
+  - Baris 25–28 (`webServer: [npm run build && npm run preview, npm run dev]`): menyalakan kedua server secara paralel (`npm run build` selesai dalam `~1.7s`).
+
+#### 3. Pengukuran sesudah perbaikan (3 run penuh + `ip -ts monitor`) & perbandingan
+- *Catatan percobaan antara (`after`)*: sebelum `guide.spec.ts` dimasukkan ke `devOriginSpecs`, `guide.spec.ts:11` gagal deterministik `3/3` karena mengharapkan `http://127.0.0.1:5183/v1` (sementara `app-build` berjalan di `4183`). Pada percobaan antara tersebut terjadi `45` burst `eth8 DEL_IPV4` selama test (`11.1/menit`), dan muncul `2` kegagalan `ERR_NETWORK_CHANGED`: `return-to.spec.ts:326` pada `app-build` (`+887 ms` tepat pada burst `02:35:45.604Z`) dan `portal.spec.ts:112` pada `dev-harness` (`+488 ms` tepat pada burst `02:37:59.040Z`).
+- **3 run penuh final (`after2`, sesudah `guide.spec.ts` masuk `devOriginSpecs`, `NO_OTHER_LOAD`)**:
+  - Run 1: **GAGAL** (`82/83`, wall `87.5s`, span test `80.1s`, `eth8 DEL_IPV4` selama test = `6` burst) — `app-build` **43/43 lulus**, gagal 1 di `dev-harness` (`portal.spec.ts:69`, `start=02:48:55.626Z`, `eth8 DEL_IPV4` di `02:48:55.871Z` = **`+245 ms`**).
+  - Run 2: **GAGAL** (`82/83`, wall `86.0s`, span test `78.7s`, `eth8 DEL_IPV4` selama test = `15` burst) — `app-build` **43/43 lulus**, gagal 1 di `dev-harness` (`portal.spec.ts:85`, `start=02:50:23.011Z`, `eth8 DEL_IPV4` di `02:50:23.211Z` = **`+200 ms`**).
+  - Run 3: **LULUS** (`83/83`, wall `80.1s`, span test `72.2s`, `eth8 DEL_IPV4` selama test = `5` burst).
+- **Tabel perbandingan sebelum vs sesudah (3 run penuh masing-masing)**:
+
+| Metrik | Sebelum (`vite dev` saja) | Sesudah (`after2`: `app-build` + warmed `dev-harness` + `wait.stdout`) |
+|---|---:|---:|
+| Total eksekusi test (3 run) | `249` (`83 × 3`) | `249` (`83 × 3`) |
+| Jumlah kegagalan | **`1/249`** (`1/3` run gagal) | **`2/249`** (`2/3` run gagal; `0/129` pada `app-build`, `2/120` pada `dev-harness`) |
+| Burst `eth8 DEL_IPV4` selama test | `14` burst (`3.4/menit`) | `26` burst (`6.8/menit`, **2× lebih sering**) |
+| Kegagalan per burst `eth8` | `7.1%` (`1/14`) | `7.7%` total (`0/26` pada `app-build`, `2/26` pada `dev-harness`) |
+| Durasi wall per run penuh | `216.8–226.0s` (rata-rata `220.2s`) | **`80.1–87.5s`** (rata-rata **`84.5s`**, **2.6× lebih cepat**) |
+| Test terlambat (`return-to.spec.ts:391`) | `7.89–8.05s` | **`5.69–5.98s`** (**26% lebih cepat**) |
+| `p50` / `p95` durasi test | `653ms` / `2938ms` | `645ms` / `2894ms` |
+
+- **Kesimpulan data yang jujur**:
+  - **5 dari 5 (`100%`)** kegagalan acak sepanjang seluruh pengukuran (1 baseline + 2 `after` + 2 `after2`) terjadi `200–887 ms` sesudah test dimulai, tepat bersamaan dengan `Deleted 11: eth8 inet 192.168.1.4/24`.
+  - Memindahkan 43 test aplikasi penuh ke build `vite preview` memangkas laju kegagalan lintas 6 run pasca-ubah (`after` + `after2`, menghadapi `71` burst `eth8`) menjadi **`1/258` (`0.39%`)** pada `app-build` (dan **`0/129`** di `after2`, plus **`43/43`** lulus di `verify-all.mjs`) dibanding **`3/237` (`1.27%`)** pada `dev-harness`, serta memangkas waktu wall per run **2.6×** (`220s -> 85s`).
+  - **Namun, perubahan konfigurasi Vite/Playwright saja tidak dapat menurunkan kegagalan ke `0%`** selama `eth8` di WSL2 mirrored terus menghapus & memasang ulang alamat IPv4/IPv6 + route `3–16` kali per menit di network namespace yang sama dengan Chromium. Bahkan pada `verify-all.mjs` akhir, `admin-customers-local-verify.mjs` (yang sudah memakai `--no-proxy-server`) mencatat langsung di konsol browser: `cust:error:Failed to load resource: net::ERR_NETWORK_CHANGED` sebanyak dua kali.
+
+### Untuk Claude
+1. **Audit server (Bagian B)**: tidak ada celah atau ketidaksesuaian pada 28 callsite `summary:` (30 aksi, 38 kunci) di `server/src/**`. Seluruh 30 aksi dapat dipicu lewat API/UI nyata pada skema privat dan seluruh 38 kunci sudah terpetakan bersih di `web/src/admin-operations.tsx` & `web/src/messages.ts`.
+2. **Akar masalah kegagalan intermiten Playwright & `*-local-verify` di mesin WSL2 ini (Bagian C)**:
+   - Terbukti 100% disebabkan oleh **WSL2 mirrored networking pada `eth8` (Wi-Fi `192.168.1.4/24`)** yang mengalami churn metric route (`311/316/321/326`, `55/60/65/70`) dan memicu `RTM_DELADDR`/`RTM_NEWADDR`/`RTM_DELROUTE`/`RTM_NEWROUTE` sebanyak `3–16` kali/menit. `NetworkChangeNotifierLinux` pada Chromium memutus soket TCP aktif ke `127.0.0.1` dengan `net::ERR_NETWORK_CHANGED` (tercatat eksplisit juga di `admin-customers-local-verify.txt` baris 19–20 meskipun `--no-proxy-server` sudah aktif), dan biner `chromium-1248` tidak menyediakan flag CLI untuk mengabaikan `eth8`.
+   - Selain itu, WSL2 mirrored menyebabkan `HTTP GET` Playwright ke port loopback tertutup menggantung **`134 detik`** (`connect ETIMEDOUT`) sebelum `webServer` dinyalakan; ini sudah diatasi untuk mode CI lewat `wait: { stdout: /Local:/ }` di `web/playwright.config.ts`.
+   - **Perbaikan permanen berada di lapis lingkungan/host WSL2** (menstabilkan churn metric Wi-Fi host atau memakai `networkingMode=nat` di `.wslconfig`, atau menjalankan suite browser di network namespace loopback-only tanpa `eth8`), bukan di `retries` atau perpanjangan timeout test.
+3. **Hardcode `WEB_PORT` di [`web/test/e2e/guide.spec.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/test/e2e/guide.spec.ts#L11)**:
+   - Baris 11 menegaskan `http://127.0.0.1:${Number(process.env.WEB_PORT ?? 5173)}/v1` alih-alih origin `baseURL` aktif, sehingga `guide.spec.ts` ditempatkan pada project `dev-harness` (`webOrigin`). Jika suatu saat Hermes mengubah baris tersebut memakai origin `page.url()`, `guide.spec.ts` juga bisa pindah ke `app-build`.
+
+### Keluaran `verify-all.mjs` penuh akhir (`2026-11-21`)
+Pemeriksaan sebelum jalan: `ps aux | grep -E "verify-all|playwright|vite|local-verify|chromium"` kosong (`NO_OTHER_LOAD`).
+Perintah: `source .antigravity-env.sh && cd web && node scripts/verify-all.mjs`
+
+```text
+[1/16] RUN   typecheck-server
+[1/16] PASS  typecheck-server (1.20s) (exit 0) -> web/evidence/verify-all/typecheck-server.txt
+[2/16] RUN   typecheck-web
+[2/16] PASS  typecheck-web (1.33s) (exit 0) -> web/evidence/verify-all/typecheck-web.txt
+[3/16] RUN   server-test
+[3/16] PASS  server-test (152.05s) (exit 0) -> web/evidence/verify-all/server-test.txt
+[4/16] RUN   unit
+[4/16] PASS  unit (1.33s) (exit 0) -> web/evidence/verify-all/unit.txt
+[5/16] RUN   playwright
+[5/16] FAIL  playwright (84.35s) (exit 1) -> web/evidence/verify-all/playwright.txt
+[6/16] RUN   test-local
+[6/16] PASS  test-local (10.78s) (exit 0) -> web/evidence/verify-all/test-local.txt
+[7/16] RUN   test-browser
+[7/16] PASS  test-browser (8.70s) (exit 0) -> web/evidence/verify-all/test-browser.txt
+[8/16] RUN   account-local-verify
+[8/16] PASS  account-local-verify (12.67s) (exit 0) -> web/evidence/verify-all/account-local-verify.txt
+[9/16] RUN   admin-audit-local-verify
+[9/16] PASS  admin-audit-local-verify (16.84s) (exit 0) -> web/evidence/verify-all/admin-audit-local-verify.txt
+[10/16] RUN   admin-catalog-local-verify
+[10/16] PASS  admin-catalog-local-verify (19.93s) (exit 0) -> web/evidence/verify-all/admin-catalog-local-verify.txt
+[11/16] RUN   admin-customers-local-verify
+[11/16] FAIL  admin-customers-local-verify (19.50s) (exit 1) -> web/evidence/verify-all/admin-customers-local-verify.txt
+[12/16] RUN   admin-overview-local-verify
+[12/16] FAIL  admin-overview-local-verify (17.17s) (exit 1) -> web/evidence/verify-all/admin-overview-local-verify.txt
+[13/16] RUN   admin-requests-local-verify
+[13/16] PASS  admin-requests-local-verify (24.98s) (exit 0) -> web/evidence/verify-all/admin-requests-local-verify.txt
+[14/16] RUN   golden-path-local-verify
+[14/16] PASS  golden-path-local-verify (9.69s) (exit 0) -> web/evidence/verify-all/golden-path-local-verify.txt
+[15/16] RUN   portal-local-verify
+[15/16] PASS  portal-local-verify (14.84s) (exit 0) -> web/evidence/verify-all/portal-local-verify.txt
+[16/16] RUN   a11y-audit
+[16/16] PASS  a11y-audit (163.52s) (exit 0) -> web/evidence/verify-all/a11y-audit.txt
+
+langkah                      | hasil |  durasi
+-----------------------------+-------+--------
+typecheck-server             | lulus |   1.20s
+typecheck-web                | lulus |   1.33s
+server-test                  | lulus | 152.05s
+unit                         | lulus |   1.33s
+playwright                   | gagal |  84.35s
+test-local                   | lulus |  10.78s
+test-browser                 | lulus |   8.70s
+account-local-verify         | lulus |  12.67s
+admin-audit-local-verify     | lulus |  16.84s
+admin-catalog-local-verify   | lulus |  19.93s
+admin-customers-local-verify | gagal |  19.50s
+admin-overview-local-verify  | gagal |  17.17s
+admin-requests-local-verify  | lulus |  24.98s
+golden-path-local-verify     | lulus |   9.69s
+portal-local-verify          | lulus |  14.84s
+a11y-audit                   | lulus | 163.52s
+
+Total: 13/16 lulus dalam 558.97s
+```
+
+- Rincian bukti di [`web/evidence/verify-all`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all):
+  - [`server-test.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/server-test.txt): `145` passed, `0` failed.
+  - [`unit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/unit.txt): `7` passed, `0` failed.
+  - [`playwright.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/playwright.txt): `82 passed, 1 failed (1.4m)` — `app-build` **43/43 lulus**, `dev-harness` gagal 1 di `portal.spec.ts:41` (timeout 5000ms tepat sesudah `page.goto('/beranda')`).
+  - [`admin-audit-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-audit-local-verify.txt): `admin-audit-local-verify: PASS (checkedRows=47, actionsWithSummary=30/30, summaryKeys=38/38, emptySummaryRows=7, boolYa=4, boolTidak=3, microFields=11, invariantViolations=[])`.
+  - [`admin-customers-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-customers-local-verify.txt): gagal saat memuat halaman aktivasi pelanggan dengan log browser `cust:error:Failed to load resource: net::ERR_NETWORK_CHANGED` (2×).
+  - [`admin-overview-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-overview-local-verify.txt): gagal pada `Warmup Vite gagal` (`warmPage.goto`), sedangkan eksekusi mandiri pasca-commit `ffe4f06` lulus penuh (`PASS`).
+  - [`a11y-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/a11y-audit.txt): `170` kombinasi layar-lebar diaudit, `0` temuan unik (`a11y-audit: PASS (0 findings)`).

@@ -15,6 +15,7 @@ import * as pricing from '../../server/src/pricing.ts';
 import { recoverStuck, resetRouteHealth } from '../../server/src/gateway.ts';
 import { newToken, seal, tokenHash, totpAt, totpStep } from '../../server/src/crypto.ts';
 import { DB_URL } from '../../server/test/helpers.ts';
+import { formatCredits } from '../src/credits.ts';
 import { m, ov, statusText } from '../src/messages.ts';
 
 // Child mode: open one streaming request against the shared test schema until the first SSE byte
@@ -73,9 +74,53 @@ const C = 1_000_000n;
 const adminUsername = 'admin_audit_verify';
 const adminPassword = 'local-admin-audit-14';
 const custUsername = 'audit_pelanggan_1';
+const custCloseUsername = 'audit_pelanggan_tutup';
 const custPassword = 'local-audit-cust-10';
 const modelId = 'audit/stream-model';
+const retireModelId = 'audit/retire-model';
 const upstreamApiKey = 'sk-audit-mock-upstream-777';
+
+const expectedSummaryLabels = {
+  reason: m.auditReason,
+  previousReason: m.auditPreviousReason,
+  previousStatus: m.auditPreviousStatus,
+  nextStatus: m.auditNextStatus,
+  amountMicro: m.amount,
+  debitMicro: m.adminRequestDebit,
+  beforeMicro: m.auditBefore,
+  afterMicro: m.auditAfter,
+  saleRef: m.saleRef,
+  after: m.auditAfter,
+  anthropic: m.auditAnthropic,
+  before: m.auditBefore,
+  chat: m.auditChat,
+  displayPriceIdr: m.auditDisplayPriceIdr,
+  entryId: m.auditEntryId,
+  from: m.auditFrom,
+  isPromo: m.auditIsPromo,
+  keyReplaced: m.auditKeyReplaced,
+  method: m.auditMethod,
+  modelId: m.auditModelId,
+  multiplier: m.auditMultiplier,
+  name: m.auditName,
+  previousVersion: m.auditPreviousVersion,
+  priority: m.auditPriority,
+  recipientBound: m.auditRecipientBound,
+  responses: m.auditResponses,
+  seq: m.auditSequence,
+  tenantId: m.auditTenantId,
+  to: m.auditTo,
+  tokens: m.auditTokens,
+  upstream: m.auditUpstream,
+  upstreamModel: m.auditUpstreamModel,
+  version: m.auditVersion,
+  email: m.email,
+  username: m.username,
+  kind: m.kind,
+  protocol: m.protocol,
+  urlChanged: m.auditUrlChanged,
+};
+const auditStatusKeys = new Set(['previousStatus', 'nextStatus', 'from', 'to']);
 
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 function base32Decode(value) {
@@ -229,7 +274,7 @@ try {
   await createInvite(pool, { email: 'audit-cust@example.test', adminUser: adm.userId }, mailer);
   const cust = await activateInvite(pool, { token: mail.invites.at(-1).token, username: custUsername, password: custPassword });
 
-  // Seed initial balance for customer so gateway can place a hold, plus an API key
+  // Seed initial balance & key so gateway can place a hold for the UNRESOLVED request
   await withTx(pool, tx => ledger.grantAdminTopup(tx, {
     tenantId: cust.tenantId,
     amount: 500_000n * C,
@@ -237,21 +282,21 @@ try {
     actorUser: adm.userId,
     idemKey: 'audit-initial-seed-1',
   }));
-  const apiKeySecret = 'rtr_' + newToken();
+  const seedApiKeySecret = 'rtr_' + newToken();
   await pool.query(
     'insert into api_key(tenant_id, name, prefix, token_hash, creation_key_hash) values($1,$2,$3,$4,$5)',
-    [cust.tenantId, 'kunci-audit', apiKeySecret.slice(0, 12), tokenHash(apiKeySecret), tokenHash('audit-key-seed-1')],
+    [cust.tenantId, 'kunci-audit-seed', seedApiKeySecret.slice(0, 12), tokenHash(seedApiKeySecret), tokenHash('audit-key-seed-1')],
   );
 
   // Set baseline overdraft = 50 tokens so later admin API change to 125 records beforeMicro=50000000 & afterMicro=125000000
   await withTx(pool, tx => ledger.setOverdraft(tx, { micro: 50n * C, actorUser: adm.userId }));
 
-  // Publish model & route on mock upstream to produce one genuine UNRESOLVED request via crash + recoverStuck
+  // Publish stream model & route on mock upstream to produce one genuine UNRESOLVED request via crash + recoverStuck
   mock = await startHangMockUpstream();
   resetRouteHealth();
-  const up = (await pool.query(
+  const upHang = (await pool.query(
     'insert into upstream(name, status, base_url_chat, key_enc, key_set_at) values($1,$2,$3,$4,now()) returning id',
-    ['audit-verify-upstream', 'ELIGIBLE', `http://127.0.0.1:${mock.port}/v1`, seal(key, Buffer.from(upstreamApiKey))],
+    ['audit-hang-upstream', 'ELIGIBLE', `http://127.0.0.1:${mock.port}/v1`, seal(key, Buffer.from(upstreamApiKey))],
   )).rows[0];
   const createdModel = await pricing.createModel(pool, { id: modelId, displayName: 'Audit Stream Model', actorUser: adm.userId });
   const draftedModel = await pricing.saveDraft(pool, {
@@ -268,14 +313,14 @@ try {
   });
   await pool.query(
     'insert into route(model_id, upstream_id, protocol, upstream_model, priority) values($1,$2,$3,$4,1)',
-    [modelId, up.id, 'CHAT', 'upstream-audit-hang'],
+    [modelId, upHang.id, 'CHAT', 'upstream-audit-hang'],
   );
 
-  // Create one UNRESOLVED request via genuine mid-stream process crash + recoverStuck (also emits request.mark_unresolved with empty summary)
+  // Create one UNRESOLVED request via genuine mid-stream process crash + recoverStuck (emits request.mark_unresolved with empty summary)
   const unresolvedReqId = await spawnAndKillStuckStream({
     schemaName: schema,
     keyHex: key.toString('hex'),
-    apiKey: apiKeySecret,
+    apiKey: seedApiKeySecret,
     targetModel: modelId,
   });
   mock.closeHangs();
@@ -329,7 +374,7 @@ try {
     if (res.status() >= 500) serverErrors.push(`${res.status()} ${res.url()}`);
   });
 
-  // Admin login + 2FA
+  // Admin login + 2FA (emits admin.second_factor with { method })
   await page.goto(`${webBase}/admin/masuk`);
   await page.getByLabel(m.identifier).fill(adminUsername);
   await page.getByLabel(m.password, { exact: true }).fill(adminPassword);
@@ -339,129 +384,414 @@ try {
   await page.getByRole('button', { name: m.verify, exact: true }).click();
   await expectVisible(page.getByRole('heading', { name: ov.overviewTitle, exact: true }), 'Login admin tidak mendarat di Ringkasan Operasi');
 
-  // Execute the target admin actions through real authenticated admin API endpoints (within fresh step-up window)
-  const topupSaleRef = 'AUDIT-TOPUP-REF-25';
-  const suspendReason = 'Penangguhan uji rincian audit';
-  const restoreReason = 'Pemulihan uji rincian audit';
-  const resolveReason = 'Penyelesaian uji rincian audit';
-
-  const apiCall = (path, body) => page.evaluate(
-    async ({ p, b }) => {
+  const apiCall = (targetPage, path, body, method = 'POST') => targetPage.evaluate(
+    async ({ p, b, meth }) => {
       const res = await fetch(p, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-router-csrf': '1' },
-        body: JSON.stringify(b),
+        method: meth,
+        headers: {
+          ...(meth !== 'GET' ? { 'content-type': 'application/json', 'x-router-csrf': '1' } : {}),
+        },
+        ...(meth !== 'GET' ? { body: JSON.stringify(b) } : {}),
       });
       return { status: res.status, data: await res.json().catch(() => null) };
     },
-    { p: path, b: body },
+    { p: path, b: body, meth: method },
   );
 
-  // 1. Tambah saldo: +25 kredit token (amountMicro=25000000, saleRef=AUDIT-TOPUP-REF-25)
-  const topupRes = await apiCall('/admin/api/topups', {
+  // ---- Trigger ALL 28 summary-writing audit actions (all 38 summary keys) via real API endpoints ----
+  // 1. Saldo: topup (+25 kredit -> amountMicro, saleRef, entryId) & adjustment (-2,5 kredit -> amountMicro, reason, entryId)
+  const topupSaleRef = 'AUDIT-TOPUP-REF-25';
+  assert.equal((await apiCall(page, '/admin/api/topups', {
     username: custUsername,
     amountTokens: '25',
     saleRef: topupSaleRef,
     idempotencyKey: 'audit-ui-topup-25-001',
-  });
-  assert.equal(topupRes.status, 201, `POST /admin/api/topups gagal: ${JSON.stringify(topupRes)}`);
+  })).status, 201);
+  assert.equal((await apiCall(page, '/admin/api/adjustments', {
+    username: custUsername,
+    amountMicro: '-2500000',
+    reason: 'Koreksi uji rincian audit',
+    idempotencyKey: 'audit-ui-adjust-001',
+  })).status, 201);
 
-  // 2. Tangguhkan & pulihkan pelanggan (reason, previousStatus, nextStatus)
-  const suspRes = await apiCall(`/admin/api/customers/${encodeURIComponent(custUsername)}/suspend`, {
+  // 2. Pelanggan: suspend & restore (reason, previousStatus, nextStatus, version)
+  const suspendReason = 'Penangguhan uji rincian audit';
+  const restoreReason = 'Pemulihan uji rincian audit';
+  assert.equal((await apiCall(page, `/admin/api/customers/${encodeURIComponent(custUsername)}/suspend`, {
     expectedVersion: '1',
     reason: suspendReason,
-  });
-  assert.equal(suspRes.status, 200, `POST suspend gagal: ${JSON.stringify(suspRes)}`);
-
-  const restRes = await apiCall(`/admin/api/customers/${encodeURIComponent(custUsername)}/restore`, {
+  })).status, 200);
+  assert.equal((await apiCall(page, `/admin/api/customers/${encodeURIComponent(custUsername)}/restore`, {
     expectedVersion: '2',
     reason: restoreReason,
-  });
-  assert.equal(restRes.status, 200, `POST restore gagal: ${JSON.stringify(restRes)}`);
+  })).status, 200);
 
-  // 3. Ubah batas lebih-pakai: 50 -> 125 kredit token (beforeMicro=50000000, afterMicro=125000000)
-  const odRes = await apiCall('/admin/api/settings/overdraft', { tokens: '125' });
-  assert.equal(odRes.status, 200, `POST /admin/api/settings/overdraft gagal: ${JSON.stringify(odRes)}`);
+  // 3. Batas lebih-pakai: 50 -> 125 kredit (beforeMicro, afterMicro)
+  assert.equal((await apiCall(page, '/admin/api/settings/overdraft', { tokens: '125' })).status, 200);
 
-  // 4. Selesaikan request UNRESOLVED: 3 kredit token (debitMicro=3000000, reason)
-  const resolveRes = await apiCall(`/admin/api/requests/${encodeURIComponent(unresolvedReqId)}/resolve`, {
+  // 4. Kill switch: pause (reason) & resume (previousReason)
+  assert.equal((await apiCall(page, '/admin/api/settings/gateway', { paused: true, reason: 'Jeda uji rincian audit' })).status, 200);
+  assert.equal((await apiCall(page, '/admin/api/settings/gateway', { paused: false })).status, 200);
+
+  // 5. Penyelesaian request UNRESOLVED (debitMicro, reason)
+  const resolveReason = 'Penyelesaian uji rincian audit';
+  assert.equal((await apiCall(page, `/admin/api/requests/${encodeURIComponent(unresolvedReqId)}/resolve`, {
     debitTokens: '3',
     reason: resolveReason,
-  });
-  assert.equal(resolveRes.status, 200, `POST resolve request gagal: ${JSON.stringify(resolveRes)}`);
+  })).status, 200);
 
-  // Open /admin/audit and inspect "Rincian" for every event
+  // 6. Paket: buat (tokens, displayPriceIdr, isPromo: true -> Ya) & ubah (before, after)
+  const packCreate = await apiCall(page, '/admin/api/packs', {
+    name: 'Paket Audit Promo',
+    tokens: '100',
+    displayPriceIdr: '50000',
+    isPromo: true,
+    active: true,
+  });
+  assert.equal(packCreate.status, 201, `pack.create gagal: ${JSON.stringify(packCreate)}`);
+  const packUpdate = await apiCall(page, `/admin/api/packs/${packCreate.data.id}`, {
+    name: 'Paket Audit Diperbarui',
+    tokens: '120',
+    displayPriceIdr: '60000',
+    isPromo: false,
+    active: true,
+    expectedVersion: packCreate.data.version,
+  });
+  assert.equal(packUpdate.status, 200, `pack.update gagal: ${JSON.stringify(packUpdate)}`);
+
+  // 7. Voucher: terbit (recipientBound: true -> Ya, dan recipientBound: false -> Tidak), cabut (reason), redeem (amountMicro, tenantId)
+  const voucherRedeemable = await apiCall(page, '/admin/api/vouchers', {
+    kind: 'SALE',
+    tokens: '15',
+    saleRef: 'AUDIT-VOUCHER-BOUND-1',
+    recipientUsername: custUsername,
+    idempotencyKey: 'audit-voucher-bound-1',
+  });
+  assert.equal(voucherRedeemable.status, 201, `voucher.issue bound gagal: ${JSON.stringify(voucherRedeemable)}`);
+  const voucherRevocable = await apiCall(page, '/admin/api/vouchers', {
+    kind: 'PROMO',
+    tokens: '10',
+    saleRef: 'Promo uji cabut audit',
+    idempotencyKey: 'audit-voucher-unbound-1',
+  });
+  assert.equal(voucherRevocable.status, 201, `voucher.issue unbound gagal: ${JSON.stringify(voucherRevocable)}`);
+  const voucherRevoke = await apiCall(page, `/admin/api/vouchers/${voucherRevocable.data.voucher.id}/revoke`, {
+    reason: 'Cabut voucher uji audit',
+  });
+  assert.equal(voucherRevoke.status, 200, `voucher.revoke gagal: ${JSON.stringify(voucherRevoke)}`);
+
+  // 8. Model & Harga: create (empty summary), draft_save (multiplier), publish (reason, before, after), retire (reason, seq)
+  const modelCreate = await apiCall(page, '/admin/api/models', { id: retireModelId, displayName: 'Audit Retire Model' });
+  assert.equal(modelCreate.status, 201, `model.create gagal: ${JSON.stringify(modelCreate)}`);
+  const draft1 = await apiCall(page, '/admin/api/models/price/draft', {
+    id: retireModelId,
+    expectedVersion: modelCreate.data.version,
+    multiplier: '1.5',
+  });
+  assert.equal(draft1.status, 200, `price.draft_save gagal: ${JSON.stringify(draft1)}`);
+  const pub1 = await apiCall(page, '/admin/api/models/price/publish', {
+    id: retireModelId,
+    expectedVersion: draft1.data.version,
+    reason: 'Terbit harga uji audit',
+  });
+  assert.equal(pub1.status, 200, `price.publish gagal: ${JSON.stringify(pub1)}`);
+  const ret1 = await apiCall(page, '/admin/api/models/price/retire', {
+    id: retireModelId,
+    expectedVersion: pub1.data.version,
+    reason: 'Pensiun harga uji audit',
+  });
+  assert.equal(ret1.status, 200, `price.retire gagal: ${JSON.stringify(ret1)}`);
+
+  // 9. Upstream (buat: name/chat/anthropic/responses; ubah: urlChanged & keyReplaced true/false; status: from/to/reason; arsip & pulihkan: name)
+  const upCreate = await apiCall(page, '/admin/api/upstreams', {
+    name: 'Upstream Audit Lengkap',
+    baseUrls: {
+      CHAT: 'https://chat.audit.example/v1',
+      ANTHROPIC: 'https://anthropic.audit.example',
+      RESPONSES: 'https://responses.audit.example/v1',
+    },
+    apiKey: 'sk-audit-upstream-create-1',
+    termsNote: 'Catatan awal upstream audit',
+  });
+  assert.equal(upCreate.status, 201, `upstream.create gagal: ${JSON.stringify(upCreate)}`);
+  // Update without URL/key change -> urlChanged: false (Tidak), keyReplaced: false (Tidak)
+  const upUpdateNoUrl = await apiCall(page, `/admin/api/upstreams/${upCreate.data.id}`, {
+    name: 'Upstream Audit Lengkap',
+    baseUrls: {
+      CHAT: 'https://chat.audit.example/v1',
+      ANTHROPIC: 'https://anthropic.audit.example',
+      RESPONSES: 'https://responses.audit.example/v1',
+    },
+    termsNote: 'Catatan diperbarui tanpa ganti URL',
+    expectedVersion: upCreate.data.version,
+  });
+  assert.equal(upUpdateNoUrl.status, 200, `upstream.update (no url) gagal: ${JSON.stringify(upUpdateNoUrl)}`);
+  // Update WITH URL & key change -> urlChanged: true (Ya), keyReplaced: true (Ya)
+  const upUpdateWithUrl = await apiCall(page, `/admin/api/upstreams/${upCreate.data.id}`, {
+    name: 'Upstream Audit Lengkap',
+    baseUrls: {
+      CHAT: 'https://chat2.audit.example/v1',
+      ANTHROPIC: 'https://anthropic.audit.example',
+      RESPONSES: 'https://responses.audit.example/v1',
+    },
+    apiKey: 'sk-audit-upstream-replaced-2',
+    termsNote: 'URL dan key diganti',
+    expectedVersion: upUpdateNoUrl.data.version,
+  });
+  assert.equal(upUpdateWithUrl.status, 200, `upstream.update (with url) gagal: ${JSON.stringify(upUpdateWithUrl)}`);
+  // Status change: PENDING -> ELIGIBLE (from, to, reason)
+  const upStatus = await apiCall(page, `/admin/api/upstreams/${upCreate.data.id}/status`, {
+    status: 'ELIGIBLE',
+    reason: 'Layak untuk uji audit',
+    expectedVersion: upUpdateWithUrl.data.version,
+  });
+  assert.equal(upStatus.status, 200, `upstream.status gagal: ${JSON.stringify(upStatus)}`);
+
+  // 10. Route: buat (modelId, upstream, protocol, upstreamModel, priority) & ubah (before, after)
+  const routeCreate = await apiCall(page, '/admin/api/routes', {
+    modelId,
+    upstreamId: upCreate.data.id,
+    protocol: 'CHAT',
+    upstreamModel: 'upstream-chat-v1',
+    priority: 2,
+    enabled: true,
+  });
+  assert.equal(routeCreate.status, 201, `route.create gagal: ${JSON.stringify(routeCreate)}`);
+  const routeUpdate = await apiCall(page, `/admin/api/routes/${routeCreate.data.id}`, {
+    upstreamModel: 'upstream-chat-v2',
+    priority: 5,
+    enabled: false,
+    expectedVersion: routeCreate.data.version,
+  });
+  assert.equal(routeUpdate.status, 200, `route.update gagal: ${JSON.stringify(routeUpdate)}`);
+
+  // Archive & restore upstream (upstream.archive / upstream.restore -> name)
+  const upArch = await apiCall(page, `/admin/api/upstreams/${upCreate.data.id}/archive`, {
+    archived: true,
+    expectedVersion: upStatus.data.version,
+  });
+  assert.equal(upArch.status, 200, `upstream.archive gagal: ${JSON.stringify(upArch)}`);
+  const upRest = await apiCall(page, `/admin/api/upstreams/${upCreate.data.id}/archive`, {
+    archived: false,
+    expectedVersion: upArch.data.version,
+  });
+  assert.equal(upRest.status, 200, `upstream.restore gagal: ${JSON.stringify(upRest)}`);
+
+  // 11. Undangan & aktivasi via API (invite.create -> email, invite.accept -> username)
+  const invRes = await apiCall(page, '/admin/api/invites', { email: 'audit-close@example.test' });
+  assert.equal(invRes.status, 201, `invite.create gagal: ${JSON.stringify(invRes)}`);
+  const closeInviteToken = mail.invites.at(-1).token;
+
+  // 12. Aksi pelanggan: API key (buat, ubah, cabut), voucher redeem, dan aktivasi + tutup akun (api_key.revoke account_closed + account.close)
+  const custCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const custPage = await custCtx.newPage();
+  custPage.on('pageerror', err => pageErrors.push(`cust:${err.message}`));
+  await custPage.goto(`${webBase}/masuk`);
+  await custPage.getByLabel(m.identifier).fill(custUsername);
+  await custPage.getByLabel(m.password, { exact: true }).fill(custPassword);
+  await custPage.getByRole('button', { name: m.login, exact: true }).click();
+  await expectVisible(custPage.getByRole('heading', { name: m.home, exact: true }), 'Login pelanggan audit gagal');
+
+  const keyCreate = await apiCall(custPage, '/api/keys', {
+    name: 'Key Uji Audit',
+    allowedModels: null,
+    spendLimitMicro: '10000000',
+    expiresAt: null,
+    idempotencyKey: 'audit-cust-key-create-1',
+  });
+  assert.equal(keyCreate.status, 201, `api_key.create gagal: ${JSON.stringify(keyCreate)}`);
+  const keyUpdate = await apiCall(custPage, `/api/keys/${keyCreate.data.key.id}/limits`, {
+    name: 'Key Uji Audit Diubah',
+    allowedModels: null,
+    spendLimitMicro: '20000000',
+    expiresAt: null,
+    expectedVersion: keyCreate.data.key.version,
+  });
+  assert.equal(keyUpdate.status, 200, `api_key.update gagal: ${JSON.stringify(keyUpdate)}`);
+  const keyRevoke = await apiCall(custPage, `/api/keys/${keyCreate.data.key.id}/revoke`, {
+    expectedVersion: keyUpdate.data.key.version,
+  });
+  assert.equal(keyRevoke.status, 200, `api_key.revoke gagal: ${JSON.stringify(keyRevoke)}`);
+
+  const redeemRes = await apiCall(custPage, '/api/redeem', { code: voucherRedeemable.data.code });
+  assert.equal(redeemRes.status, 200, `voucher.redeem gagal: ${JSON.stringify(redeemRes)}`);
+  await custCtx.close();
+
+  // Pelanggan kedua: aktivasi via /api/auth/activate -> login -> buat key -> tutup akun (/api/account/close)
+  const closeCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const closePage = await closeCtx.newPage();
+  closePage.on('pageerror', err => pageErrors.push(`closeCust:${err.message}`));
+  await closePage.goto(`${webBase}/masuk`);
+  const actRes = await apiCall(closePage, '/api/auth/activate', {
+    token: closeInviteToken,
+    username: custCloseUsername,
+    password: custPassword,
+  });
+  assert.equal(actRes.status, 201, `invite.accept gagal: ${JSON.stringify(actRes)}`);
+  await closePage.getByLabel(m.identifier).fill(custCloseUsername);
+  await closePage.getByLabel(m.password, { exact: true }).fill(custPassword);
+  await closePage.getByRole('button', { name: m.login, exact: true }).click();
+  await expectVisible(closePage.getByRole('heading', { name: m.home, exact: true }), 'Login pelanggan tutup akun gagal');
+  const closeKey = await apiCall(closePage, '/api/keys', {
+    name: 'Key Sebelum Tutup Akun',
+    allowedModels: null,
+    spendLimitMicro: null,
+    expiresAt: null,
+    idempotencyKey: 'audit-close-key-1',
+  });
+  assert.equal(closeKey.status, 201, `api_key.create (close cust) gagal: ${JSON.stringify(closeKey)}`);
+  const closeMe = await apiCall(closePage, '/api/me', undefined, 'GET');
+  assert.equal(closeMe.status, 200);
+  const closeRes = await apiCall(closePage, '/api/account/close', {
+    currentPassword: custPassword,
+    confirmUsername: custCloseUsername,
+    expectedVersion: closeMe.data.version,
+  });
+  assert.equal(closeRes.status, 200, `account.close gagal: ${JSON.stringify(closeRes)}`);
+  await closeCtx.close();
+
+  // ---- Fetch raw server audit events for ground-truth verification ----
+  const rawEventsById = new Map();
+  {
+    let before = null;
+    for (let guard = 0; guard < 20; guard++) {
+      const path = `/admin/api/audit${before ? `?before=${encodeURIComponent(before)}` : ''}`;
+      const res = await apiCall(page, path, undefined, 'GET');
+      assert.equal(res.status, 200, `GET ${path} gagal`);
+      for (const ev of res.data.events) rawEventsById.set(ev.id, ev);
+      if (!res.data.nextBefore) break;
+      before = res.data.nextBefore;
+    }
+  }
+
+  // ---- Walk ALL pages of /admin/audit in browser, open EVERY "Rincian", verify labels/booleans/micros/statuses ----
   await page.locator('aside.desktop-nav nav').getByRole('link', { name: m.audit, exact: true }).click();
   await expectVisible(page.getByRole('heading', { name: m.audit, exact: true }), 'Halaman /admin/audit tidak terbuka');
-  await page.waitForFunction(() => document.querySelectorAll('article.data-row').length >= 10, null, { timeout: 10_000 });
+  await page.waitForFunction(() => document.querySelectorAll('article.data-row').length > 0, null, { timeout: 10_000 });
 
-  async function openAndReadDetails(rowLocator, label) {
-    await expectVisible(rowLocator, `Baris audit '${label}' tidak tampil`);
-    const details = rowLocator.locator('details.audit-details');
-    await expectVisible(details.locator('summary', { hasText: m.details }), `Ringkasan '${m.details}' tidak tampil pada '${label}'`);
-    await details.locator('summary').click();
-    await expectVisible(details.locator('dl'), `Daftar rincian tidak terbuka pada '${label}'`);
-    return details.evaluate(el => {
-      const pairs = [];
-      for (const div of el.querySelectorAll('dl > div')) {
-        const dt = div.querySelector('dt')?.textContent?.trim() ?? '';
-        const dd = div.querySelector('dd')?.textContent?.trim() ?? '';
-        pairs.push([dt, dd]);
+  const observedSummaryActions = new Set();
+  const observedSummaryKeys = new Set();
+  let checkedRows = 0;
+  let checkedEmptySummaryRows = 0;
+  let checkedBooleanYes = 0;
+  let checkedBooleanNo = 0;
+  let checkedMicroFields = 0;
+
+  for (let pageIndex = 0; pageIndex < 20; pageIndex++) {
+    const rowCount = await page.locator('article.data-row').count();
+    assert.ok(rowCount > 0, `Halaman audit ke-${pageIndex + 1} tidak boleh kosong`);
+
+    for (let i = 0; i < rowCount; i++) {
+      const row = page.locator('article.data-row').nth(i);
+      const auditId = (await row.locator('dd.mono').last().innerText()).trim();
+      const raw = rawEventsById.get(auditId);
+      assert.ok(raw, `Event audit ID ${auditId} tidak ditemukan di jawaban /admin/api/audit`);
+      checkedRows++;
+
+      const summaryObj = raw.summary && typeof raw.summary === 'object' && !Array.isArray(raw.summary) ? raw.summary : {};
+      const summaryKeys = Object.keys(summaryObj);
+      const details = row.locator('details.audit-details');
+
+      if (summaryKeys.length === 0) {
+        assert.equal(await details.count(), 0, `Event tanpa ringkasan '${raw.action}' (${auditId}) tidak boleh punya ${m.details}`);
+        checkedEmptySummaryRows++;
+        continue;
       }
-      return Object.fromEntries(pairs);
-    });
+
+      observedSummaryActions.add(raw.action);
+      await expectVisible(details.locator('summary', { hasText: m.details }), `Ringkasan '${m.details}' tidak tampil pada '${raw.action}' (${auditId})`);
+      await details.locator('summary').click();
+      await expectVisible(details.locator('dl'), `Daftar rincian tidak terbuka pada '${raw.action}' (${auditId})`);
+
+      const renderedEntries = await details.evaluate(el => [...el.querySelectorAll('dl > div')].map(div => ({
+        dt: div.querySelector('dt')?.textContent?.trim() ?? '',
+        dd: div.querySelector('dd')?.textContent?.trim() ?? '',
+      })));
+
+      assert.equal(renderedEntries.length, summaryKeys.length, `Jumlah entri rincian tidak cocok pada '${raw.action}' (${auditId})`);
+
+      for (let kIdx = 0; kIdx < summaryKeys.length; kIdx++) {
+        const rawKey = summaryKeys[kIdx];
+        const rawVal = summaryObj[rawKey];
+        const { dt, dd } = renderedEntries[kIdx];
+        observedSummaryKeys.add(rawKey);
+
+        assert.notEqual(dt, rawKey, `Label rincian '${dt}' pada '${raw.action}' tidak boleh sama dengan nama kunci mentah '${rawKey}'`);
+        assert.equal(dt, expectedSummaryLabels[rawKey], `Label kunci '${rawKey}' pada '${raw.action}' tidak cocok dengan messages.ts (got '${dt}', expected '${expectedSummaryLabels[rawKey]}')`);
+
+        if (typeof rawVal === 'boolean') {
+          const expectedBool = rawVal ? m.auditYes : m.auditNo;
+          assert.equal(dd, expectedBool, `Boolean '${rawKey}' pada '${raw.action}' harus tampil '${expectedBool}' (got '${dd}')`);
+          if (rawVal) checkedBooleanYes++;
+          else checkedBooleanNo++;
+        } else if (rawKey.endsWith('Micro') && typeof rawVal === 'string' && /^-?(0|[1-9][0-9]*)$/.test(rawVal)) {
+          const expectedCredits = `${formatCredits(rawVal)} ${m.credits}`;
+          assert.equal(dd, expectedCredits, `Nilai mikro '${rawKey}' pada '${raw.action}' harus tampil '${expectedCredits}' (got '${dd}')`);
+          checkedMicroFields++;
+        } else if (typeof rawVal === 'string' && auditStatusKeys.has(rawKey)) {
+          const expectedStatus = Object.hasOwn(m.stateText, rawVal) ? m.stateText[rawVal] : statusText[rawVal] ?? rawVal;
+          assert.equal(dd, expectedStatus, `Status '${rawKey}=${rawVal}' pada '${raw.action}' harus diterjemahkan ke '${expectedStatus}' (got '${dd}')`);
+        }
+      }
+    }
+
+    const nextBtn = page.locator('nav.pagination').getByRole('button', { name: m.next, exact: true });
+    if (await nextBtn.count() === 0) break;
+    const prevFirstId = (await page.locator('article.data-row dd.mono').first().innerText()).trim();
+    await nextBtn.click();
+    await page.waitForFunction(
+      oldId => {
+        const cur = document.querySelector('article.data-row dd.mono')?.textContent?.trim();
+        return Boolean(cur && cur !== oldId);
+      },
+      prevFirstId,
+      { timeout: 10_000 },
+    );
   }
 
-  // Verify ledger.admin_topup (newest topup with saleRef = topupSaleRef)
-  const topupRow = page.locator('article.data-row')
-    .filter({ has: page.locator('h2', { hasText: m.auditActionText['ledger.admin_topup'] }) })
-    .first();
-  const topupDetails = await openAndReadDetails(topupRow, 'ledger.admin_topup');
-  assert.equal(topupDetails[m.amount], `25 ${m.credits}`, `Nilai ${m.amount} topup tidak cocok: ${JSON.stringify(topupDetails)}`);
-  assert.equal(topupDetails[m.saleRef], topupSaleRef, `Nilai ${m.saleRef} topup tidak cocok: ${JSON.stringify(topupDetails)}`);
+  // Verify ALL 38 summary keys & ALL 30 summary-writing action names were exercised and verified in real DOM
+  const allExpectedKeys = Object.keys(expectedSummaryLabels).sort();
+  const missingKeys = allExpectedKeys.filter(k => !observedSummaryKeys.has(k));
+  assert.deepEqual(missingKeys, [], `Masih ada kunci summary server yang belum terverifikasi di DOM: ${missingKeys.join(', ')}`);
 
-  // Verify tenant.suspend
-  const suspendRow = page.locator('article.data-row')
-    .filter({ has: page.locator('h2', { hasText: m.auditActionText['tenant.suspend'] }) })
-    .first();
-  const suspendDetails = await openAndReadDetails(suspendRow, 'tenant.suspend');
-  assert.equal(suspendDetails[m.auditReason], suspendReason, `Alasan suspend tidak cocok: ${JSON.stringify(suspendDetails)}`);
-  assert.equal(suspendDetails[m.auditPreviousStatus], m.stateText.ACTIVE, `previousStatus suspend harus '${m.stateText.ACTIVE}': ${JSON.stringify(suspendDetails)}`);
-  assert.equal(suspendDetails[m.auditNextStatus], statusText.SUSPENDED, `nextStatus suspend harus '${statusText.SUSPENDED}': ${JSON.stringify(suspendDetails)}`);
+  const expectedActionsWithSummary = [
+    'account.close',
+    'admin.second_factor',
+    'api_key.create',
+    'api_key.revoke',
+    'api_key.update',
+    'invite.accept',
+    'invite.create',
+    'ledger.adjustment',
+    'ledger.admin_topup',
+    'pack.create',
+    'pack.update',
+    'price.draft_save',
+    'price.publish',
+    'price.retire',
+    'request.resolve',
+    'route.create',
+    'route.update',
+    'setting.gateway_pause',
+    'setting.gateway_resume',
+    'setting.overdraft',
+    'tenant.restore',
+    'tenant.suspend',
+    'upstream.archive',
+    'upstream.create',
+    'upstream.restore',
+    'upstream.status',
+    'upstream.update',
+    'voucher.issue',
+    'voucher.redeem',
+    'voucher.revoke',
+  ];
+  const missingActions = expectedActionsWithSummary.filter(a => !observedSummaryActions.has(a));
+  assert.deepEqual(missingActions, [], `Masih ada aksi audit bersummary yang belum terverifikasi: ${missingActions.join(', ')}`);
 
-  // Verify tenant.restore
-  const restoreRow = page.locator('article.data-row')
-    .filter({ has: page.locator('h2', { hasText: m.auditActionText['tenant.restore'] }) })
-    .first();
-  const restoreDetails = await openAndReadDetails(restoreRow, 'tenant.restore');
-  assert.equal(restoreDetails[m.auditReason], restoreReason, `Alasan restore tidak cocok: ${JSON.stringify(restoreDetails)}`);
-  assert.equal(restoreDetails[m.auditPreviousStatus], statusText.SUSPENDED, `previousStatus restore harus '${statusText.SUSPENDED}': ${JSON.stringify(restoreDetails)}`);
-  assert.equal(restoreDetails[m.auditNextStatus], m.stateText.ACTIVE, `nextStatus restore harus '${m.stateText.ACTIVE}': ${JSON.stringify(restoreDetails)}`);
-
-  // Verify setting.overdraft (newest: 50 -> 125)
-  const overdraftRow = page.locator('article.data-row')
-    .filter({ has: page.locator('h2', { hasText: m.auditActionText['setting.overdraft'] }) })
-    .first();
-  const overdraftDetails = await openAndReadDetails(overdraftRow, 'setting.overdraft');
-  assert.equal(overdraftDetails[m.auditBefore], `50 ${m.credits}`, `Nilai ${m.auditBefore} overdraft tidak cocok: ${JSON.stringify(overdraftDetails)}`);
-  assert.equal(overdraftDetails[m.auditAfter], `125 ${m.credits}`, `Nilai ${m.auditAfter} overdraft tidak cocok: ${JSON.stringify(overdraftDetails)}`);
-
-  // Verify request.resolve (debitMicro=3000000 -> 3 kredit token, reason)
-  const resolveRow = page.locator('article.data-row')
-    .filter({ has: page.locator('h2', { hasText: m.auditActionText['request.resolve'] }) })
-    .first();
-  const resolveDetails = await openAndReadDetails(resolveRow, 'request.resolve');
-  assert.equal(resolveDetails[m.adminRequestDebit], `3 ${m.credits}`, `Nilai ${m.adminRequestDebit} resolve tidak cocok: ${JSON.stringify(resolveDetails)}`);
-  assert.equal(resolveDetails[m.auditReason], resolveReason, `Alasan resolve tidak cocok: ${JSON.stringify(resolveDetails)}`);
-
-  // Verify events without summary have NO "Rincian" (<details class="audit-details">)
-  for (const emptyAction of ['request.mark_unresolved', 'admin.bootstrap']) {
-    const emptyRow = page.locator('article.data-row')
-      .filter({ has: page.locator('h2', { hasText: m.auditActionText[emptyAction] }) })
-      .first();
-    await expectVisible(emptyRow, `Baris event tanpa ringkasan '${emptyAction}' tidak tampil`);
-    assert.equal(await emptyRow.locator('details.audit-details').count(), 0, `Event tanpa ringkasan '${emptyAction}' tidak boleh memiliki ${m.details}`);
-  }
+  assert.ok(checkedEmptySummaryRows >= 2, `Minimal 2 event tanpa ringkasan harus diverifikasi (got ${checkedEmptySummaryRows})`);
+  assert.ok(checkedBooleanYes >= 3 && checkedBooleanNo >= 3, `Boolean Ya/Tidak harus terverifikasi keduanya (Ya=${checkedBooleanYes}, Tidak=${checkedBooleanNo})`);
+  assert.ok(checkedMicroFields >= 5, `Field *Micro harus terverifikasi (got ${checkedMicroFields})`);
 
   // Secret hygiene check on page URL & storage
   const hygiene = await page.evaluate(() => ({
@@ -471,7 +801,7 @@ try {
   }));
   assert.equal(hygiene.localLen, 0, 'localStorage harus kosong');
   assert.equal(hygiene.sessionLen, 0, 'sessionStorage harus kosong');
-  assert.equal(hygiene.href.includes(apiKeySecret), false, 'API key bocor di URL');
+  assert.equal(hygiene.href.includes(seedApiKeySecret), false, 'API key bocor di URL');
   assert.equal(hygiene.href.includes(adm.totpSecretBase32), false, 'TOTP secret bocor di URL');
 
   await ctx.close();
@@ -480,7 +810,9 @@ try {
   assert.deepEqual(serverErrors, [], `Ada respons >=500: ${serverErrors.join('; ')}`);
   assert.deepEqual(await ledger.invariantViolations(pool), [], 'Ada pelanggaran invariant ledger');
 
-  process.stdout.write('admin-audit-local-verify: PASS (topup/suspend/restore/overdraft/resolve details, micro formatting, status labels, empty summary without Rincian, invariantViolations=[])\n');
+  process.stdout.write(
+    `admin-audit-local-verify: PASS (checkedRows=${checkedRows}, actionsWithSummary=${observedSummaryActions.size}/30, summaryKeys=${observedSummaryKeys.size}/38, emptySummaryRows=${checkedEmptySummaryRows}, boolYa=${checkedBooleanYes}, boolTidak=${checkedBooleanNo}, microFields=${checkedMicroFields}, invariantViolations=[])\n`,
+  );
 } finally {
   mock?.closeHangs();
   mock?.server.closeAllConnections();
