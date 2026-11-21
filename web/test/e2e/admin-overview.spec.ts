@@ -331,7 +331,7 @@ test('ringkasan operasi menampilkan ErrorBox dengan judul tetap ada saat respons
   expect(pageErrors).toEqual([]);
 });
 
-test('kill switch menampilkan status dijeda (layanan-dijeda) dan lulus Axe + 360px', async ({ page }) => {
+test('jeda layanan menampilkan status dijeda (layanan-dijeda) dan lulus Axe + 360px', async ({ page }) => {
   const pausedState = {
     paused: true,
     reason: 'Pemeliharaan darurat gateway',
@@ -364,7 +364,7 @@ test('kill switch menampilkan status dijeda (layanan-dijeda) dan lulus Axe + 360
   expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations).toEqual([]);
 });
 
-test('kill switch menjeda & melanjutkan lewat konfirmasi, step-up, mengubah-flag, dan tanpa pembaruan optimistis', async ({ page }) => {
+test('jeda layanan menjeda & melanjutkan lewat konfirmasi, step-up, mengubah-flag, dan tanpa pembaruan optimistis', async ({ page }) => {
   let state: { paused: boolean; reason: string | null; changedAt: string | null; changedBy: string | null } = {
     paused: false,
     reason: null,
@@ -463,7 +463,7 @@ test('kill switch menjeda & melanjutkan lewat konfirmasi, step-up, mengubah-flag
   await expect(gatewayCard).toContainText('founder');
 });
 
-test('kill switch tidak mengubah status saat POST gagal dan menolak respons gateway cacat', async ({ page }) => {
+test('jeda layanan tidak mengubah status saat POST gagal dan menolak respons gateway cacat', async ({ page }) => {
   let rejectGatewayGet = true;
   await setupAdminMocks(
     page,
