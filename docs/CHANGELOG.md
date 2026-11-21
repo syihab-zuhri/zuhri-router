@@ -1,9 +1,19 @@
 # Changelog: Router AI Komersial
 
-Version: 0.41.0
+Version: 0.42.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
-Updated: 2026-11-19, Asia/Jakarta
+Updated: 2026-11-21, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.42.0: Status layanan selalu baru, label rincian audit lengkap, `DATABASE_POOL_MAX`; terpasang `r11210751`
+
+Source: SCR-007 dan SCR-018 di `docs/UX.md`, dikerjakan Hermes (`HERMES_TASK.md` Tahap sembilan); verifikasi server nyata dan benchmark pool oleh Antigravity (Tugas sembilan); diperiksa dan dilengkapi Claude. Terpasang di zrouter.web.id sebagai `zrouter:r11210751` pada 2026-11-21.
+
+- Portal pelanggan: status layanan (`/api/me`) dibaca ulang setiap kali halaman portal berpindah dan saat tab kembali terlihat, jadi banner jeda muncul dan hilang tanpa memuat ulang halaman. Bila pembacaan ulang gagal, data terakhir tetap dipakai.
+- Audit: setiap kunci rincian yang ditulis server punya label admin (38 kunci); nilai ya/tidak tampil "Ya"/"Tidak". Test unit memindai `server/src` dan gagal bila ada kunci baru tanpa label atau summary yang tidak dapat dibaca.
+- Server: ukuran pool koneksi database dapat diatur lewat `DATABASE_POOL_MAX` (bawaan 20, 1 sampai 90); produksi tetap 20.
+- Skrip Antigravity: banner jeda diperiksa pada server nyata; kursor request diperiksa tanpa jeda buatan; benchmark ukuran pool.
+- Bukti pemasangan: suite server 145/145; `verify-all.mjs` 12/14 pada jalan pertama, dua kegagalan dari jaringan laptop (lihat `docs/handoff/claude-log.md`) lulus saat diulang; `smoke-public.sh` 7/7 terhadap https://zrouter.web.id; bundle yang tayang memuat teks baru. Tanpa migrasi baru (14 migrasi); backup sebelum pemasangan `zrouter-20261121T005252Z.dump`.
 
 ## 0.41.0: Banner layanan dijeda, rincian audit, kursor request; terpasang `r11192221`
 

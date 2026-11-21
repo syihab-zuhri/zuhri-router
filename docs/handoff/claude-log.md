@@ -284,3 +284,7 @@ Hermes mengerjakan pembaruan `/api/me` saat rute portal berpindah dan saat tab k
 Teks baru: `auditYes`, `auditNo`. Teks berubah: `auditSequence`, `auditChat`, `auditAnthropic`, `auditResponses`. Banner Hermes Tahap sembilan kini ada di `main`, jadi Antigravity Tugas sepuluh D dapat dikerjakan.
 
 Bukti: suite server 145/145; `verify-all.mjs` 12/14 pada jalan pertama. Dua kegagalan berasal dari lingkungan: `portal.spec.ts` aktivasi dengan "Failed to fetch dynamically imported module" dan `admin-catalog-local-verify` dengan `net::ERR_NETWORK_CHANGED`. Tidak ada event Docker pada jam itu; laptop memakai jaringan WSL mirrored (Wi-Fi, IPv6, Tailscale), yang dapat membuat Chrome membatalkan request ke 127.0.0.1. Jalan ulang: `portal`, `admin-operations`, `service-paused` dan `upstream` 21/21, `admin-catalog-local-verify` PASS. Langkah lain lulus pada jalan pertama: Playwright 82/83, enam skrip server nyata lainnya, audit aksesibilitas 0 temuan.
+
+### Terpasang `zrouter:r11210751`
+
+Isi: Hermes Tahap sembilan, Antigravity Tugas sembilan, `DATABASE_POOL_MAX` (produksi tetap 20 dari bawaan). Backup sebelum pemasangan `zrouter-20261121T005252Z.dump`. Tanpa migrasi baru (14 migrasi; `gateway_paused` = 0), jadi restore drill tidak diulang. Bukti: `smoke-public.sh` 7/7; chunk `main` yang tayang memuat "Versi harga", "Base URL Chat" dan `visibilitychange`.
