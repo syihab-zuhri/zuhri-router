@@ -122,14 +122,16 @@ export function AdminOverviewPage() {
   };
 
   if (overview.isPending || gatewayRes.isPending) return <>{title}<Pending /></>;
-  if (overview.isError) return <>{title}<ErrorBox error={overview.error} retry={retryAll} /></>;
-  if (gatewayRes.isError) return <>{title}<ErrorBox error={gatewayRes.error} retry={retryAll} /></>;
+  if (overview.data === undefined) return <>{title}<ErrorBox error={overview.error} retry={retryAll} /></>;
+  if (gatewayRes.data === undefined) return <>{title}<ErrorBox error={gatewayRes.error} retry={retryAll} /></>;
 
   const data = parseOverview(overview.data);
   const gateway = parseGatewayState(gatewayRes.data);
   if (!data || !gateway) {
     return <>{title}<ErrorBox error={new Error('invalid_overview_payload')} retry={retryAll} /></>;
   }
+  // A failed reread keeps the last numbers: the error screen is only for the case where nothing was ever shown.
+  const stale = overview.isError || gatewayRes.isError;
 
   const hasNegative = data.balances.negativeAccounts > 0;
   const isAllZero =
@@ -161,6 +163,7 @@ export function AdminOverviewPage() {
         {m.refresh}
       </Button>
     </div>
+    {stale && <Alert>{m.adminOverviewStale}</Alert>}
 
     <section
       className={gateway.paused ? 'panel gateway-panel gateway-paused' : 'panel gateway-panel'}

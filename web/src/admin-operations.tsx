@@ -1,14 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
-import { post } from './api.ts';
+import { ApiError, post } from './api.ts';
 import { formatCredits, formatDate } from './credits.ts';
 import { useAdminAction, useResource } from './hooks.tsx';
-import { m, statusText } from './messages.ts';
+import { errorText, m, statusText } from './messages.ts';
 import { AdminRequestList } from './admin-request-list.tsx';
 import { Alert, Badge, Button, DataList, Empty, ErrorBox, Field, Modal, PageTitle, Pending } from './ui.tsx';
 
 type Unresolved = { id: string; username: string; model: string; heldMicro: string; maxOutput: number; createdAt: string };
+type ResolveReceipt = { id: string; state: string; debitMicro: string; resolvedAt: string; replayed: boolean };
+const resolveReceiptPattern = /^(0|[1-9][0-9]*)$/;
+
+/** Receipt for a resolved request. Anything else is an unknown outcome: the caller must not invent a debit. */
+function parseResolveReceipt(raw: unknown, requestId: string): ResolveReceipt {
+  if (raw === null || typeof raw !== 'object') throw new ApiError('invalid_response', 200);
+  const value = raw as Record<string, unknown>;
+  if (value.id !== requestId) throw new ApiError('invalid_response', 200);
+  if (typeof value.state !== 'string' || value.state !== 'RESOLVED') throw new ApiError('invalid_response', 200);
+  if (typeof value.debitMicro !== 'string' || !resolveReceiptPattern.test(value.debitMicro)) throw new ApiError('invalid_response', 200);
+  if (typeof value.resolvedAt !== 'string' || Number.isNaN(Date.parse(value.resolvedAt))) throw new ApiError('invalid_response', 200);
+  if (typeof value.replayed !== 'boolean') throw new ApiError('invalid_response', 200);
+  return { id: value.id, state: value.state, debitMicro: value.debitMicro, resolvedAt: value.resolvedAt, replayed: value.replayed };
+}
+
 type AuditEvent = { id: string; actorUser: string | null; actorUsername: string | null; actorKind: string; action: string; targetType: string; targetId: string | null; summary: unknown; createdAt: string };
 type AuditResult = { events: AuditEvent[]; nextBefore: string | null };
 type AuditFilterName = 'action' | 'actor' | 'targetType' | 'targetId';
@@ -166,18 +181,29 @@ export function UnresolvedPage() {
   const [selected, setSelected] = useState<Unresolved | null>(null);
   const [debitTokens, setDebitTokens] = useState('0');
   const [reason, setReason] = useState('');
+  const [receipt, setReceipt] = useState<ResolveReceipt | null>(null);
+  const receiptRef = useRef<HTMLElement>(null);
+  useEffect(() => { if (receipt) receiptRef.current?.focus(); }, [receipt]);
   const close = () => { setSelected(null); setDebitTokens('0'); setReason(''); action.setError(null); };
+  const conflict = action.error instanceof ApiError && action.error.code === 'already_resolved';
   return <>
     <PageTitle subtitle={m.unresolvedSubtitle}>{m.unresolved}</PageTitle>
     {requests.isPending ? <Pending /> : requests.isError ? <ErrorBox error={requests.error} retry={() => { void requests.refetch(); }} /> : requests.data.requests.length === 0 ? <Empty title={m.noUnresolved} /> : <DataList caption={m.unresolved}>{requests.data.requests.map(request => <article className="data-row" key={request.id}>
       <h2>{request.username}</h2><dl><dt>{m.model}</dt><dd>{request.model}</dd><dt>{m.heldAmount}</dt><dd className="number">{formatCredits(request.heldMicro)} {m.credits}</dd><dt>{m.maxOutput}</dt><dd>{request.maxOutput}</dd><dt>{m.time}</dt><dd>{formatDate(request.createdAt)}</dd><dt>{m.requestId}</dt><dd className="mono">{request.id}</dd></dl>
       <Button onClick={() => { setSelected(request); setDebitTokens('0'); setReason(''); action.setError(null); }}>{m.resolveRequest}</Button>
     </article>)}</DataList>}
+    {receipt && <section className="receipt" role="status" tabIndex={-1} ref={receiptRef}>
+      <h2>{receipt.replayed ? m.resolveReceiptReplay : m.resolveReceipt}</h2>
+      <dl><dt>{m.requestDebit}</dt><dd className="number">{formatCredits(receipt.debitMicro)} {m.credits}</dd><dt>{m.resolvedAt}</dt><dd>{formatDate(receipt.resolvedAt)}</dd><dt>{m.requestId}</dt><dd className="mono">{receipt.id}</dd></dl>
+      {receipt.replayed && <p>{m.resolveReceiptReplayNote}</p>}
+    </section>}
     <AdminRequestList />
-    {selected && <Modal title={m.resolveRequest} busy={action.busy} onClose={close}><p>{m.resolveConfirm}</p><dl><dt>{m.username}</dt><dd>{selected.username}</dd><dt>{m.heldAmount}</dt><dd>{formatCredits(selected.heldMicro)} {m.credits}</dd></dl><form className="stack" onSubmit={event => { event.preventDefault(); const payload = { debitTokens, reason: reason.trim() }; void action.run(async () => { await post(`/admin/api/requests/${encodeURIComponent(selected.id)}/resolve`, payload); close(); await requests.refetch(); }); }}>
+    {selected && <Modal title={m.resolveRequest} busy={action.busy} onClose={close}><p>{m.resolveConfirm}</p><dl><dt>{m.username}</dt><dd>{selected.username}</dd><dt>{m.heldAmount}</dt><dd>{formatCredits(selected.heldMicro)} {m.credits}</dd></dl><form className="stack" onSubmit={event => { event.preventDefault(); const payload = { debitTokens, reason: reason.trim() }; void action.run(async () => { const answered = await post<unknown>(`/admin/api/requests/${encodeURIComponent(selected.id)}/resolve`, payload); const resolved = parseResolveReceipt(answered, selected.id); setReceipt(resolved); close(); await requests.refetch(); }); }}>
       <Field label={m.debitTokens} help={m.resolveReleaseHelp} value={debitTokens} onChange={event => setDebitTokens(event.target.value)} inputMode="numeric" pattern="0|[1-9][0-9]{0,11}" maxLength={12} required />
       <Field label={m.reason} help={m.reasonHelp} value={reason} onChange={event => setReason(event.target.value)} minLength={3} maxLength={500} pattern=".*\S.*" required />
-      {action.error && <ErrorBox error={action.error} />}{action.busy && <Alert>{m.saving}</Alert>}
+      {action.error && !conflict && <ErrorBox error={action.error} />}
+      {conflict && <Alert danger><p>{errorText.already_resolved}</p><p>{m.resolveConflictHelp}</p><Button className="secondary" type="button" disabled={action.busy} onClick={() => { close(); setReceipt(null); void requests.refetch(); }}>{m.refresh}</Button></Alert>}
+      {action.busy && <Alert>{m.saving}</Alert>}
       <div className="actions"><Button type="button" className="secondary" disabled={action.busy} onClick={close}>{m.cancel}</Button><Button busy={action.busy}>{m.resolveRequest}</Button></div>
     </form></Modal>}
     {action.dialog}

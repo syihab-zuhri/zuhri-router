@@ -419,3 +419,107 @@ Penulisan laporan di atas terjadi sesudah recipe lulus dan membuat gate workspac
 ### Permintaan ke Claude — pembaruan Tahap sebelas
 
 Permintaan circuit per route dari Tahap sepuluh sudah terpenuhi oleh kontrak `5b9607a` dan kini dipakai UI. Delapan state butuh server pada matriks tetap menunggu antrean yang dicatat Claude. Tidak ada permintaan kontrak tambahan atau perubahan semantic timer circuit. DRIFT timer upstream_auth pada dokumen arsitektur sudah dicatat Claude; UI mengikuti kontrak executable dan tugas eksplisit, tidak mengubah keputusan tersebut.
+
+## 2026-11-23 malam — Tahap dua belas
+
+Dikerjakan di `/mnt/d/router.dev.zuhri` pada branch `main` (HEAD `49ab90b`, bersih saat mulai). Playwright dijalankan dengan `CI=1` dan `PLAYWRIGHT_CHROMIUM_EXECUTABLE=./scripts/chromium-netns.sh`. Tidak ada commit, stage, push, deploy, request upstream berbayar, atau perubahan `server/`. Tidak ada suite Playwright lain yang berjalan selama run Hermes: `ps` diperiksa sebelum setiap run dan hasilnya kosong.
+
+### Izin yang diminta dan diterima
+
+`HERMES_TASK.md` Tahap dua belas butir 2 meminta perubahan Ringkasan Operasi, sedangkan daftar berkas terlarang menyebut `admin-overview.tsx` milik Antigravity. Saya menanyakan hal ini ke founder sebelum menyentuh berkas, dan founder memilih: perubahan minimal pada `admin-overview.tsx` diizinkan, test baru tetap di berkas Hermes. Perubahan yang dilakukan hanya tiga hal di `AdminOverviewPage`: syarat layar galat menjadi `data === undefined`, satu variabel `stale`, dan satu `Alert`. Panel gateway, kill switch, metrik, dan blok `ov` tidak disentuh.
+
+### 1. SCR-017 — receipt penyelesaian request (sudah-diselesaikan/replay)
+
+Ditulis di `web/src/admin-operations.tsx`:
+- `parseResolveReceipt` memvalidasi respons `POST /admin/api/requests/:id/resolve` terhadap kontrak `85a9bdc`: `id` harus sama dengan request yang dikirim, `state === 'RESOLVED'`, `debitMicro` berupa string integer non-negatif, `resolvedAt` dapat diurai sebagai tanggal, `replayed` boolean. Respons yang tidak cocok menjadi `invalid_response`, sehingga UI tidak mengarang debit dan tidak menampilkan angka optimistis.
+- Receipt baru dirender sebagai `section.receipt` dengan `role="status"` dan `tabIndex={-1}`: judul `m.resolveReceipt`, debit dalam kredit token, waktu `m.resolvedAt` dalam WIB, dan ID request. Fokus pindah ke receipt sesudah muncul. Bukan toast, dan tidak dirender sebelum server menjawab.
+- Replay memakai judul `m.resolveReceiptReplay` ditambah catatan `m.resolveReceiptReplayNote` yang menyatakan tidak ada penagihan kedua dan nilai yang tampil adalah receipt pertama.
+- `already_resolved` (409) tidak lagi jatuh ke `ErrorBox` umum: dialog menampilkan `errorText.already_resolved` dan `m.resolveConflictHelp` beserta tombol `m.refresh` yang menutup dialog dan memuat ulang antrean.
+
+Test (di `web/test/e2e/admin-operations.spec.ts`, berkas Hermes):
+- `penyelesaian request menampilkan receipt debit dan waktu sesudah server menjawab` — menahan POST dengan gate, memastikan receipt belum tampil saat `m.saving` berjalan, lalu memeriksa `15 kredit token`, waktu `formatDate`, ID request, fokus pada receipt, antrean kosong, dan 360 px.
+- `penyelesaian yang diulang menandai sudah tercatat sebelumnya tanpa perubahan kedua` — memeriksa judul replay, catatan replay, `0 kredit token`, waktu receipt pertama, dan bahwa judul receipt baru tidak muncul.
+- `keputusan berbeda pada request yang sudah diputuskan menjelaskan already_resolved dan dapat memuat ulang antrean` — memeriksa kedua teks konflik, tidak ada receipt, lalu muat ulang antrean menghapus baris.
+
+Test lama `penyelesaian request menampilkan hold dan menahan mutasi sampai step-up` diperbarui fixture-nya karena kini respons resolve wajib memuat `resolvedAt` dan `replayed`; assertion lamanya tidak dilonggarkan.
+
+### 2. SCR-014 — data terakhir saat pembacaan ulang gagal
+
+`web/src/admin-overview.tsx` mengikuti pola Beranda Tahap sebelas: `ErrorBox` hanya bila `overview.data`/`gatewayRes.data` belum pernah ada; bila pembacaan ulang gagal, angka, `generatedAt`, dan node `.metrics` dipertahankan, ditambah `Alert` `m.adminOverviewStale` di bawah toolbar. Pesan usang tidak muncul saat data masih segar dan hilang lagi sesudah pembacaan berikutnya berhasil.
+
+Test baru `web/test/e2e/overview-stale.spec.ts` (tiga test): angka 33 tidak berubah dan tidak menjadi 44 saat 503, stempel waktu tetap sama lalu berubah sesudah pulih, node `.metrics` adalah elemen yang sama, halaman tidak berganti menjadi layar galat, layar galat tetap muncul bila pembacaan pertama gagal (tanpa angka rekaan), serta penanda terbaca dan tidak meluber pada 360 px dengan tombol Muat ulang tetap dapat difokus.
+
+### 3. Sepuluh state backoffice yang belum teruji
+
+Test baru `web/test/e2e/admin-states.spec.ts` menjalankan aplikasi penuh (shell admin, `#main`, rute nyata) dan memeriksa teks atau role yang terlihat, bukan sekadar halaman terbuka:
+
+1. SCR-015 `empty` daftar pelanggan vs `tanpa-hasil` filter.
+2. SCR-015 `username-tidak-ditemukan` (`errorText.username_not_found`, tombol coba lagi, tablist tidak dirender).
+3. SCR-015 `mengundang` (`role=status` `m.saving`, `aria-busy`, receipt belum tampil).
+4. SCR-015 `undangan-terkirim` (`m.inviteSentByEmail`, tanpa tombol salin tautan).
+5. SCR-015 `hasil-tidak-diketahui` (POST top-up gagal jaringan: `m.unknown`, tidak ada receipt, 360 px).
+6. SCR-016 `empty` upstream dan route (`m.noUpstreams`, `m.noRoutes`).
+7. SCR-016 `pending/blocked/eligible` berlabel, tanpa kode mentah `ELIGIBLE`/`BLOCKED`.
+8. SCR-016 `konflik` versi (`m.stale`, nilai baru tidak masuk daftar).
+9. SCR-017 `loading` antrean unresolved (`m.loading` ditahan sebelum daftar).
+10. SCR-017 `menyelesaikan` (`m.saving`, `aria-busy`, receipt belum tampil sampai respons).
+
+Matriks `docs/handoff/hermes-state-matrix.md` diperbarui per baris, bukan hanya rekapnya: kolom Penerapan dan Test diisi dengan berkas dan nama test yang sebenarnya. Hitungan dihitung skrip dari 82 baris: **58 teruji, 17 ada tanpa test, 0 belum, 7 butuh server**. `undangan-terkirim/gagal-kirim` sengaja tetap `ada tanpa test` karena varian gagal POST belum diperiksa.
+
+### Teks baru dan berubah yang terlihat
+
+Baru: `m.adminOverviewStale` ("Ringkasan belum berhasil diperbarui. Data mungkin usang; data terakhir tetap ditampilkan."), `m.resolveReceipt` ("Penyelesaian request tercatat"), `m.resolveReceiptReplay` ("Penyelesaian sudah tercatat sebelumnya"), `m.resolveReceiptReplayNote`, `m.resolveConflictHelp`, `m.resolvedAt` ("Diputuskan pada"), `errorText.already_resolved`.
+
+Tidak ada teks lama yang diubah atau dihapus. `m.maxOutput` tidak berubah. Skrip Antigravity yang bergantung pada teks daftar request, audit, dan Ringkasan tidak terpengaruh; satu teks baru pada Ringkasan (`m.adminOverviewStale`) hanya muncul pada kondisi gagal-baca-ulang.
+
+### Perintah yang dijalankan dan hasil sebenarnya
+
+Run lengkap tersimpan di `web/evidence/stage12/` (folder evidence diabaikan Git):
+
+| Perintah | Hasil | Exit | Bukti |
+|---|---|---|---|
+| `npm run typecheck` (web) | lulus, tanpa diagnostik | 0 | keluaran sesi |
+| `npm test` (web unit) | 7/7 lulus | 0 | keluaran sesi |
+| `CI=1 npx playwright test` penuh | 115/115 lulus, 1,7 menit | 0 | `playwright-full.log` |
+| `npm run test:local` (percobaan 1) | gagal: `password authentication failed for user "postgres"` | 1 | `test-local.log` |
+| `npm run test:local` (percobaan 2) | `local-browser-verify: PASS` | 0 | `test-local-2.log` |
+| `npm run test:browser` | build + `same-origin-dist-verify: PASS` | 0 | `test-browser.log` |
+| `CI=1 hermes verify --json` | `ok: true`; server typecheck exit 0, 146/146 test, `/readyz` 200 | 0 | keluaran sesi |
+
+Urutan sebenarnya: recipe `hermes verify` dijalankan sesudah percobaan `test:local` yang gagal dan sebelum dua run terakhir. Hash source/test tidak berubah sejak recipe sampai run terakhir, jadi bukti itu berlaku untuk pohon yang sama, tetapi bukan run terakhir secara kronologis.
+
+Kegagalan `test:local` percobaan 1 bukan bug produk dan bukan gangguan jaringan: saya memberi `TEST_DATABASE_URL` dengan password tebakan, sedangkan container `router-spike-pg` memakai password lain. Setelah membaca `docker inspect` (tanpa mencetak kredensial ke laporan) dan menguji `select 1`, run kedua lulus. Kedua percobaan dicatat supaya kegagalan awal tidak tertutup run yang lulus.
+
+Kegagalan `admin-states.spec.ts` 9/10 (bukan 10/10) pada run pertama juga dicatat: fixture konflik versi mengembalikan 409 pada kiriman pertama, sehingga step-up tidak pernah muncul dan test habis waktu. Itu cacat fixture, bukan produk; fixture diperbaiki agar kiriman pertama 401 `step_up_required` dan kiriman kedua 409 `version_conflict`, lalu run ulang 10/10 lulus, dan diulang sekali lagi sesudah seluruh suite (10/10) untuk memastikan bukan kebetulan.
+
+### RED yang sah dan batasnya
+
+SCR-017 dan SCR-014 diperiksa dengan urutan RED lalu GREEN pada pohon yang sama, bukan hanya GREEN:
+
+1. Ketiga berkas implementasi disalin ke `/tmp/hermes-stage12-backup` dengan hash tercatat, lalu `git checkout --` mengembalikannya ke baseline.
+2. Dua test pembuktian dijalankan terhadap baseline melalui konfigurasi sementara (Vite dev, karena harness `mount` memerlukan `/src/*.tsx`): keduanya gagal karena elemen receipt dan penanda usang tidak ada. Bukan kegagalan harness, karena galatnya adalah `expect(...).toBeVisible()` pada teks yang dicari.
+3. Implementasi dipulihkan dari salinan, hash diverifikasi identik dengan sebelum revert (`76b3c11d…` `admin-operations.tsx`, `64c7d092…` `admin-overview.tsx`, `759c93b5…` `messages.ts`), lalu dua test yang sama lulus.
+4. Berkas sementara (`tmp-red-proof.spec.ts`, `playwright.redproof.config.ts`) dihapus sebelum run penuh; `git status` mengonfirmasi keduanya tidak ada.
+
+Batas bukti: keluaran RED dan GREEN itu terlihat di terminal sesi ini tetapi tidak saya simpan sebagai berkas di `web/evidence/stage12/`, jadi pembaca tidak dapat memeriksanya ulang tanpa mengulang prosedur revert. Test permanen di `admin-operations.spec.ts` dan `overview-stale.spec.ts` adalah GREEN yang tersimpan di run penuh.
+
+### Batas cakupan dan hal yang belum dikerjakan
+
+- Sebelas dari tujuh belas state `ada tanpa test` mendapat assertion terlihat; sisa enam tidak dikerjakan karena di luar batas "paling banyak sepuluh" pada tugas dan sebagian butuh kontrak server. Tujuh state tetap `butuh server` dan menunggu antrean Claude (uji koneksi, cost profile, kurs, model dijeda, agregat grafik, filter transaksi).
+- Receipt dan data-usang diperiksa dengan respons tiruan berbentuk kontrak, bukan terhadap server yang benar-benar menyelesaikan request unresolved. Belum ada pemeriksaan end-to-end yang memicu `already_resolved` dari PostgreSQL nyata melalui UI.
+- `parseResolveReceipt` memakai `Date.parse` untuk validasi bentuk waktu; nilai yang lolos tetapi tidak masuk akal (misalnya tahun jauh di masa depan) tidak ditolak. Server adalah sumber kebenaran, jadi ini tidak mengubah angka.
+- Belum ada pemeriksaan pembaca layar manual atau audit aksesibilitas penuh sesudah perubahan; `a11y-audit.mjs` dan `verify-all.mjs` bukan wilayah Hermes pada tahap ini dan tidak dijalankan.
+- Tidak ada `ERR_NETWORK_CHANGED` maupun `Failed to fetch dynamically imported module` di seluruh log run sesi ini; peringatan bundler `use client` dari `react-router` tetap muncul seperti baseline dan bukan error aplikasi.
+
+### Berkas yang berubah
+
+Ditulis: `web/src/admin-operations.tsx`, `web/src/admin-overview.tsx`, `web/src/messages.ts`, `web/test/e2e/admin-operations.spec.ts`, `web/test/e2e/admin-states.spec.ts` (baru), `web/test/e2e/overview-stale.spec.ts` (baru), `docs/handoff/hermes-state-matrix.md`, dan berkas ini. Bukti: `web/evidence/stage12/*.log` (diabaikan Git).
+
+Tidak ada perubahan pada `server/`, dependency, lockfile, `account-*.tsx`, `qr.ts`, blok `am`/`ov`, `a11y-audit.mjs`, `verify-all.mjs`, `admin-overview.spec.ts`, atau `playwright.config.ts`.
+
+### Permintaan ke Claude
+
+1. Build siap ditinjau untuk dipasang; tidak ada commit dari sisi Hermes.
+2. `admin-overview.spec.ts` milik Antigravity belum memuat test data-usang Ringkasan. Bila Antigravity menambah test di berkas itu, jangan menyalin `overview-stale.spec.ts` ke dalamnya; keduanya boleh hidup berdampingan.
+3. Perubahan `admin-overview.tsx` adalah edit minimal yang disetujui founder. Bila Antigravity juga mengubah syarat `isError` di berkas itu, gabungkan dengan hati-hati: syarat yang benar adalah `data === undefined`, bukan `isError` saja.
+4. `abort` jaringan pada test top-up mengandalkan `m.unknown` dari `network_unknown`. Bila server kelak menambah kode galat baru untuk kasus ini, teks di test perlu disesuaikan.
