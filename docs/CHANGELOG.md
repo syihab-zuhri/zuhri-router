@@ -1,9 +1,19 @@
 # Changelog: Router AI Komersial
 
-Version: 0.42.0
+Version: 0.43.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
-Updated: 2026-11-21, Asia/Jakarta
+Updated: 2026-11-23, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.43.0: Gateway 17 query per request, status circuit route, matriks state UX
+
+Source: NFR-002 (`docs/PLANNING.md`) dan temuan benchmark Antigravity (Tugas delapan sampai sepuluh), dikerjakan Claude; SCR-005, SCR-006 dan matriks state `docs/UX.md` oleh Hermes (`HERMES_TASK.md` Tahap sepuluh); verifikasi server nyata dan diagnosis test browser oleh Antigravity (Tugas sebelas).
+
+- Gateway: query database per request turun dari 28 menjadi 17 (stream dari 29 menjadi 18). Admission tetap satu transaksi dan membaca harga di dalamnya; penulisan hold dan settlement masing-masing satu pernyataan; attempt terakhir dicatat di transaksi settlement. Aturan uang, urutan kunci dan kode penolakan tidak berubah. Pada bench lokal, waktu database per request turun dari 24 ms menjadi 13 sampai 16 ms.
+- Admin API: setiap route membawa status circuit (`open`, `openUntil`, `reason`, `failures`). Belum tampil di UI.
+- Portal: aktivasi dan pemulihan akses menampilkan "Menunggu jawaban server…" selama request berjalan.
+- Matriks 82 state UX dengan status penerapan dan test (`docs/handoff/hermes-state-matrix.md`).
+- Test: 12 berkas spec e2e berjalan terhadap build produksi; Playwright di verify-all turun dari sekitar 220 detik menjadi sekitar 90 detik. Skrip server nyata memeriksa semua 30 aksi audit ber-`summary` dan banner jeda tanpa muat ulang. Test konkurensi gateway tidak lagi bergantung pada urutan request.
 
 ## 0.42.0: Status layanan selalu baru, label rincian audit lengkap, `DATABASE_POOL_MAX`; terpasang `r11210751`
 

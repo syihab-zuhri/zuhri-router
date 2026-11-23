@@ -487,3 +487,30 @@ Boleh: berkas Anda, `verify-all.mjs`, `a11y-audit.mjs`, dan khusus bagian C `web
 ## Laporan
 
 Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, termasuk log, lalu jangan push. Hermes sedang mengerjakan Tahap sepuluh di folder utama dan juga menjalankan Playwright; sebelum menjalankan Playwright, benchmark atau verify-all, periksa dengan `ps` bahwa tidak ada proses test lain.
+
+# Tugas dua belas (2026-11-23)
+
+Tugas sebelas diterima dan digabung (`7b12dc5`). Diagnosis Bagian C sangat berguna: kegagalan acak datang dari `eth8` di WSL mirrored, dan pemeriksaan ke port loopback yang tertutup memang menggantung (saya ulangi: `curl` ke 127.0.0.1 port tertutup habis waktu, bukan ditolak). Verify-all saya sesudah merge: Playwright lulus dalam 97 detik (sebelumnya sekitar 220 detik), tetapi `golden-path-local-verify` gagal dengan `ERR_NETWORK_CHANGED`, dan dalam 8 menit run itu `ip monitor` merekam 968 baris event `eth8`. Claude juga sudah memangkas query gateway dari 28 menjadi 17 per request (stream dari 29 menjadi 18) di `d40db59`. Hermes Tahap sepuluh juga sudah ada di `main`.
+
+    cd /mnt/d/router.dev.zuhri-antigravity && source .antigravity-env.sh
+    git checkout antigravity/akun && git pull --ff-only origin main
+
+## A. Chromium di network namespace sendiri
+
+Chromium hanya mendengar event jaringan dari network namespace tempat ia berjalan. Di namespace baru (`unshare -n`, sudah dicoba: hanya ada `lo`), churn `eth8` tidak terlihat sama sekali. Buat pembungkus executable Chromium yang menjalankan Chromium di namespace sendiri dengan `lo` aktif, lalu meneruskan port loopback yang dibutuhkan browser (port web dev, preview, dan port `VERIFY_*`) ke port yang sama di namespace utama lewat unix socket. `socat` sudah ada di `/usr/bin/socat`; jembatan kecil dengan modul `net` Node juga boleh. Jangan menambah dependency. Playwright berbicara dengan Chromium lewat pipe, jadi kanal kendalinya tidak ikut terputus. Semua proses jembatan harus berhenti bersama Chromium.
+
+- `web/playwright.config.ts` sudah membaca `PLAYWRIGHT_CHROMIUM_EXECUTABLE`. Ubah skrip `*-local-verify.mjs`, `a11y-audit.mjs`, `local-browser-verify.mjs` dan `dist-browser-verify.mjs` supaya membaca variabel yang sama, dengan jalur cache sekarang sebagai cadangan.
+- Ukur sebelum dan sesudah dengan cara yang sama seperti Tugas sebelas: tiga run Playwright penuh dan satu verify-all penuh, sambil merekam `ip -ts monitor address link route`. Hitung `ERR_NETWORK_CHANGED` dan kegagalan per run.
+- Bila hasilnya nol pada semua run, jadikan bawaan di `verify-all.mjs` (bisa dimatikan dengan satu variabel lingkungan) dan tulis cara memakainya untuk Hermes dan Claude di log. Bila `unshare` tidak tersedia, cetak peringatan lalu jalankan seperti biasa.
+
+## B. Ukur ulang gateway sesudah pemangkasan query
+
+Jalankan `server/scripts/bench-gateway.ts --pool-max 20` tiga kali pada `950b3b6` (sebelum) dan tiga kali pada `d40db59` (sesudah), berselang-seling. Laporkan median dan rentang p50/p95 untuk c=1, 10 dan 50, tunggu pool per request, serta tabel SQL per request dari bagian rincian konkurensi 1. Klasifikasi SQL di skrip mungkin perlu disesuaikan dengan teks query baru (CTE di admission dan settlement); jangan mengubah server. Tandai query yang masih bisa digabung atau dihapus di "Untuk Claude". Jangan menjalankan benchmark bersamaan dengan Playwright.
+
+## Batas berkas
+
+Boleh: berkas Anda, `verify-all.mjs`, `a11y-audit.mjs`, `local-browser-verify.mjs`, `dist-browser-verify.mjs`, `server/scripts/bench-gateway.ts`, dan khusus baris executable Chromium di `web/playwright.config.ts`. Tidak boleh: `server/src/**`, migrasi, `package.json`, lockfile, dependency baru, berkas Hermes lain (`web/src/**`, `web/test/**`), konfigurasi WSL atau Windows, upstream nyata, situs publik.
+
+## Laporan
+
+Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, termasuk log, lalu jangan push. Hermes mengerjakan Tahap sebelas di folder utama dan juga menjalankan Playwright; sebelum menjalankan Playwright, benchmark atau verify-all, periksa dengan `ps` bahwa tidak ada proses test lain.

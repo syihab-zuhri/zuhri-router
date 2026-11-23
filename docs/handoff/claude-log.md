@@ -294,3 +294,41 @@ Isi: Hermes Tahap sembilan, Antigravity Tugas sembilan, `DATABASE_POOL_MAX` (pro
 - Cabang Antigravity (`5a8734e`..`65afe36`) digabung. Log Tugas sepuluh masih di-stage tanpa commit; Claude meng-commit-nya di cabang Antigravity (`65afe36`) agar `git pull --ff-only` berikutnya tidak bentrok. Skrip baru `admin-audit-local-verify.mjs` (rincian audit pada server nyata) dan `admin-requests-local-verify.mjs` (kursor stabil saat request gateway baru masuk di antara halaman) dijalankan ulang oleh Claude di `main` sesudah Tahap sembilan: keduanya PASS. Bagian D dilewati dengan benar karena Tahap sembilan belum ada di `main` saat itu; kini menjadi Tugas sebelas A.
 - Sweep pool `c=20/30/50` × pool `20/40/80`, tiga kali per kombinasi: pool lebih besar menghapus tunggu pool (`c=50` non-stream 76 → 12 → 0,1 ms), tetapi median p95 overhead tidak membaik dan pada hampir semua titik lebih buruk (`c=50` non-stream 165 / 191 / 188 ms; stream 154 / 169 / 188 ms). Satu-satunya titik yang membaik adalah stream `c=30`. Keputusan Claude: `DATABASE_POOL_MAX` produksi tetap 20. VPS hanya 2 vCPU dan 3,7 GB RAM, jauh di bawah laptop 12 vCPU tempat sweep dijalankan, jadi pool lebih besar di sana lebih kecil lagi gunanya. Pengungkit NFR-002 berikutnya adalah jumlah query per request (28 non-stream, 29 stream), yang dikerjakan Claude.
 - Temuan Antigravity: Playwright penuh 80/82 dan 79/82 dengan timeout 5000 ms sesudah `page.goto` pada test yang berbeda-beda, lulus saat diulang. Claude dan Hermes melihat gejala serupa (`Failed to fetch dynamically imported module`, `net::ERR_NETWORK_CHANGED`). Penyebabnya diselidiki di Tugas sebelas C.
+
+## 2026-11-23: Tugas sebelas Antigravity dan Tahap sepuluh Hermes digabung; query gateway dipangkas
+
+- Antigravity (`ffe4f06`..`0e75467`, merge `7b12dc5`): banner jeda pada server nyata tanpa muat ulang (navigasi, `visibilitychange`, node DOM yang sama, satu kegagalan `/api/me` tidak mengganti halaman); 30 aksi dan 38 kunci `summary` audit dipicu dan diperiksa di server nyata; 12 berkas spec e2e kini berjalan terhadap build (`vite preview`), enam lainnya terhadap Vite dev yang dihangatkan. Diagnosis kegagalan acak: Wi-Fi `eth8` di WSL mirrored melepas dan memasang ulang alamat dan route beberapa kali per menit, dan Chrome membatalkan request yang sedang jalan (termasuk ke 127.0.0.1) dengan `ERR_NETWORK_CHANGED`. Claude mengulang pemeriksaan port loopback tertutup: `curl` ke 127.0.0.1 habis waktu, bukan ditolak, sehingga pemeriksaan URL awal Playwright menggantung sekitar 134 detik. Dengan `CI=1` Playwright kini menunggu baris `Local:` dari Vite. Hasilnya, Playwright di verify-all turun dari sekitar 220 detik menjadi 84 sampai 97 detik.
+- Hermes Tahap sepuluh (`950b3b6`): matriks 82 state UX (35 teruji, 36 ada tanpa test, 2 belum, 9 butuh server) di `docs/handoff/hermes-state-matrix.md`; aktivasi dan pemulihan akses mengumumkan "Menunggu jawaban server…" selama request berjalan, dengan test RED lalu GREEN. Sembilan kebutuhan kontrak server masuk antrean Claude (lihat di bawah).
+- Verify-all pertama sesudah kedua merge: 14/15, `golden-path-local-verify` gagal dengan `ERR_NETWORK_CHANGED`; dalam 8 menit `ip monitor` merekam 968 baris event `eth8`. Perbaikannya (Chromium di network namespace sendiri) menjadi Antigravity Tugas dua belas A.
+
+### Query gateway: 28 menjadi 17 per request (`d40db59`)
+
+Admission kini satu transaksi tanpa pembacaan pendahuluan. Harga dibaca di dalam transaksi, jadi snapshot yang disimpan sama dengan yang dipakai untuk hold, dan jalur "Price changed, retry" tidak diperlukan lagi. Batas lebih-pakai ikut terbaca bersama kunci akun, dan pembatasan output (overrun) dihitung dari saldo di bawah kunci akun lewat fungsi `amount` pada `placeKeyHold`. Ketiga penulisan hold (hold, akun, key) digabung dalam satu pernyataan CTE. Saklar jeda dibaca bersama pemeriksaan key di luar transaksi; jeda tetap hanya berlaku sesudah key lulus. Settlement menulis key, entri ledger, akun dan hold dalam satu pernyataan, dengan jumlah baris yang wajib persis (gagal tertutup bila tidak). Attempt terakhir masuk ke pembaruan request di transaksi settlement, jadi akhir stream ke pelanggan tidak lagi menunggu insert attempt. Urutan kunci tetap tenant → akun → key, dan semua kode penolakan tetap sama.
+
+Percobaan pertama juga menggabungkan pembacaan key dengan kunci share tenant. Test `admission rechecks close committed after key preflight and before locks` lalu menggantung: penutupan akun menunggu kunci tenant yang dipegang admission yang sedang ditahan gate test. Penggabungan itu dibatalkan (selisih satu query), dan test tetap tidak diubah.
+
+Bench `bench-gateway.ts --pool-max 20`, satu run masing-masing (Antigravity mengulang tiga kali di Tugas dua belas B):
+
+| Ukuran | Sebelum `950b3b6` | Sesudah `d40db59` |
+|---|---:|---:|
+| Query per request, non-stream / stream | 28 / 29 | 17 / 18 |
+| Waktu DB per request c=1, non-stream / stream | 24,4 / 24,4 ms | 13,2 / 15,6 ms |
+| Gateway p95 c=50, 50 tenant, non-stream | 191 ms | 186 ms |
+| Gateway p95 c=50, 50 tenant, stream (TTFB) | 256 ms | 171 ms |
+| Tunggu pool per request c=50, 50 tenant, non-stream / stream | 77,7 / 137,6 ms | 62,1 / 85,7 ms |
+
+Bukti: suite server 145/145 (dua kali); `verify-all.mjs --skip server-test` 15/15 di `d40db59` (Playwright 84 detik, sembilan skrip server nyata termasuk golden path, audit aksesibilitas 0 temuan).
+
+### Status circuit per route untuk admin (`5b9607a`)
+
+Kesehatan route dipindah dari `gateway.ts` ke `server/src/route-health.ts` tanpa perubahan perilaku. Setiap route di API admin kini membawa `circuit: { open, openUntil, reason, failures }`. Pelanggan tidak melihatnya. Test baru: dua kegagalan belum membuka, kegagalan ketiga membuka selama 30 detik, route terbuka dilewati, 401 dari upstream langsung membuka selama lima menit. Mock upstream test mendapat mode `auth401`. Suite server 146/146.
+
+DRIFT: `docs/ARCHITECTURE.md` menyebut 401 dan 402 dari upstream membuka circuit "sampai admin menindak", sedangkan kode membukanya selama lima menit (sudah begitu sebelum perubahan ini). Usul: circuit `upstream_auth` tetap terbuka sampai admin mengganti key atau mengubah status upstream. Belum dikerjakan; menunggu konfirmasi founder karena route bisa tertahan lama oleh satu 401 sesaat.
+
+### Test konkurensi gateway dibuat deterministik
+
+Hermes melihat `gateway-concurrency.test.ts` gagal 144/145 dua kali pada suite penuh, lulus saat diulang sendirian. Penyebabnya: 60 request bersamaan dengan saldo kecil, sehingga semua request fallback kadang ditolak 402 lebih dulu dan tidak ada yang sampai ke route yang menjawab 500. Fallback kini diperiksa dengan satu request berurutan sebelum burst (`upstream_500` lalu `completed`). Request fallback yang dilayani di dalam burst harus berakhir `completed` dengan hanya `upstream_500` sebelumnya. Diulang tiga kali sendirian, lulus.
+
+### Antrean server dari Hermes Tahap sepuluh
+
+Sudah: circuit per route (SCR-016). Belum: uji koneksi tanpa biaya (API-035, SCR-016); model dijeda di katalog (SCR-009); agregat grafik pemakaian terpisah dari daftar (SCR-010); filter transaksi (SCR-011); receipt untuk penyelesaian request yang diulang (SCR-017); cost profile dan kurs (SCR-016, menunggu keputusan founder soal margin guard).

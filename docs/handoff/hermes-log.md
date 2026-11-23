@@ -279,11 +279,25 @@ Semua perintah dari `web/` kecuali validator Python. Log berada di `/tmp/router-
 - Menanggapi arahan verifikasi workspace: `hermes verify --json`, wrapper PID 202370/sesi `proc_a7a10bf74c30`, child PID 208515, recipe `.hermes/environment.json`, hasil JSON `/tmp/router-hermes-stage10/hermes-verify.json`: `ok:true`; `npm --prefix server run typecheck` exit 0 (1.452 dtk); `npm --prefix server run test` 145/145 (161.109 dtk), exit 0; readiness server nyata `GET http://127.0.0.1:55480/readyz` HTTP 200 (7.066 dtk); runner melakukan teardown. Database target lokal telah diperiksa sebagai loopback `127.0.0.1:55432/router_test`; tidak ada target DB remote. Recipe tersebut hanya memverifikasi server; e2e UI 85/85 dan browser smoke di atas dijalankan terpisah.
 - Pemeriksaan akhir sesudah recipe: port 55480 sudah tertutup, working tree tidak memiliki perubahan tambahan pada recipe atau output buatan. `git diff --check` exit 0; validator matriks kembali mengonfirmasi 82 state.
 
-### Lulus
+### Verifikasi ulang dan kelanjutan sesudah interupsi (2026-11-23)
+
+Hasil awal di atas tetap bukti run tersendiri, bukan status terbaru seluruh suite server. Pengulangan sebelum interupsi menghasilkan:
+
+- Preflight pertama salah memakai impor `./test/helpers.ts` dari root dan gagal `ERR_MODULE_NOT_FOUND`; setelah cwd diarahkan ke `server/`, target loopback `55432/router_test` terkonfirmasi. Ini galat perintah pemeriksaan, bukan RED test aplikasi.
+- `hermes verify --json`, PID 221930, sesi `proc_6db6d1a16316`, exit 1: typecheck exit 0; server test 144/145, fail 1, tidak timeout. Kegagalan di `server/test/gateway-concurrency.test.ts:114`, assertion fallback `upstream_500`. Run ini tidak membuktikan readiness/teardown lulus. Path output saat itu `/tmp/router-hermes-stage10/hermes-verify-fresh.json`.
+- Isolasi `node --test --test-concurrency=1 --test-timeout=30000 --test-name-pattern='gateway keeps ledger' test/gateway-concurrency.test.ts`, cwd `server/`, PID 228821: 1/1, exit 0 (`concurrency-isolated.json`).
+- Pengulangan recipe PID 229234, sesi `proc_2e97996e43b5`, exit 1: typecheck exit 0; server 144/145, fail 1 pada test concurrency yang sama (`hermes-verify-fresh-2.json`). Lima pengulangan serial test terisolasi sesudahnya masing-masing 1/1 dan exit 0 (`concurrency-repeat-1.log` sampai `concurrency-repeat-5.log`). Hasil isolasi tidak menutup kegagalan suite penuh.
+- Recipe ketiga PID 241561, sesi `proc_f8f6e7933ebd`, exit 1. Pembacaan `hermes-verify-fresh-3.json` timeout lalu sesi terputus; jumlah test dan assertion run ketiga tidak terverifikasi dan tidak diasumsikan sama dengan dua run sebelumnya.
+- Koreksi diagnosis: pernyataan di percakapan bahwa test memakai label attempt lama adalah keliru. `server/src/gateway.ts:238` masih menulis `'upstream_' + up.status`, sehingga HTTP 500 tetap menjadi `upstream_500`, cocok dengan assertion baris 244–245. Penyebab tidak tercapainya assertion pada suite penuh belum dibuktikan. Tidak ada perubahan server atau pelonggaran assertion.
+- Saat dilanjutkan, seluruh file `/tmp/router-hermes-stage10/` yang diperiksa sudah tidak tersedia. Hasil historis di atas berasal dari keluaran tool yang sudah diterima pada percakapan, bukan pembacaan ulang log atau file hasil yang dibuat-buat.
+- HEAD saat kelanjutan menjadi `950b3b6` dan awal pemeriksaan sempat `7b12dc5`; commit tersebut muncul dari proses lain, bukan perintah commit Hermes. Source `auth.tsx` dan test baru masih memiliki SHA-256 yang sama dengan bukti Tahap sepuluh. Working tree bersih sebelum tambahan laporan ini. Matriks diverifikasi ulang: 82 state, 15 layar, 35 teruji, 36 ada tanpa test, 2 belum, 9 butuh server; urutan/identitas sama dengan kerangka `48a60a3` dan nol sel kosong.
+- Claude sedang menjalankan `node scripts/verify-all.mjs --skip server-test` pada workspace yang sama (parent PID 7015, Playwright PID 7399 saat diperiksa). Tidak ada suite browser/DB baru dijalankan oleh Hermes selama proses itu; hasil proses Claude tidak diklaim sebagai hasil Hermes.
+
+### Lulus — bukti run awal, dengan batas verifikasi ulang di atas
 
 - Inventaris 82/82 state tanpa sel kosong, identitas dan urutan kerangka tetap.
-- Dua siklus RED–GREEN; suite final tanpa proxy 85/85, unit 7/7, typecheck dan build exit 0.
-- Server canonical `hermes verify --json`: typecheck lulus, test 145/145 lulus, readiness 200 dan teardown lulus.
+- Dua siklus RED–GREEN; suite UI tanpa proxy 85/85, unit 7/7, typecheck dan build exit 0 pada run yang dicatat.
+- Recipe server awal `hermes verify --json` lulus 145/145 dan readiness 200; dua pengulangan berikutnya gagal 144/145. Karena itu suite server belum dinyatakan stabil/lulus terbaru.
 - Integrasi browser Fastify/PostgreSQL nyata `test:local` PASS dan build same-origin `test:browser` PASS. Keyboard Enter dan reflow 360 px ada pada test baru; suite lama memeriksa axe/reduced-motion. Tidak mengklaim audit visual baru menyeluruh untuk 82 state.
 
 ### Belum / batas bukti
@@ -296,6 +310,8 @@ Semua perintah dari `web/` kecuali validator Python. Log berada di `/tmp/router-
 ### Tahap sepuluh — kontrak yang belum cukup untuk state UX
 
 Ini permintaan kebutuhan, bukan kontrak baru yang sudah disetujui; tidak ada endpoint/field mock karangan yang diterapkan.
+
+- Verifikasi server: periksa `server/test/gateway-concurrency.test.ts:114–245`. Recipe penuh `hermes verify --json` dua kali terkonfirmasi 144/145 pada assertion minimal satu attempt `upstream_500`; test terisolasi lulus 1/1 dan lima pengulangan serial masing-masing lulus. Label server masih cocok; penyebab belum terkonfirmasi. Hermes tidak mengubah scope server atau melonggarkan assertion. Run ketiga hanya terkonfirmasi exit 1, rincian tidak sempat terbaca sebelum interupsi.
 
 - SCR-009 model-dijeda: `/api/models` (`pricing.catalogue`) hanya mengembalikan model yang mempunyai route aktif dan upstream eligible. Dibutuhkan cara resmi mengidentifikasi model yang dijeda, status dan alasan aman untuk pelanggan, serta aturan apakah model itu tetap dikirim dalam katalog.
 - SCR-010 error grafik parsial: saat ini grafik dihitung dari daftar `/api/requests` yang sama. Dibutuhkan kontrak agregat periode dan failure boundary terpisah agar grafik gagal tidak mematikan daftar, atau keputusan revisi scope UX bila ringkasan per halaman tetap dipakai.
