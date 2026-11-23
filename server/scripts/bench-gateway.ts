@@ -238,9 +238,18 @@ function classifyRequestEvents(events: QueryEvent[]): {
   const txRoles = new Map<number, Category>();
   for (const [txId, sqls] of txSqls.entries()) {
     const joined = sqls.join('\n');
-    if (joined.includes('insert into hold') || joined.includes('insert into request')) {
+    if (
+      joined.includes('insert into hold')
+      || joined.includes('insert into request')
+      || joined.includes('with h as (insert into hold')
+    ) {
       txRoles.set(txId, 'Admission');
-    } else if (joined.includes('insert into ledger_entry') || joined.includes('update hold')) {
+    } else if (
+      joined.includes('insert into ledger_entry')
+      || joined.includes('update hold')
+      || joined.includes('with k as (update api_key')
+      || (joined.includes('with t as (insert into attempt') && joined.includes('update request'))
+    ) {
       txRoles.set(txId, 'Settlement');
     } else {
       txRoles.set(txId, 'Pembaruan lain');
@@ -256,11 +265,11 @@ function classifyRequestEvents(events: QueryEvent[]): {
       category = 'Autentikasi key';
     } else if (low.includes('from system_setting') && low.includes('gateway_paused')) {
       category = 'Autentikasi key';
-    } else if (low.includes('from route') || low.includes('from model') || low.includes('from upstream') || low.includes('from system_setting')) {
+    } else if (low.includes('from route') || low.includes('from model') || low.includes('from price_version') || low.includes('from upstream') || low.includes('from system_setting')) {
       category = 'Admission';
     } else if (low.startsWith('update api_key set last_used_at')) {
       category = 'Pembaruan lain';
-    } else if (low.startsWith('update request') && (low.includes('debit') || low.includes('settled'))) {
+    } else if (low.includes('update request') && (low.includes('debit') || low.includes('settled'))) {
       category = 'Settlement';
     } else {
       category = 'Pembaruan lain';
@@ -275,6 +284,25 @@ function classifyRequestEvents(events: QueryEvent[]): {
   });
 
   return { txRoles, rows };
+}
+
+function summarizeSql(sql: string): string {
+  const low = sql.toLowerCase();
+  if (low.startsWith('with h as (insert into hold')) {
+    return 'CTE[admission hold+ledger_account+api_key]: with h as (insert into hold...), a as (update ledger_account...), k as (update api_key...)';
+  }
+  if (low.startsWith('with k as (update api_key') && low.includes('insert into ledger_entry')) {
+    return 'CTE[settlement api_key+ledger_entry+ledger_account+hold]: with k as (update api_key...), e as (insert into ledger_entry...), a as (update ledger_account...), h as (update hold...)';
+  }
+  if (low.startsWith('with t as (insert into attempt') && low.includes('update request')) {
+    return 'CTE[settlement attempt+request]: with t as (insert into attempt...) update request set state=$2, debit=$3, ...';
+  }
+  if (low.startsWith('select k.id,') && low.includes('from api_key k join tenant t')) {
+    if (low.includes('gateway_paused')) return 'select k.*, t.status, (select value from system_setting gateway_paused) from api_key k join tenant t where k.token_hash=$1';
+    if (low.includes('for update of k')) return 'select k.*, t.status from api_key k join tenant t where k.token_hash=$1 for update of k';
+    return 'select k.*, t.status from api_key k join tenant t where k.token_hash=$1 (tanpa lock)';
+  }
+  return sql.length > 125 ? `${sql.slice(0, 122)}...` : sql;
 }
 
 type Sample = { ttfbMs: number; totalMs: number };
@@ -719,7 +747,7 @@ try {
       const sortedSql = [...sqlStats.entries()].sort((a, b) => b[1].totalMs - a[1].totalMs);
       for (const [k, st] of sortedSql) {
         const sql = k.slice(k.indexOf('::') + 2);
-        const shortSql = sql.length > 105 ? `${sql.slice(0, 102)}...` : sql;
+        const shortSql = summarizeSql(sql);
         process.stdout.write(`| ${st.category} | ${(st.count / profileSamples).toFixed(2)} | ${fmt(st.totalMs / profileSamples)} | \`${shortSql}\` |\n`);
       }
       process.stdout.write('\n');
