@@ -32,10 +32,10 @@ export function TokenPage({ kind, takeToken }: { kind: 'activate' | 'reset'; tak
     }); }}>
       {activate && <Field label={m.username} help={m.usernameHelp} value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" pattern="[a-z0-9_]{3,24}" minLength={3} maxLength={24} required />}
       <Password label={m.newPassword} help={m.passwordHelp} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} minLength={10} maxLength={200} required />
-      {error && <ErrorBox error={error} />}<Button busy={busy}>{activate ? m.activate : m.reset}</Button>
+      {error && <ErrorBox error={error} />}<Button busy={busy}>{activate ? m.activate : m.reset}</Button>{busy && <Alert>{m.saving}</Alert>}
     </form>}<Link to="/masuk">{m.backLogin}</Link></main></div>;
 }
 export function RequestResetPage() {
   const [email, setEmail] = useState(''); const [done, setDone] = useState(false); const { run, busy, error } = useAction();
-  return <div className="auth-layout"><Brand /><main className="auth-form"><PageTitle>{m.reset}</PageTitle>{done ? <Alert>{m.resetSent}</Alert> : <form onSubmit={e => { e.preventDefault(); void run(async () => { await post('/api/auth/reset/request', { email }); setEmail(''); setDone(true); }); }}><Field label={m.email} type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} maxLength={254} required />{error && <ErrorBox error={error} />}<Button busy={busy}>{m.requestReset}</Button></form>}<Link to="/masuk">{m.backLogin}</Link></main></div>;
+  return <div className="auth-layout"><Brand /><main className="auth-form"><PageTitle>{m.reset}</PageTitle>{done ? <Alert>{m.resetSent}</Alert> : <form onSubmit={e => { e.preventDefault(); void run(async () => { await post('/api/auth/reset/request', { email }); setEmail(''); setDone(true); }); }}><Field label={m.email} type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} maxLength={254} required />{error && <ErrorBox error={error} />}<Button busy={busy}>{m.requestReset}</Button>{busy && <Alert>{m.saving}</Alert>}</form>}<Link to="/masuk">{m.backLogin}</Link></main></div>;
 }

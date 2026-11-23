@@ -249,7 +249,60 @@ Tidak mengubah berkas Antigravity atau `server/`. Tidak ada dependency baru, com
 
 Status: semua acceptance Tahap sembilan diverifikasi lulus: typecheck, unit 7/7, E2E 83/83, `test:local` PASS, `test:browser` PASS, build/readiness `hermes verify` PASS. Tidak ada perubahan server, dependency, commit, deployment atau akses upstream.
 
+## Tahap sepuluh (2026-11-21)
+
+### Ditulis
+
+- `docs/handoff/hermes-state-matrix.md`: 82 state pada 15 layar SCR-004–018, satu baris per state kerangka. Disimpan terpisah sesudah setiap layar, lalu diaudit terhadap source, e2e dan skrip integrasi. Validasi Python mencocokkan identitas/urutan seluruh state dengan `git show HEAD:docs/handoff/hermes-state-matrix.md`: 82/82 sama, empat kolom, nol sel kosong, 38 berkas referensi ada. Rekap: 35 teruji, 36 ada tanpa test, 2 belum, 9 butuh server. `Teruji` pada inventaris menyatakan ada assertion teks/role khusus, bukan klaim semua skrip integrasi dijalankan ulang.
+- Dua state dilengkapi (di bawah batas delapan): submitting aktivasi SCR-005 dan submitting pemulihan akses SCR-006. `web/src/auth.tsx` menampilkan `Alert`/role status memakai `m.saving` di `TokenPage` dan `RequestResetPage`; hasil sukses tetap menunggu jawaban server. Tidak menambah endpoint, dependency, CSS, atau kontrak mock.
+- `web/test/e2e/portal-state-matrix.spec.ts`: dua test dengan respons HTTP ditahan oleh gate; memeriksa teks status, aria-busy, belum ada sukses, hasil sesudah gate dilepas, keyboard Enter dan reflow 360 px.
+- Pola tetap UAR-010 Alert, UAR-011 Button, UAR-034 aktivasi dan UAR-014 password (PATTERN_ADAPTATION); tidak ada komponen referensi baru. Teks yang kini terlihat pada tiga form: `Menunggu jawaban server…` (`m.saving`, pesan yang sudah ada). Tidak ada teks baru/berubah pada `messages.ts`.
+- Source yang diverifikasi tetap base `48a60a3` + perubahan lokal. SHA-256: `auth.tsx` = `ab789be76789dc8ec74b487cf3d621ce460b313e05fc79f493f3f56cf37d1ffb`; test baru = `95947c032ecdcce8557e9498d188809313151385954cbceeecfe2b93fbaf3f1c`. Graph coverage best-effort tidak mencatat gap pada berkas yang dipakai; pembacaan source langsung tetap menjadi bukti.
+
+### Dijalankan — TDD dan verifikasi
+
+Semua perintah dari `web/` kecuali validator Python. Log berada di `/tmp/router-hermes-stage10/`; run terpisah tidak digabung menjadi satu hasil. Browser memakai `WEB_PORT=5197`, satu worker. Sebelum setiap run dilakukan pemeriksaan pemilik proses; proses Antigravity tidak dihentikan.
+
+- Baseline `npm run typecheck`: exit 0 (`baseline-typecheck.log`). Baseline `npm test`: 7/7, exit 0 (`baseline-unit.log`).
+- Aktivasi RED: `npm run test:e2e -- test/e2e/portal-state-matrix.spec.ts --grep 'aktivasi mengumumkan submitting' --workers=1`; PID 117494, sesi `proc_84adf4efca79`, exit 1, 0/1 lulus. Alasan valid: role status `Menunggu jawaban server…` belum ada (`activation-red.log`). Sesudah itu baru alert aktivasi diterapkan.
+- Aktivasi GREEN percobaan pertama: PID 120950, sesi `proc_da668ead5a27`, guard exit 1 karena Antigravity PID 119527 aktif; nol test dimulai. Percobaan kedua PID 122503: perintah sama, 1/1 lulus, exit 0 (`activation-green-2.log`).
+- Reset RED percobaan pertama: PID 124381, guard exit 1 karena Antigravity PID 123164 aktif; nol test. RED kedua: `npm run test:e2e -- test/e2e/portal-state-matrix.spec.ts --grep 'pemulihan akses mengumumkan submitting' --workers=1`; PID 126461, sesi `proc_f8a9320a1e66`, exit 1, 0/1 lulus. Alasan valid: role status submitting belum ada (`reset-red-2.log`). Alert permintaan dan penyelesaian reset baru diterapkan sesudah RED ini.
+- Reset GREEN: perintah sama, PID 129446, sesi `proc_04e41894025c`, 1/1 lulus, exit 0 (`reset-green.log`).
+- `npm run typecheck`: PID 130881 dan pengulangan PID 179862, keduanya exit 0 (`final-typecheck.log`, `final-typecheck-2.log`). `npm test`: PID 131662, 7/7, exit 0 (`final-unit.log`). `npm run build`: PID 131726, exit 0 (`final-build.log`); peringatan bundler `use client` pada dependency tetap ada, tidak dianggap error.
+- Suite penuh standar `npm run test:e2e -- --workers=1`, PID 131201, sesi `proc_c3eba68edf47`: 84/85, exit 1 (`final-e2e.log`). `upstream.spec.ts` gagal pada heading karena halaman tidak terimpor; Vite mencatat `Failed to fetch dynamically imported module: .../src/main.tsx`. Pengulangan hanya `upstream.spec.ts`, PID 139894, sesi `proc_858f621399ab`: 2/2, exit 0 (`upstream-isolated.log`), tanpa perubahan source upstream.
+- Suite standar kedua, PID 142062, sesi `proc_fa5faac14b1a`: 84/85, exit 1 (`final-e2e-2.log`); kegagalan berpindah ke test ringkasan memuat/gagal/nol dengan error impor modul yang sama. Pengulangan test itu saja, PID 151046, sesi `proc_315e1d544130`: 1/1, exit 0 (`overview-isolated.log`).
+- Suite standar ketiga, PID 153639, sesi `proc_b6d18c96dc88`: 83/85, exit 1 (`final-e2e-3.log`); test `membuka langsung tiap rute portal dan admin saat sesi berakhir memulihkan returnTo rute asal` dan `loading, gagal dan kosong transaksi; reflow 360,768,1280 dan reduced motion` masing-masing gagal bersama error impor `main.tsx`. Tidak ada test/source diubah untuk menutupi kegagalan.
+- Percobaan isolasi tanpa proxy PID 161480, sesi `proc_44d1daf0334c`, ditahan guard (false-positive shell build repo lain, bukan test gagal). Guard kemudian diperketat ke proses Node/Chrome pada cwd Router, bukan kecocokan teks wrapper shell. Percobaan kedua PID 162010, sesi `proc_c60e99726de0`: dua test tersebut lulus 2/2, exit 0 (`isolated-no-proxy-2.log`). Konfigurasi sementara hanya menambah Chrome `--no-proxy-server`, bukan retry/menghapus cache/menonaktifkan test.
+- Percobaan suite penuh tanpa proxy PID 169369, sesi `proc_7413ddb7df27`, ditahan guard karena Antigravity sedang mengukur suite; nol test. Pengulangan menunggu semua proses suite Router lain selesai dan 10 detik tenang: wrapper PID 178043, sesi `proc_03b9674643c4`, child npm PID 180790; `WEB_PORT=5197 npm run test:e2e -- --config=.hermes-stage10-playwright.config.ts --workers=1` lulus 85/85, exit 0, skipped/flaky/unexpected 0 (`final-no-proxy-2.log`, `no-proxy-results.json`). Ini bukti suite final pada source final, bukan bukti penyebab jaringan/proxy sudah dipastikan.
+- Readiness PostgreSQL test loopback: `select 1` lulus. `VERIFY_API_PORT=55517 VERIFY_WEB_PORT=5197 npm run test:local`, PID 188054, sesi `proc_7383d9b33d46`: `local-browser-verify: PASS`, exit 0 (`local-browser.log`). Skrip asli membuat schema privat acak, mailer sintetis, Fastify/PostgreSQL nyata; aktivasi, key sekali tampil/cabut, top-up step-up, paket/harga/kode, redeem replay dan ledger diuji. Respons 401 pada log merupakan tantangan step-up yang diharapkan, bukan disembunyikan.
+- `VERIFY_DIST_PORT=55518 npm run test:browser`, PID 188778, sesi `proc_da97fb89aab6`: build exit 0 dan `same-origin-dist-verify: PASS`, keseluruhan exit 0 (`dist-browser.log`). Artefak build dilayani Fastify lokal dengan CSP; aktivasi, login, panduan, reflow dan pemisahan route API/static diverifikasi.
+- Menanggapi arahan verifikasi workspace: `hermes verify --json`, wrapper PID 202370/sesi `proc_a7a10bf74c30`, child PID 208515, recipe `.hermes/environment.json`, hasil JSON `/tmp/router-hermes-stage10/hermes-verify.json`: `ok:true`; `npm --prefix server run typecheck` exit 0 (1.452 dtk); `npm --prefix server run test` 145/145 (161.109 dtk), exit 0; readiness server nyata `GET http://127.0.0.1:55480/readyz` HTTP 200 (7.066 dtk); runner melakukan teardown. Database target lokal telah diperiksa sebagai loopback `127.0.0.1:55432/router_test`; tidak ada target DB remote. Recipe tersebut hanya memverifikasi server; e2e UI 85/85 dan browser smoke di atas dijalankan terpisah.
+- Pemeriksaan akhir sesudah recipe: port 55480 sudah tertutup, working tree tidak memiliki perubahan tambahan pada recipe atau output buatan. `git diff --check` exit 0; validator matriks kembali mengonfirmasi 82 state.
+
+### Lulus
+
+- Inventaris 82/82 state tanpa sel kosong, identitas dan urutan kerangka tetap.
+- Dua siklus RED–GREEN; suite final tanpa proxy 85/85, unit 7/7, typecheck dan build exit 0.
+- Server canonical `hermes verify --json`: typecheck lulus, test 145/145 lulus, readiness 200 dan teardown lulus.
+- Integrasi browser Fastify/PostgreSQL nyata `test:local` PASS dan build same-origin `test:browser` PASS. Keyboard Enter dan reflow 360 px ada pada test baru; suite lama memeriksa axe/reduced-motion. Tidak mengklaim audit visual baru menyeluruh untuk 82 state.
+
+### Belum / batas bukti
+
+- Tidak menjalankan ulang semua skrip integrasi milik Antigravity; tidak mengklaim seluruh state matriks telah diuji otomatis. Dua state data-usang tetap belum lengkap. Sembilan state tergantung kontrak executable dicatat pada Permintaan ke Claude.
+- Tidak ada perubahan `server/`, berkas milik Antigravity, dependency/lockfile, commit atau deployment. Konfigurasi Playwright tanpa proxy dipindah keluar repo ke `/tmp/router-hermes-stage10/playwright-no-proxy.config.ts` setelah verifikasi.
+
 ## Permintaan ke Claude
 
+### Tahap sepuluh — kontrak yang belum cukup untuk state UX
 
-Tidak ada kebutuhan kontrak server baru untuk tahap ini. Untuk tahap dua: bila diinginkan integrasi backend browser SCR-017/018, siapkan seed request unresolved dengan hold konsisten di schema privat dan step-up test yang sesuai. Jangan memakai atau menghentikan container bersama `router-spike-pg`. Tahap tiga lanjutan belum dipasang ke layanan publik.
+Ini permintaan kebutuhan, bukan kontrak baru yang sudah disetujui; tidak ada endpoint/field mock karangan yang diterapkan.
+
+- SCR-009 model-dijeda: `/api/models` (`pricing.catalogue`) hanya mengembalikan model yang mempunyai route aktif dan upstream eligible. Dibutuhkan cara resmi mengidentifikasi model yang dijeda, status dan alasan aman untuk pelanggan, serta aturan apakah model itu tetap dikirim dalam katalog.
+- SCR-010 error grafik parsial: saat ini grafik dihitung dari daftar `/api/requests` yang sama. Dibutuhkan kontrak agregat periode dan failure boundary terpisah agar grafik gagal tidak mematikan daftar, atau keputusan revisi scope UX bila ringkasan per halaman tetap dipakai.
+- SCR-011 tanpa-hasil-filter: `/api/ledger` hanya menerima cursor `before` dan `limit`. Dibutuhkan parameter filter yang disetujui (jenis/periode), semantic zona waktu dan rentang, serta cursor yang tetap sesuai filter.
+- SCR-016 menguji dan hasil uji: API-035 menyebut uji koneksi tetapi implementasi belum menyediakan operasi itu. Dibutuhkan capability pengujian tanpa biaya per upstream/protokol dan hasil resmi sukses/gagal/tidak tersedia; pengambilan daftar model tidak dianggap bukti koneksi inference.
+- SCR-016 cost-usang dan kurs-usang: dibutuhkan profil biaya dan currency, waktu acuan (`as-of`), versi, aturan kedaluwarsa dan kurs/arah konversi dari server; tidak membuat hitungan uang/kurs baru di browser.
+- SCR-016 circuit-terbuka: dibutuhkan status breaker per route, waktu berubah/batas coba kembali dan alasan aman; payload route saat ini tidak memuatnya.
+- SCR-017 replay penyelesaian: `resolveRequest` kini mengembalikan 409 `not_unresolved` untuk pengulangan, bukan receipt replay. Dibutuhkan semantic replay/hasil keputusan sebelumnya (ID request, debit final, waktu, penanda sudah diputuskan dan aturan konflik) sebelum UI boleh mengklaim pengulangan berhasil.
+
+Catatan permintaan terdahulu: Tidak ada kebutuhan kontrak server baru untuk tahap sembilan. Untuk tahap dua: bila diinginkan integrasi backend browser SCR-017/018, siapkan seed request unresolved dengan hold konsisten di schema privat dan step-up test yang sesuai. Jangan memakai atau menghentikan container bersama `router-spike-pg`. Tahap tiga lanjutan belum dipasang ke layanan publik.
