@@ -61,19 +61,28 @@ export async function create(db: Db, p: Principal, data: KeyPolicy, creationKey:
 
 export type KeyPrincipal = { tenantId: string; keyId: string; allowedModels: string[] | null; spendLimit: bigint | null; spent: bigint; held: bigint };
 
-/** A preflight only; admission must recheck under tenant/account/key locks. */
-export async function authenticate(db: Db | Tx, secret: string, lock = false): Promise<KeyPrincipal> {
+/**
+ * A preflight only; admission must recheck under tenant/account/key locks.
+ * `lock` locks the key row for update. `withPause` also reads the gateway pause switch, so the gateway's preflight is one query.
+ */
+export async function authenticate(db: Db | Tx, secret: string, lock = false, withPause = false): Promise<KeyPrincipal & { gatewayPaused?: boolean }> {
   if (typeof secret !== 'string' || !/^rtr_[A-Za-z0-9_-]{43}$/.test(secret)) throw new AppError('auth_invalid', 'Invalid API key', 401);
   const row = (await db.query(
     `select k.id, k.tenant_id, k.allowed_models, k.spend_limit, k.spent, k.held, k.status,
      k.expires_at, t.status as tenant_status, clock_timestamp() as checked_at
+     ${withPause ? ", (select value from system_setting where name='gateway_paused') as gateway_paused" : ''}
      from api_key k join tenant t on t.id=k.tenant_id where k.token_hash=$1 ${lock ? 'for update of k' : ''}`,
     [tokenHash(secret)])).rows[0];
   if (!row || row.tenant_status === 'CLOSED') throw new AppError('auth_invalid', 'Invalid API key', 401);
   if (row.status !== 'ACTIVE') throw new AppError('key_revoked', 'API key was revoked', 401);
   if (row.expires_at !== null && row.expires_at <= row.checked_at) throw new AppError('auth_invalid', 'Invalid API key', 401);
   if (row.tenant_status !== 'ACTIVE') throw new AppError('tenant_suspended', 'Tenant is suspended', 403);
-  return { tenantId: row.tenant_id, keyId: row.id, allowedModels: row.allowed_models, spendLimit: row.spend_limit === null ? null : BigInt(row.spend_limit), spent: BigInt(row.spent), held: BigInt(row.held) };
+  const principal: KeyPrincipal & { gatewayPaused?: boolean } = { tenantId: row.tenant_id, keyId: row.id, allowedModels: row.allowed_models, spendLimit: row.spend_limit === null ? null : BigInt(row.spend_limit), spent: BigInt(row.spent), held: BigInt(row.held) };
+  if (withPause) {
+    if (row.gateway_paused === null || row.gateway_paused === undefined) throw new AppError('internal_error', 'Gateway setting is missing', 503); // fail closed
+    principal.gatewayPaused = String(row.gateway_paused) !== '0';
+  }
+  return principal;
 }
 
 export async function list(db: Db, tenantId: string, opts: { after?: string; limit?: string } = {}) {

@@ -14,7 +14,6 @@ import * as upstreams from './upstreams.ts';
 import { debitMicro, holdMicro, type Price, type Usage } from './money.ts';
 import { assertSafeUpstreamUrl, type Resolver } from './netguard.ts';
 import { gatewayEvents } from './monitor.ts';
-import { gatewayPaused } from './control.ts';
 import { CURSOR_TIME_SQL, parseRequestCursor, requestCursor } from './paging.ts';
 
 export type GatewayDeps = { db: Db; key: Buffer; resolveHost: Resolver; firstByteTimeoutMs?: number; idleTimeoutMs?: number; maxTotalMs?: number; maxAttempts?: number;
@@ -133,14 +132,22 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
     return fail(reply, s, 503, 'internal_error', 'Service unavailable', requestId); // ledger or database trouble: refuse, never let a billable request through
   };
 
-  async function settle(a: { requestId: string; tenantId: string; price: Price; usage: Usage | null; estimated: boolean; state: string; usageRaw: unknown; outcome: string; maxIn: number }) {
+  type Attempt = { seq: number; routeId: string; outcome: string };
+  /** Settles the request; the last attempt, when there is one, is written in the same transaction and statement. */
+  async function settle(a: { requestId: string; tenantId: string; price: Price; usage: Usage | null; estimated: boolean; state: string; usageRaw: unknown; outcome: string; maxIn: number; attempt?: Attempt }) {
     const capped = a.usage ? capInput(a.usage, a.maxIn) : null; const billed = capped?.billed ?? null;
     const debit = billed ? debitMicro(billed, a.price) : 0n;
+    const t = a.attempt;
     await withTx(db, async tx => {
       const r = await ledger.settleHold(tx, { tenantId: a.tenantId, requestId: a.requestId, debit, ref: { requestId: a.requestId } });
-      if (!r.settled) return; // already settled: nothing to do
-      await tx.query('update request set state=$2, debit=$3, estimated=$4, bound_exceeded=$5, usage_raw=$6, usage_norm=$7, outcome=$8, unbilled_input_tokens=$9, settled_at=now() where id=$1',
-        [a.requestId, a.state, String(debit), a.estimated, r.boundExceeded, a.usageRaw === null || a.usageRaw === undefined ? null : JSON.stringify(a.usageRaw), billed ? JSON.stringify(billed) : null, a.outcome, capped?.unbilled ?? 0]);
+      if (!r.settled) { // already settled: only the attempt is new
+        if (t) await tx.query('insert into attempt(request_id, seq, route_id, outcome) values($1,$2,$3,$4)', [a.requestId, t.seq, t.routeId, t.outcome]);
+        return;
+      }
+      await tx.query(`with t as (insert into attempt(request_id, seq, route_id, outcome) select $1, $10::int, $11::uuid, $12::text where $10::int is not null returning 1)
+        update request set state=$2, debit=$3, estimated=$4, bound_exceeded=$5, usage_raw=$6, usage_norm=$7, outcome=$8, unbilled_input_tokens=$9, settled_at=now() where id=$1`,
+        [a.requestId, a.state, String(debit), a.estimated, r.boundExceeded, a.usageRaw === null || a.usageRaw === undefined ? null : JSON.stringify(a.usageRaw), billed ? JSON.stringify(billed) : null, a.outcome, capped?.unbilled ?? 0,
+          t?.seq ?? null, t?.routeId ?? null, t?.outcome ?? null]);
     });
   }
 
@@ -149,12 +156,12 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
     const secret = secretOf(req);
     let wait = overLimit('fail:' + req.ip, perIpFail, false);
     if (wait) return fail(reply, s, 429, 'limit_exceeded', 'Too many failed requests from this address', undefined, wait);
-    let tenantId: string;
-    try { tenantId = (await keys.authenticate(db, secret)).tenantId; }
+    let tenantId: string, paused: boolean | undefined;
+    try { ({ tenantId, gatewayPaused: paused } = await keys.authenticate(db, secret, false, true)); }
     catch (e) { if (e instanceof AppError && (e.code === 'auth_invalid' || e.code === 'key_revoked')) overLimit('fail:' + req.ip, perIpFail, true); return failApp(reply, s, e); }
-    // Kill switch: checked after the key so strangers learn nothing, before any hold. Requests already admitted are not affected.
-    try { if (await gatewayPaused(db)) return fail(reply, s, 503, 'service_paused', 'The service is paused by the operator. Try again later.', undefined, 60); }
-    catch (e) { return failApp(reply, s, e); }
+    // Pause switch: read with the key, acted on only after the key passed, so strangers learn nothing; before any hold.
+    // Requests already admitted are not affected.
+    if (paused) return fail(reply, s, 503, 'service_paused', 'The service is paused by the operator. Try again later.', undefined, 60);
     wait = overLimit('key:' + tokenHash(secret), perKey, true);
     if (wait) return fail(reply, s, 429, 'limit_exceeded', 'Request rate limit reached for this API key', undefined, wait);
     const running = active.get(tenantId) ?? 0;
@@ -164,7 +171,7 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
     finally { const n = (active.get(tenantId) ?? 1) - 1; if (n <= 0) active.delete(tenantId); else active.set(tenantId, n); }
   }
 
-  /** `tenantId` comes from the key check in `guarded`; the hold transaction checks the key again under lock. */
+  /** `tenantId` comes from the key check in `guarded`; the admission transaction checks the key again under lock. */
   async function handle(s: Surface, req: FastifyRequest, reply: FastifyReply, tenantId: string) {
     const secret = secretOf(req);
     const json = req.body as Record<string, any> | null;
@@ -180,33 +187,33 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
     const requestId = 'req_' + crypto.randomUUID();
     const maxIn = Buffer.byteLength(bodyText); // upper bound: a token is never shorter than one byte of the request
 
-    // ---- Admission: key, scope, price snapshot, hold. Everything billable is decided in one transaction. ----
+    // ---- Admission: price snapshot, key, scope, hold. Everything billable is decided in one transaction. ----
+    // The snapshot is read inside it, so the price stored on the request is the one the hold was sized with and the one charged.
     let adm: { tenantId: string; price: Price; maxOut: number };
     try {
-      const snap = await pricing.snapshotForAdmission(db, model);
-      if (!snap) throw new AppError('model_not_available', 'This model is not available', 404);
-      // Overrun rule: when the requested output does not fit the balance plus allowance, the output is capped to what fits.
-      const bal = await ledger.getBalance(db, tenantId); const budget = bal.available + await ledger.overdraftMicro(db);
-      let maxOut = Math.min(asked ?? GATEWAY_LIMITS.defaultMaxOutput, GATEWAY_LIMITS.maxOutputCap);
-      if (bal.available > 0n && holdMicro(maxIn, maxOut, snap.price) > budget) {
-        const inputOnly = holdMicro(maxIn, 0, snap.price), perOut = holdMicro(0, 1000, snap.price);
-        const fit = budget > inputOnly && perOut > 0n ? Number(((budget - inputOnly) * 1000n) / perOut) : 0;
-        if (fit < 1) throw new AppError('insufficient_balance', 'Insufficient balance', 402);
-        maxOut = Math.min(maxOut, fit);
-      }
-      const hold = holdMicro(maxIn, maxOut, snap.price);
-      const placed = await withTx(db, async tx => {
-        const h = await ledger.placeKeyHold(tx, { secret, requestId, amount: hold, model });
-        const fresh = await pricing.snapshotForAdmission(tx, model); // re-read inside the transaction: the snapshot stored is the one charged
-        if (!fresh || fresh.priceVersionId !== snap.priceVersionId) throw new AppError('model_not_available', 'Price changed, retry the request', 404);
+      adm = await withTx(db, async tx => {
+        const snap = await pricing.snapshotForAdmission(tx, model);
+        if (!snap) throw new AppError('model_not_available', 'This model is not available', 404);
+        let maxOut = Math.min(asked ?? GATEWAY_LIMITS.defaultMaxOutput, GATEWAY_LIMITS.maxOutputCap);
+        // Overrun rule: when the requested output does not fit the balance plus allowance, the output is capped to what fits.
+        // Sized from the balance under the account lock, so a concurrent request cannot make the cap stale.
+        const h = await ledger.placeKeyHold(tx, { secret, requestId, model, amount: ({ available, overdraft }) => {
+          const budget = available + overdraft;
+          if (available > 0n && holdMicro(maxIn, maxOut, snap.price) > budget) {
+            const inputOnly = holdMicro(maxIn, 0, snap.price), perOut = holdMicro(0, 1000, snap.price);
+            const fit = budget > inputOnly && perOut > 0n ? Number(((budget - inputOnly) * 1000n) / perOut) : 0;
+            if (fit < 1) throw new AppError('insufficient_balance', 'Insufficient balance', 402);
+            maxOut = Math.min(maxOut, fit);
+          }
+          return holdMicro(maxIn, maxOut, snap.price);
+        } });
         await tx.query('insert into request(id, tenant_id, api_key_id, model_id, protocol, stream, state, price_version_id, price_snapshot, max_input, max_output, hold) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-          [requestId, h.tenantId, h.keyId, model, s, stream, 'ADMITTED', snap.priceVersionId, JSON.stringify({ seq: snap.price.version, inputRate: String(snap.price.inputRate), outputRate: String(snap.price.outputRate), cacheReadRate: String(snap.price.cacheReadRate), cacheWriteRate: String(snap.price.cacheWriteRate), multiplierE4: String(snap.price.multiplierE4) }), maxIn, maxOut, String(hold)]);
-        return h;
+          [requestId, h.tenantId, h.keyId, model, s, stream, 'ADMITTED', snap.priceVersionId, JSON.stringify({ seq: snap.price.version, inputRate: String(snap.price.inputRate), outputRate: String(snap.price.outputRate), cacheReadRate: String(snap.price.cacheReadRate), cacheWriteRate: String(snap.price.cacheWriteRate), multiplierE4: String(snap.price.multiplierE4) }), maxIn, maxOut, String(h.amount)]);
+        return { tenantId: h.tenantId, price: snap.price, maxOut };
       });
-      adm = { tenantId: placed.tenantId, price: snap.price, maxOut };
     } catch (e) { return failApp(reply, s, e, requestId); }
 
-    const done = (usage: Usage | null, estimated: boolean, state: string, usageRaw: unknown, outcome: string) => settle({ requestId, tenantId: adm.tenantId, price: adm.price, usage, estimated, state, usageRaw, outcome, maxIn });
+    const done = (usage: Usage | null, estimated: boolean, state: string, usageRaw: unknown, outcome: string, attempt?: Attempt) => settle({ requestId, tenantId: adm.tenantId, price: adm.price, usage, estimated, state, usageRaw, outcome, maxIn, attempt });
     const estimate = (chars: number): Usage => ({ input: Math.ceil(maxIn / 3), output: Math.ceil(chars / 2), cacheRead: 0, cacheWrite: 0 });
 
     // ---- Routing: same protocol only, eligible upstreams, healthy routes, best priority first. ----
@@ -217,7 +224,9 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
     let seq = 0;
     for (const c of candidates) {
       seq++;
+      // A failed attempt that moves on to the next route is written on its own; the attempt that ends the request goes into settlement.
       const note = (outcome: string) => db.query('insert into attempt(request_id, seq, route_id, outcome) values($1,$2,$3,$4)', [requestId, seq, c.routeId, outcome]);
+      const last = (outcome: string): Attempt => ({ seq, routeId: c.routeId, outcome });
       const fb = new AbortController(); const timer = setTimeout(() => fb.abort(), firstByteMs);
       let up: Response, reader: ReadableStreamDefaultReader<Uint8Array> | null = null, first: Uint8Array | undefined;
       try {
@@ -231,8 +240,8 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
         else { headers['x-api-key'] = c.apiKey; headers['anthropic-version'] = String(req.headers['anthropic-version'] ?? '2023-06-01'); if (req.headers['anthropic-beta']) headers['anthropic-beta'] = String(req.headers['anthropic-beta']); }
         up = await fetch(base + (s === 'CHAT' ? '/chat/completions' : s === 'RESPONSES' ? '/responses' : '/v1/messages'), { method: 'POST', headers, body: JSON.stringify(out), redirect: 'error', signal: AbortSignal.any([client.signal, fb.signal]) });
         if (up.status === 400 || up.status === 422) { // the request itself is wrong: forward, never fall back, never charge
-          clearTimeout(timer); const text = (await up.text()).slice(0, 65_536); await note('rejected_' + up.status);
-          await done(null, false, 'FAILED', null, 'upstream_rejected');
+          clearTimeout(timer); const text = (await up.text()).slice(0, 65_536);
+          await done(null, false, 'FAILED', null, 'upstream_rejected', last('rejected_' + up.status));
           return reply.code(up.status).header('x-request-id', requestId).header('content-type', 'application/json').send(text);
         }
         if (!up.ok || !up.body) { clearTimeout(timer); await up.body?.cancel().catch(() => {}); routeFailed(c.routeId, c.upstreamName, up.status); await note('upstream_' + up.status); continue; }
@@ -240,9 +249,9 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
           const buf = Buffer.from(await up.arrayBuffer()); clearTimeout(timer);
           if (buf.length > GATEWAY_LIMITS.nonStreamBytes) { routeFailed(c.routeId, c.upstreamName); await note('response_too_large'); continue; }
           let parsed: any = null; try { parsed = JSON.parse(buf.toString('utf8')); } catch { /* settled as an estimate below */ }
-          health.delete(c.routeId); await note('completed');
+          health.delete(c.routeId);
           const usage = normalizeUsage(s, parsed?.usage);
-          if (usage) await done(usage, false, 'SETTLED', parsed.usage, 'completed'); else await done(estimate(buf.length), true, 'SETTLED_ESTIMATED', parsed?.usage ?? null, 'usage_missing');
+          if (usage) await done(usage, false, 'SETTLED', parsed.usage, 'completed', last('completed')); else await done(estimate(buf.length), true, 'SETTLED_ESTIMATED', parsed?.usage ?? null, 'usage_missing', last('completed'));
           return reply.code(200).header('x-request-id', requestId).header('content-type', 'application/json').send(buf);
         }
         reader = up.body.getReader(); const r = await reader.read(); clearTimeout(timer);
@@ -250,7 +259,7 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
         first = r.value;
       } catch {
         clearTimeout(timer);
-        if (clientGone) { await note('client_cancelled'); await done(null, false, 'CANCELLED', null, 'cancelled_before_first_byte'); return reply; }
+        if (clientGone) { await done(null, false, 'CANCELLED', null, 'cancelled_before_first_byte', last('client_cancelled')); return reply; }
         routeFailed(c.routeId, c.upstreamName); await note('connect_or_first_byte_failed'); continue;
       }
 
@@ -270,12 +279,13 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
         }
       } catch { broke = true; await reader!.cancel().catch(() => {}); }
       const state = clientGone ? 'CANCELLED' : obs.done && !broke ? 'COMPLETED' : 'FAILED';
-      await note(state.toLowerCase()); if (!reply.raw.writableEnded) reply.raw.end();
+      if (!reply.raw.writableEnded) reply.raw.end();
+      const ended = last(state.toLowerCase());
       try {
         const usage = obs.done ? normalizeUsage(s, obs.usageRaw) : null;
-        if (usage) await done(usage, false, 'SETTLED', obs.usageRaw, 'completed');
-        else if (obs.contentChars === 0 && !obs.usageRaw) await done(null, false, state === 'COMPLETED' ? 'SETTLED' : state, null, 'no_content'); // zero usage: no charge
-        else await done(estimate(obs.contentChars), true, 'SETTLED_ESTIMATED', obs.usageRaw, state === 'CANCELLED' ? 'cancelled_mid_stream' : 'usage_missing'); // content went out but usage did not arrive: not zero
+        if (usage) await done(usage, false, 'SETTLED', obs.usageRaw, 'completed', ended);
+        else if (obs.contentChars === 0 && !obs.usageRaw) await done(null, false, state === 'COMPLETED' ? 'SETTLED' : state, null, 'no_content', ended); // zero usage: no charge
+        else await done(estimate(obs.contentChars), true, 'SETTLED_ESTIMATED', obs.usageRaw, state === 'CANCELLED' ? 'cancelled_mid_stream' : 'usage_missing', ended); // content went out but usage did not arrive: not zero
       } catch (e) { app.log.error({ requestId, code: (e as any)?.code }, 'settlement failed; hold stays open for reconciliation'); }
       return reply;
     }

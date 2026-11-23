@@ -31,6 +31,13 @@ async function lockAccount(tx: Tx, tenantId: string) {
   if (!a) throw new AppError('not_found', 'Not found', 404);
   return { id: a.id as string, posted: BigInt(a.posted), held: BigInt(a.held), currency: a.currency as string };
 }
+/** lockAccount plus the overrun allowance, read in the same round trip (admission needs both). */
+async function lockAccountForAdmission(tx: Tx, tenantId: string) {
+  const a = (await tx.query("select id, posted, held, (select value from system_setting where name='overdraft_micro') as overdraft from ledger_account where tenant_id=$1 for update", [tenantId])).rows[0];
+  if (!a) throw new AppError('not_found', 'Not found', 404);
+  if (a.overdraft === null) throw new AppError('internal_error', 'Overdraft setting is missing', 503); // fail closed
+  return { id: a.id as string, available: BigInt(a.posted) - BigInt(a.held), overdraft: BigInt(a.overdraft) };
+}
 
 export async function createAccount(tx: Tx, tenantId: string): Promise<void> {
   await tx.query('insert into ledger_account(tenant_id) values($1)', [tenantId]);
@@ -116,22 +123,33 @@ export async function placeHold(tx: Tx, a: { tenantId: string; requestId: string
   await tx.query('update ledger_account set held = held + $1 where id=$2', [String(a.amount), acc.id]);
 }
 
-/** Tenant -> account -> key lock order matches settlement; no caller-supplied tenant/key identity. */
-export async function placeKeyHold(tx: Tx, a: { secret: string; requestId: string; amount: bigint; model: string }): Promise<{ tenantId: string; keyId: string }> {
-  if (a.amount <= 0n || a.amount > 9223372036854775807n) throw new AppError('invalid_request', 'Invalid hold amount', 400);
+const MAX_HOLD = 9223372036854775807n;
+/**
+ * Tenant -> account -> key lock order matches settlement; no caller-supplied tenant/key identity.
+ * `amount` may be a function of the locked funds, so a hold that has to be capped to what fits is sized under the account lock.
+ * Five round trips: key, tenant share lock, account with allowance, key lock, then one statement for all three writes.
+ */
+export async function placeKeyHold(tx: Tx, a: { secret: string; requestId: string; amount: bigint | ((funds: { available: bigint; overdraft: bigint }) => bigint); model: string }): Promise<{ tenantId: string; keyId: string; amount: bigint }> {
+  const valid = (n: bigint) => { if (n <= 0n || n > MAX_HOLD) throw new AppError('invalid_request', 'Invalid hold amount', 400); return n; };
+  if (typeof a.amount === 'bigint') valid(a.amount);
   const initial = await keys.authenticate(tx, a.secret);
   const tenant = (await tx.query('select status from tenant where id=$1 for share', [initial.tenantId])).rows[0];
   if (!tenant || tenant.status === 'CLOSED') throw new AppError('auth_invalid', 'Invalid API key', 401);
   if (tenant.status !== 'ACTIVE') throw new AppError('tenant_suspended', 'Tenant is suspended', 403);
-  const account = await lockAccount(tx, initial.tenantId);
+  const account = await lockAccountForAdmission(tx, initial.tenantId);
+  const amount = valid(typeof a.amount === 'bigint' ? a.amount : a.amount({ available: account.available, overdraft: account.overdraft }));
   const key = await keys.authenticate(tx, a.secret, true);
   if (key.allowedModels !== null && !key.allowedModels.includes(a.model)) throw new AppError('model_not_available', 'Model is outside the key scope', 403);
-  if (key.spendLimit !== null && key.spent + key.held + a.amount > key.spendLimit) throw new AppError('limit_exceeded', 'API key spending limit reached', 429);
-  assertFunds(account.posted - account.held, a.amount, await overdraftMicro(tx));
-  await tx.query('insert into hold(account_id,request_id,amount,tenant_id,api_key_id) values($1,$2,$3,$4,$5)', [account.id, a.requestId, String(a.amount), key.tenantId, key.keyId]);
-  await tx.query('update ledger_account set held=held+$2 where id=$1', [account.id, String(a.amount)]);
-  await tx.query("update api_key set held=held+$3,last_used_at=case when last_used_at is null or last_used_at<clock_timestamp()-interval '1 minute' then clock_timestamp() else last_used_at end where tenant_id=$1 and id=$2", [key.tenantId, key.keyId, String(a.amount)]);
-  return { tenantId: key.tenantId, keyId: key.keyId };
+  if (key.spendLimit !== null && key.spent + key.held + amount > key.spendLimit) throw new AppError('limit_exceeded', 'API key spending limit reached', 429);
+  assertFunds(account.available, amount, account.overdraft);
+  const w = (await tx.query(
+    `with h as (insert into hold(account_id,request_id,amount,tenant_id,api_key_id) values($1,$2,$3,$4,$5) returning 1),
+          a as (update ledger_account set held=held+$3 where id=$1 returning 1),
+          k as (update api_key set held=held+$3,last_used_at=case when last_used_at is null or last_used_at<clock_timestamp()-interval '1 minute' then clock_timestamp() else last_used_at end where tenant_id=$4 and id=$5 returning 1)
+     select (select count(*) from h)::int as holds, (select count(*) from a)::int as accounts, (select count(*) from k)::int as keys`,
+    [account.id, a.requestId, String(amount), key.tenantId, key.keyId])).rows[0];
+  if (w.holds !== 1 || w.accounts !== 1 || w.keys !== 1) throw new AppError('internal_error', 'Hold accounting unavailable', 500);
+  return { tenantId: key.tenantId, keyId: key.keyId, amount };
 }
 
 /**
@@ -145,13 +163,17 @@ export async function settleHold(tx: Tx, a: { tenantId: string; requestId: strin
   if (!h) throw new AppError('not_found', 'Not found', 404);
   if (h.status !== 'ACTIVE') return { settled: false, boundExceeded: false }; // already settled: replay is a no-op
   const held = BigInt(h.amount);
-  if (h.api_key_id) {
-    const changed = await tx.query('update api_key set held=held-$3,spent=spent+$4 where tenant_id=$1 and id=$2', [a.tenantId, h.api_key_id, String(held), String(a.debit)]);
-    if (changed.rowCount !== 1) throw new AppError('internal_error', 'Key accounting unavailable', 500);
-  }
-  if (a.debit > 0n) await tx.query("insert into ledger_entry(account_id, kind, amount, idem_key, ref) values($1,'DEBIT_USAGE',$2,$3,$4)", [acc.id, String(-a.debit), a.requestId, JSON.stringify(a.ref ?? {})]);
-  await tx.query('update ledger_account set posted = posted - $1, held = held - $2 where id=$3', [String(a.debit), String(held), acc.id]);
-  await tx.query("update hold set status=$2, closed_at=now(), settled_debit=$3 where id=$1", [h.id, a.debit > 0n ? 'CAPTURED' : 'RELEASED', String(a.debit)]);
+  // One statement for every write. Account and hold are locked above, so the key row is the only lock taken here: still last,
+  // as before. The counts prove each write landed exactly once.
+  const w = (await tx.query(
+    `with k as (update api_key set held=held-$4::bigint, spent=spent+$5::bigint where $3::uuid is not null and tenant_id=$2 and id=$3 returning 1),
+          e as (insert into ledger_entry(account_id, kind, amount, idem_key, ref) select $1::uuid, 'DEBIT_USAGE', -$5::bigint, $6::text, $7::jsonb where $5::bigint > 0 returning 1),
+          a as (update ledger_account set posted=posted-$5::bigint, held=held-$4::bigint where id=$1 returning 1),
+          h as (update hold set status=$9, closed_at=now(), settled_debit=$5::bigint where id=$8 returning 1)
+     select (select count(*) from k)::int as keys, (select count(*) from e)::int as entries, (select count(*) from a)::int as accounts, (select count(*) from h)::int as holds`,
+    [acc.id, a.tenantId, h.api_key_id, String(held), String(a.debit), a.requestId, JSON.stringify(a.ref ?? {}), h.id, a.debit > 0n ? 'CAPTURED' : 'RELEASED'])).rows[0];
+  if (h.api_key_id && w.keys !== 1) throw new AppError('internal_error', 'Key accounting unavailable', 500);
+  if (w.accounts !== 1 || w.holds !== 1 || w.entries !== (a.debit > 0n ? 1 : 0)) throw new AppError('internal_error', 'Ledger accounting unavailable', 500);
   return { settled: true, boundExceeded: a.debit > held };
 }
 
