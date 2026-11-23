@@ -514,3 +514,48 @@ Boleh: berkas Anda, `verify-all.mjs`, `a11y-audit.mjs`, `local-browser-verify.mj
 ## Laporan
 
 Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, termasuk log, lalu jangan push. Hermes mengerjakan Tahap sebelas di folder utama dan juga menjalankan Playwright; sebelum menjalankan Playwright, benchmark atau verify-all, periksa dengan `ps` bahwa tidak ada proses test lain.
+
+# Tugas tiga belas (2026-11-23)
+
+Tugas dua belas diterima dan digabung (A di `cbf1e76`, B di `31e5297`). Isolasi network namespace bekerja: verify-all Claude 15/15 dengan 44 pelepasan alamat `eth8` dan nol `ERR_NETWORK_CHANGED`. Pengukuran ulang tiga kali sangat membantu. Untuk non-stream di c=50 dengan 50 tenant, p95 overhead turun dari 209 ms menjadi 92 ms, tetapi stream di titik yang sama datar. Server kini juga punya status circuit per route (`GET /admin/api/routes`, field `circuit`) dan receipt penyelesaian request yang dapat diulang (`POST /admin/api/requests/:id/resolve`, `replayed`, 409 `already_resolved`). Kontraknya ada di tabel endpoint `docs/ARCHITECTURE.md`. Hermes Tahap sebelas juga sudah di `main` (saldo usang di Beranda, circuit di daftar route).
+
+    cd /mnt/d/router.dev.zuhri-antigravity && source .antigravity-env.sh
+    git checkout antigravity/akun && git pull --ff-only origin main
+
+Bila `--ff-only` menolak, pakai `git pull --no-rebase origin main`; bagian A Anda sudah digabung lebih awal lewat merge.
+
+## A. Circuit route pada server nyata
+
+Pakai upstream tiruan di loopback dengan satu route yang menjawab 500 dan satu yang menjawab 401, masing-masing dengan route cadangan yang sehat. Pastikan hal-hal berikut:
+- Dua kegagalan belum membuka circuit, tetapi `failures` sudah 2 dan UI menampilkan peringatan.
+- Kegagalan ketiga membuka circuit dengan `reason` `failures` dan `openUntil` sekitar 30 detik.
+- Jawaban 401 langsung membuka circuit dengan `upstream_auth` dan sekitar lima menit.
+- Selama terbuka, route itu tidak dihubungi sama sekali (hitung di mock).
+- `/admin/upstream` menampilkan teks `m.circuitOpen`, alasannya, dan waktu coba lagi dalam WIB.
+- Tidak ada respons pelanggan yang memuat kata `circuit`.
+- `invariantViolations` kosong.
+
+## B. Receipt penyelesaian request pada server nyata
+
+Di `admin-requests-local-verify.mjs`, untuk request `UNRESOLVED` yang sudah Anda buat lewat proses yang di-`SIGKILL`, pastikan hal-hal berikut:
+- Penyelesaian pertama mengembalikan receipt `replayed: false`.
+- Keputusan yang sama dikirim ulang (alasan dengan spasi tambahan) mengembalikan receipt yang persis sama dengan `replayed: true`.
+- Debit lain dan alasan lain masing-masing menghasilkan 409 `already_resolved`.
+- Tetap satu audit `request.resolve`, satu entri `DEBIT_USAGE`, dan invariant bersih.
+- UI untuk receipt sedang dibuat Hermes di Tahap dua belas; bagian itu jangan dikerjakan dulu.
+
+## C. Audit aksesibilitas keadaan baru
+
+Tambahkan ke `a11y-audit.mjs` pada lebar 360 dan 1280: Beranda dengan saldo usang (pembacaan pertama sukses, pembacaan ulang gagal), daftar route dengan circuit terbuka, dan route tertutup yang masih punya kegagalan.
+
+## D. Mengapa stream di c=50 tidak membaik
+
+Ukur di `bench-gateway.ts` jumlah checkout pool per request dan tunggu pool per checkout. Pisahkan checkout yang terjadi sebelum byte pertama dari yang sesudahnya, untuk stream dan non-stream di c=50 dengan 50 tenant, tiga kali. Laporkan bagian mana dari jalur sebelum byte pertama yang menunggu paling lama. Server jangan diubah; usulan perubahan tulis di "Untuk Claude".
+
+## Batas berkas
+
+Boleh: berkas Anda, `verify-all.mjs`, `a11y-audit.mjs`, `chromium-netns*`, `server/scripts/bench-gateway.ts`. Tidak boleh: `server/src/**`, migrasi, `package.json`, lockfile, dependency baru, berkas Hermes (`web/src/**`, `web/test/**`, `web/playwright.config.ts`), konfigurasi WSL atau Windows, upstream nyata, situs publik.
+
+## Laporan
+
+Per bagian di log, bedakan ditulis, dijalankan dan lulus; temuan server di "Untuk Claude"; keluaran `verify-all.mjs` penuh di akhir. Commit per bagian ke `antigravity/akun`, termasuk log, lalu jangan push. Hermes sedang mengerjakan Tahap dua belas di folder utama; sebelum menjalankan Playwright, benchmark atau verify-all, periksa dengan `ps` bahwa tidak ada proses test lain.

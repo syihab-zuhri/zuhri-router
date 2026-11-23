@@ -352,3 +352,24 @@ Antrean server dari Hermes yang tersisa: uji koneksi tanpa biaya (API-035), mode
 ### Terpasang `zrouter:r11231813`
 
 Isi: `e44da16` (Hermes Tahap sebelas, Antigravity Tugas dua belas A, receipt penyelesaian request). Backup sebelum pemasangan `zrouter-20261123T111503Z.dump`. Tanpa migrasi baru (14 migrasi; `gateway_paused` = 0). Bukti: kontainer `healthy`, `smoke-public.sh` 7/7, chunk `main` yang tayang memuat "Data mungkin usang" dan "Circuit terbuka. Route dilewati sementara".
+
+## 2026-11-23 malam: Tugas dua belas B Antigravity digabung (`31e5297`)
+
+Pengukuran ulang tiga kali berselang-seling, `--pool-max 20`, `950b3b6` dibanding `d40db59`. Query per request 28 menjadi 17 (stream 29 menjadi 18). Median overhead TTFB p95:
+
+| Titik | Sebelum | Sesudah |
+|---|---:|---:|
+| c=1 non-stream | 29,8 ms | 20,9 ms |
+| c=10, 10 tenant, non-stream / stream | 52,0 / 48,1 ms | 34,6 / 30,7 ms |
+| c=50, 50 tenant, non-stream | 209,1 ms | 91,6 ms |
+| c=50, 50 tenant, stream | 126,8 ms | 157,7 ms (rentang tumpang tindih; GW TTFB p95 datar 208 menjadi 206 ms) |
+
+Tunggu pool per request di c=50, 50 tenant, non-stream turun dari 95,6 ms menjadi 49,1 ms. Stream tidak membaik; penyebabnya diukur di Tugas tiga belas D.
+
+Usulan Antigravity untuk pemangkasan berikutnya, dengan penilaian Claude:
+
+1. Insert `request` digabung ke CTE penulisan admission: layak, tanpa mengubah urutan kunci.
+2. Pembacaan key tanpa kunci di `placeKeyHold` dihapus: ditolak. Pembacaan itulah yang menjadi jendela test `admission rechecks ... after key preflight and before locks`; menggabungkannya dengan kunci tenant sudah dicoba dan membuat test penutupan akun menggantung (lihat bagian sebelumnya).
+3. Cache `candidatesFor` di memori: mungkin, tetapi perubahan admin (blokir upstream, ganti key) harus langsung berlaku, jadi butuh invalidasi eksplisit di setiap jalur tulis upstream dan route. Ditunda sampai Tugas tiga belas D menunjukkan seberapa besar porsinya.
+4. Kunci akun dan hold di settlement digabung menjadi satu `select ... join ... for update`: ditunda. Urutan penguncian di dalam satu pernyataan tidak dijamin dokumentasi PostgreSQL.
+5. Dua CTE settlement digabung menjadi satu: layak.
