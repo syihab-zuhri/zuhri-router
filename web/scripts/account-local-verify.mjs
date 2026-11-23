@@ -137,7 +137,7 @@ try {
   await waitFor(`${webBase}/`);
 
   browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',
+    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || '/root/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',
     headless: true,
     args: ['--no-proxy-server'],
   });

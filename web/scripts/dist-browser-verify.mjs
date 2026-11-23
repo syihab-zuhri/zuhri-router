@@ -42,7 +42,7 @@ try {
   await createInvite(db, { email: 'dist-customer@example.test', adminUser: admin.userId }, mailer);
   app = await buildApp({ db, key, mailer, secureCookies: false, webDist: dist });
   await app.listen({ host: '127.0.0.1', port });
-  browser = await chromium.launch({ executablePath: '/root/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome', headless: true, args: ['--no-proxy-server'] });
+  browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || '/root/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome', headless: true, args: ['--no-proxy-server'] });
   const page = await browser.newPage({ viewport: { width: 360, height: 640 } });
   const origin = `http://127.0.0.1:${port}`;
 
