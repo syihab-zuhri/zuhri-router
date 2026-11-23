@@ -1,9 +1,18 @@
 # Changelog: Router AI Komersial
 
-Version: 0.43.0
+Version: 0.44.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-23, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.44.0: Saldo usang tetap tampil, status circuit di admin, receipt penyelesaian request, Chromium terisolasi untuk test
+
+Source: SCR-007, SCR-016 dan SCR-004 sampai SCR-012 di `docs/UX.md`, dikerjakan Hermes (`HERMES_TASK.md` Tahap sebelas); SCR-017 replay dan isolasi browser test oleh Claude dan Antigravity (Tugas dua belas A).
+
+- Portal: bila pembacaan ulang saldo gagal, Beranda tetap menampilkan saldo terakhir dan waktu pembaruannya dengan pesan "Saldo belum berhasil diperbarui. Data mungkin usang; saldo terakhir tetap ditampilkan." dan tombol Muat ulang.
+- Admin: daftar route menampilkan circuit terbuka beserta alasan dan waktu dicoba lagi, serta peringatan kegagalan berturut-turut.
+- Server: penyelesaian request yang diulang dengan keputusan sama mengembalikan receipt pertama (`replayed: true`); keputusan berbeda 409 `already_resolved`.
+- Test: sepuluh state portal tambahan teruji; Chromium untuk semua pemeriksaan browser berjalan di network namespace sendiri, sehingga perubahan jaringan laptop tidak lagi menggagalkan test.
 
 ## 0.43.0: Gateway 17 query per request, status circuit route, matriks state UX; terpasang `r11231617`
 
