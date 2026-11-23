@@ -30,6 +30,7 @@ export function startMock(port: number): Promise<{ server: http.Server; stats: M
       ev('response.completed', { response: full }); finished = true; return res.end();
     }
     if (mode === 'fail503') { res.writeHead(503, { 'content-type': 'application/json' }); finished = true; return res.end('{"error":{"message":"overloaded"}}'); }
+    if (mode === 'auth401') { res.writeHead(401, { 'content-type': 'application/json' }); finished = true; return res.end('{"error":{"message":"invalid upstream key"}}'); }
     if (mode === 'bad400') { res.writeHead(400, { 'content-type': 'application/json' }); finished = true; return res.end('{"error":{"message":"invalid format"}}'); }
     if (mode === 'hang-first') { await sleep(5000); finished = true; return res.destroy(); }
     if (j.stream !== true) {

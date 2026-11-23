@@ -5,6 +5,7 @@ import { AppError, withTx, type Db, type Tx } from './db/pool.ts';
 import { audit } from './audit.ts';
 import { seal, unseal } from './crypto.ts';
 import { assertSafeUpstreamUrl, type Resolver } from './netguard.ts';
+import { routeCircuit } from './route-health.ts';
 
 export const PROTOCOLS = ['CHAT', 'ANTHROPIC', 'RESPONSES'] as const;
 export type Protocol = (typeof PROTOCOLS)[number];
@@ -120,7 +121,7 @@ export async function fetchModelIds(db: Db, key: Buffer, resolve: Resolver, id: 
 }
 
 // ---- Routes: which upstream serves which public model, per protocol ----
-const routeView = (r: QueryResultRow) => ({ id: r.id as string, modelId: r.model_id as string, upstreamId: r.upstream_id as string, protocol: r.protocol as Protocol, upstreamModel: r.upstream_model as string, priority: r.priority as number, enabled: r.enabled as boolean, maxConcurrency: r.max_concurrency as number | null, version: String(r.version) });
+const routeView = (r: QueryResultRow) => ({ id: r.id as string, modelId: r.model_id as string, upstreamId: r.upstream_id as string, protocol: r.protocol as Protocol, upstreamModel: r.upstream_model as string, priority: r.priority as number, enabled: r.enabled as boolean, maxConcurrency: r.max_concurrency as number | null, version: String(r.version), circuit: routeCircuit(r.id as string) });
 function routeInput(b: Record<string, unknown>) {
   if (typeof b.upstreamModel !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.:/\[\]-]{0,127}$/.test(b.upstreamModel)) throw bad('Invalid upstream model');
   const priority = b.priority ?? 100; if (typeof priority !== 'number' || !Number.isInteger(priority) || priority < 1 || priority > 1000) throw bad('Priority must be 1 to 1000');

@@ -14,6 +14,7 @@ import * as upstreams from './upstreams.ts';
 import { debitMicro, holdMicro, type Price, type Usage } from './money.ts';
 import { assertSafeUpstreamUrl, type Resolver } from './netguard.ts';
 import { gatewayEvents } from './monitor.ts';
+import { clearRouteHealth, routeFailed, routeOpen, routeSucceeded } from './route-health.ts';
 import { CURSOR_TIME_SQL, parseRequestCursor, requestCursor } from './paging.ts';
 
 export type GatewayDeps = { db: Db; key: Buffer; resolveHost: Resolver; firstByteTimeoutMs?: number; idleTimeoutMs?: number; maxTotalMs?: number; maxAttempts?: number;
@@ -93,16 +94,6 @@ class StreamObserver {
   }
 }
 
-// In-memory route health (one process). Opens after repeated failures; 401/402 from an upstream needs the admin, so it stays open longer.
-const health = new Map<string, { fails: number; openUntil: number }>();
-const routeOpen = (id: string) => (health.get(id)?.openUntil ?? 0) > Date.now();
-function routeFailed(id: string, upstreamName: string, status?: number) {
-  const h = health.get(id) ?? { fails: 0, openUntil: 0 }; h.fails++;
-  const before = h.openUntil;
-  if (status === 401 || status === 402) h.openUntil = Date.now() + 5 * 60_000; else if (h.fails >= 3) h.openUntil = Date.now() + 30_000;
-  health.set(id, h);
-  if (h.openUntil > Date.now() && h.openUntil !== before) gatewayEvents.emit('route_open', { upstreamName, status, untilMs: h.openUntil });
-}
 // In-memory limiters (one process). A second gateway instance would need a shared store.
 const windows = new Map<string, { start: number; n: number }>();
 function overLimit(bucket: string, limit: number, add: boolean): number {
@@ -114,7 +105,7 @@ function overLimit(bucket: string, limit: number, add: boolean): number {
   return 0;
 }
 const active = new Map<string, number>();
-export const resetRouteHealth = () => { health.clear(); windows.clear(); active.clear(); };
+export const resetRouteHealth = () => { clearRouteHealth(); windows.clear(); active.clear(); };
 
 export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
   const { db } = deps; const firstByteMs = deps.firstByteTimeoutMs ?? 60_000, idleMs = deps.idleTimeoutMs ?? 120_000, maxTotalMs = deps.maxTotalMs ?? 30 * 60_000, maxAttempts = deps.maxAttempts ?? 3;
@@ -249,7 +240,7 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
           const buf = Buffer.from(await up.arrayBuffer()); clearTimeout(timer);
           if (buf.length > GATEWAY_LIMITS.nonStreamBytes) { routeFailed(c.routeId, c.upstreamName); await note('response_too_large'); continue; }
           let parsed: any = null; try { parsed = JSON.parse(buf.toString('utf8')); } catch { /* settled as an estimate below */ }
-          health.delete(c.routeId);
+          routeSucceeded(c.routeId);
           const usage = normalizeUsage(s, parsed?.usage);
           if (usage) await done(usage, false, 'SETTLED', parsed.usage, 'completed', last('completed')); else await done(estimate(buf.length), true, 'SETTLED_ESTIMATED', parsed?.usage ?? null, 'usage_missing', last('completed'));
           return reply.code(200).header('x-request-id', requestId).header('content-type', 'application/json').send(buf);
@@ -264,7 +255,7 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
       }
 
       // First byte in hand: this route is committed. No fallback from here on.
-      health.delete(c.routeId);
+      routeSucceeded(c.routeId);
       await db.query("update request set state='STREAMING' where id=$1", [requestId]);
       reply.hijack();
       reply.raw.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-request-id': requestId, 'x-accel-buffering': 'no' });

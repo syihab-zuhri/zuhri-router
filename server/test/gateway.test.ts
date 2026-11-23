@@ -86,6 +86,23 @@ test('fallback before the first byte: next route for the same model, one debit; 
   assert.equal(BigInt(r.debit), 11_000n * C); assert.equal((await db.query("select count(*) n from ledger_entry where kind='DEBIT_USAGE'")).rows[0].n, '1'); await clean();
 });
 
+test('route circuit: the admin sees it open after three failures in a row, and at once after an upstream 401, with the time it may close', async () => {
+  await model('m/cb', '1', [['CHAT', 'fail503', 1], ['CHAT', 'ok', 2]]); await model('m/auth', '1', [['CHAT', 'auth401', 1], ['CHAT', 'ok', 2]]);
+  const circuit = async (modelId: string, mode: string) => ((await admin.get(`/admin/api/routes?modelId=${encodeURIComponent(modelId)}`)).json.routes as any[]).find(r => r.upstreamModel === mode).circuit;
+  for (let i = 1; i <= 2; i++) { const r = await call('/v1/chat/completions', 'm/cb'); await r.text(); assert.equal(r.status, 200); }
+  assert.deepEqual(await circuit('m/cb', 'fail503'), { open: false, openUntil: null, reason: null, failures: 2 }, 'two failures do not open it');
+  const third = await call('/v1/chat/completions', 'm/cb'); await third.text(); assert.equal(third.status, 200, 'the next route still serves');
+  const opened = await circuit('m/cb', 'fail503'); const until = Date.parse(opened.openUntil) - Date.now();
+  assert.equal(opened.open, true); assert.equal(opened.reason, 'failures'); assert.equal(opened.failures, 3); assert.ok(until > 25_000 && until <= 30_000, `closes within 30 s, got ${until}`);
+  assert.deepEqual(await circuit('m/cb', 'ok'), { open: false, openUntil: null, reason: null, failures: 0 });
+  const calls = stats.calls.fail503; const r = await call('/v1/chat/completions', 'm/cb'); await r.text(); assert.equal(stats.calls.fail503, calls, 'an open route is skipped');
+  const a = await call('/v1/chat/completions', 'm/auth'); await a.text(); assert.equal(a.status, 200);
+  const auth = await circuit('m/auth', 'auth401'); const authUntil = Date.parse(auth.openUntil) - Date.now();
+  assert.equal(auth.open, true); assert.equal(auth.reason, 'upstream_auth'); assert.equal(auth.failures, 1); assert.ok(authUntil > 290_000 && authUntil <= 300_000, `closes within 5 min, got ${authUntil}`);
+  assert.equal(JSON.stringify((await cust.get('/api/models')).json).includes('circuit'), false, 'customers never see route health');
+  assert.equal((await cust.get('/admin/api/routes')).status, 401, 'route health is admin only'); await clean();
+});
+
 test('all routes down: one structured error, nothing charged; request errors are forwarded without fallback', async () => {
   await model('m/down', '1', [['CHAT', 'fail503', 1], ['CHAT', 'fail503', 2]]); await model('m/bad', '1', [['CHAT', 'bad400', 1], ['CHAT', 'ok', 2]]);
   const d = await call('/v1/chat/completions', 'm/down'); const dj = await d.json();
