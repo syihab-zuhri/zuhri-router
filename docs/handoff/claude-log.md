@@ -373,3 +373,7 @@ Usulan Antigravity untuk pemangkasan berikutnya, dengan penilaian Claude:
 3. Cache `candidatesFor` di memori: mungkin, tetapi perubahan admin (blokir upstream, ganti key) harus langsung berlaku, jadi butuh invalidasi eksplisit di setiap jalur tulis upstream dan route. Ditunda sampai Tugas tiga belas D menunjukkan seberapa besar porsinya.
 4. Kunci akun dan hold di settlement digabung menjadi satu `select ... join ... for update`: ditunda. Urutan penguncian di dalam satu pernyataan tidak dijamin dokumentasi PostgreSQL.
 5. Dua CTE settlement digabung menjadi satu: layak.
+
+### Query gateway: 17 menjadi 15 per request
+
+Usulan Antigravity nomor 1 dan 5 dikerjakan. Insert `request` kini ada di pernyataan tulis admission (`placeKeyHold` menerima `request`, dibaca sesudah hold diukur), dan pembaruan `request` beserta attempt terakhir ada di pernyataan tulis settlement (`settleHold` menerima `request`). Urutan kunci tidak berubah: akun dan hold lebih dulu, lalu baris key dan request, sama seperti saat masih pernyataan terpisah. Kedua pernyataan memeriksa bahwa setiap baris tertulis persis sekali. Penyelesaian admin dan pemulihan tetap memakai `settleHold` tanpa `request`. Suite server 146/146. Satu run bench `--pool-max 20`: 15 query non-stream, 16 stream; c=50 dengan 50 tenant: GW p95 non-stream 146 ms (overhead p95 80 ms), GW TTFB p95 stream 127 ms (overhead p95 68 ms). `verify-all.mjs --skip server-test` 15/15 di worktree bersih, nol `ERR_NETWORK_CHANGED`.
