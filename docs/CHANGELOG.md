@@ -5,7 +5,7 @@ Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-23, Asia/Jakarta
 Owner keputusan: founder
 
-## 0.43.0: Gateway 17 query per request, status circuit route, matriks state UX
+## 0.43.0: Gateway 17 query per request, status circuit route, matriks state UX; terpasang `r11231617`
 
 Source: NFR-002 (`docs/PLANNING.md`) dan temuan benchmark Antigravity (Tugas delapan sampai sepuluh), dikerjakan Claude; SCR-005, SCR-006 dan matriks state `docs/UX.md` oleh Hermes (`HERMES_TASK.md` Tahap sepuluh); verifikasi server nyata dan diagnosis test browser oleh Antigravity (Tugas sebelas).
 
@@ -14,6 +14,7 @@ Source: NFR-002 (`docs/PLANNING.md`) dan temuan benchmark Antigravity (Tugas del
 - Portal: aktivasi dan pemulihan akses menampilkan "Menunggu jawaban server…" selama request berjalan.
 - Matriks 82 state UX dengan status penerapan dan test (`docs/handoff/hermes-state-matrix.md`).
 - Test: 12 berkas spec e2e berjalan terhadap build produksi; Playwright di verify-all turun dari sekitar 220 detik menjadi sekitar 90 detik. Skrip server nyata memeriksa semua 30 aksi audit ber-`summary` dan banner jeda tanpa muat ulang. Test konkurensi gateway tidak lagi bergantung pada urutan request.
+- Bukti pemasangan: suite server 146/146; `verify-all.mjs` 15/15 di `d40db59`; `smoke-public.sh` 7/7 terhadap https://zrouter.web.id; bundle yang tayang memuat teks baru. Tanpa migrasi baru (14 migrasi); backup sebelum pemasangan `zrouter-20261123T091856Z.dump`.
 
 ## 0.42.0: Status layanan selalu baru, label rincian audit lengkap, `DATABASE_POOL_MAX`; terpasang `r11210751`
 

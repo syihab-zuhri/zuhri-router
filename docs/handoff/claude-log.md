@@ -332,3 +332,7 @@ Hermes melihat `gateway-concurrency.test.ts` gagal 144/145 dua kali pada suite p
 ### Antrean server dari Hermes Tahap sepuluh
 
 Sudah: circuit per route (SCR-016). Belum: uji koneksi tanpa biaya (API-035, SCR-016); model dijeda di katalog (SCR-009); agregat grafik pemakaian terpisah dari daftar (SCR-010); filter transaksi (SCR-011); receipt untuk penyelesaian request yang diulang (SCR-017); cost profile dan kurs (SCR-016, menunggu keputusan founder soal margin guard).
+
+### Terpasang `zrouter:r11231617`
+
+Isi: `0e0ab2b` (pemangkasan query gateway, status circuit route, Hermes Tahap sepuluh, Antigravity Tugas sebelas). Backup sebelum pemasangan `zrouter-20261123T091856Z.dump`. Tanpa migrasi baru (14 migrasi; `gateway_paused` = 0). Bukti: kontainer `healthy`, `smoke-public.sh` 7/7, chunk `main` yang tayang memuat "Menunggu jawaban server". Tidak ada request gateway ke upstream berbayar yang dijalankan untuk pemeriksaan ini.
