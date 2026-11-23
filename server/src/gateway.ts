@@ -342,19 +342,28 @@ export async function listUnresolved(db: Db) {
   return { requests: rows.map(r => ({ id: r.id as string, username: r.username as string, model: r.model_id as string, heldMicro: String(r.hold), maxOutput: r.max_output as number, createdAt: (r.created_at as Date).toISOString() })) };
 }
 
-/** Admin decision on an UNRESOLVED request: charge a number of token credits (0 releases the hold), exactly once, with a reason. */
+/**
+ * Admin decision on an UNRESOLVED request: charge a number of token credits (0 releases the hold), exactly once, with a reason.
+ * Sending the same decision again (same charge, same reason after trim) returns the first receipt with `replayed: true` and
+ * changes nothing, so a retry after a lost answer is safe. A different decision on a resolved request is `already_resolved`.
+ */
 export async function resolveRequest(db: Db, id: string, b: Record<string, unknown>, actorUser: string) {
   if (!/^req_[0-9a-f-]{36}$/.test(id)) throw new AppError('not_found', 'Not found', 404);
   if (typeof b.reason !== 'string' || b.reason.trim().length < 3 || b.reason.length > 500) throw new AppError('invalid_request', 'A reason is required', 400);
   let debit: bigint; try { debit = creditsToMicro(String(typeof b.debitTokens === 'string' ? b.debitTokens : 'x')); } catch { throw new AppError('invalid_request', 'debitTokens must be a whole number given as a string of digits', 400); }
   return withTx(db, async tx => {
-    const r = (await tx.query('select tenant_id, state, hold from request where id=$1 for update', [id])).rows[0];
+    const r = (await tx.query('select tenant_id, state, hold, debit, settled_at from request where id=$1 for update', [id])).rows[0];
     if (!r) throw new AppError('not_found', 'Not found', 404);
+    if (r.state === 'RESOLVED') {
+      const first = (await tx.query("select summary->>'reason' as reason from audit_event where action='request.resolve' and target_type='request' and target_id=$1 order by id limit 1", [id])).rows[0];
+      if (String(r.debit) === String(debit) && first?.reason === (b.reason as string).trim()) return { id, state: 'RESOLVED', debitMicro: String(r.debit), resolvedAt: (r.settled_at as Date).toISOString(), replayed: true };
+      throw new AppError('already_resolved', 'This request was already resolved with a different decision', 409);
+    }
     if (r.state !== 'UNRESOLVED') throw new AppError('not_unresolved', 'This request is not waiting for a decision', 409);
     if (debit > BigInt(r.hold)) throw new AppError('invalid_request', 'The charge cannot exceed the amount held for this request', 400);
     await ledger.settleHold(tx, { tenantId: r.tenant_id, requestId: id, debit, ref: { requestId: id, resolvedBy: actorUser } });
-    await tx.query("update request set state='RESOLVED', debit=$2, estimated=true, outcome='resolved_by_admin', settled_at=now() where id=$1", [id, String(debit)]);
+    const done = (await tx.query("update request set state='RESOLVED', debit=$2, estimated=true, outcome='resolved_by_admin', settled_at=now() where id=$1 returning settled_at", [id, String(debit)])).rows[0];
     await audit(tx, { actorUser, actorKind: 'ADMIN', action: 'request.resolve', targetType: 'request', targetId: id, summary: { debitMicro: String(debit), reason: (b.reason as string).trim() } });
-    return { id, state: 'RESOLVED', debitMicro: String(debit) };
+    return { id, state: 'RESOLVED', debitMicro: String(debit), resolvedAt: (done.settled_at as Date).toISOString(), replayed: false };
   });
 }

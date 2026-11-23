@@ -254,8 +254,18 @@ test('recovery: a request lost before the first byte is released; one lost mid-s
   assert.equal((await admin.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: String(s.hold / C + 1n), reason: 'terlalu besar' })).status, 400);
   assert.equal((await admin.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: '500', reason: '' })).status, 400);
   const before = (await balance()).posted;
-  assert.equal((await admin.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: '500', reason: 'perkiraan dari log upstream' })).json.state, 'RESOLVED');
-  assert.equal((await admin.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: '500', reason: 'ulang' })).json.error.code, 'not_unresolved');
+  const first = await admin.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: '500', reason: 'perkiraan dari log upstream' });
+  assert.equal(first.status, 200); assert.equal(first.json.state, 'RESOLVED'); assert.equal(first.json.debitMicro, String(500n * C)); assert.equal(first.json.replayed, false);
+  assert.ok(Number.isFinite(Date.parse(first.json.resolvedAt)), 'the receipt says when');
+  // The same decision again (a retry after a lost answer) returns the first receipt and changes nothing.
+  const again = await admin.post(`/admin/api/requests/${s.id}/resolve`, { debitTokens: '500', reason: '  perkiraan dari log upstream ' });
+  assert.equal(again.status, 200); assert.deepEqual(again.json, { ...first.json, replayed: true });
+  for (const other of [{ debitTokens: '500', reason: 'ulang' }, { debitTokens: '400', reason: 'perkiraan dari log upstream' }]) {
+    const r = await admin.post(`/admin/api/requests/${s.id}/resolve`, other); assert.equal(r.status, 409); assert.equal(r.json.error.code, 'already_resolved');
+  }
+  assert.equal((await admin.post(`/admin/api/requests/${a.id}/resolve`, { debitTokens: '0', reason: 'bukan antrean' })).json.error.code, 'not_unresolved', 'a request that never waited stays refused');
+  assert.equal((await db.query("select count(*) n from audit_event where action='request.resolve' and target_id=$1", [s.id])).rows[0].n, '1', 'one audit event');
+  assert.equal((await db.query("select count(*) n from ledger_entry where kind='DEBIT_USAGE' and idem_key=$1", [s.id])).rows[0].n, '1', 'one debit');
   assert.equal((await balance()).posted, before - 500n * C); await clean();
 });
 

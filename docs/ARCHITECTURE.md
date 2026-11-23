@@ -1,9 +1,9 @@
 # Architecture, Data dan Interface: Router AI Komersial
 
-Version: 0.8.2
+Version: 0.8.3
 Status: Draft; stack disetujui, API M1 lokal diimplementasikan; gateway dan UI belum
 Owner keputusan: founder
-Updated: 2026-11-19, Asia/Jakarta
+Updated: 2026-11-23, Asia/Jakarta
 Dependencies: PLANNING.md; BILLING_REDEEM.md; SECURITY.md
 Evidence: E3 untuk test API M1 dan spike yang cakupannya tercatat di README masing-masing; kontrak fitur lain tetap rencana.
 
@@ -206,6 +206,8 @@ Kode di ../server/src/control.ts, migrasi 014; test di ../server/test/control.te
 | GET /admin/api/overview | Admin + MFA | Field tambahan `gateway: { paused, reason, changedAt }` |
 | GET /api/me | Owner | Field `servicePaused` untuk keadaan layanan-dijeda di portal (SCR-007). Alasan jeda tidak dikirim ke pelanggan; setelan yang hilang terbaca dijeda, sama dengan gateway |
 | GET /admin/api/requests | Admin + MFA; `username`, `state`, `model` (persis), `before` (kursor `nextBefore`: waktu mikrodetik UTC `~` ID request; kursor lama tanpa ID tetap diterima, kursor tak terbaca dibaca sebagai halaman pertama), `limit` 1..100 bawaan 50 | `{ requests: [{ id, username, keyName, model, protocol, stream, state, outcome, final, heldMicro, debitMicro, estimated, usage, createdAt }], nextBefore }`, terbaru dulu, metadata saja; username tidak dikenal menghasilkan daftar kosong; `state` di luar `ADMITTED, STREAMING, COMPLETED, FAILED, CANCELLED, SETTLED, SETTLED_ESTIMATED, UNRESOLVED, RESOLVED, REJECTED` atau filter berulang 400 |
+| POST /admin/api/requests/:id/resolve | Admin + MFA + step-up + CSRF; `debitTokens` (bilangan bulat kredit token sebagai string, 0 melepas hold, tidak melebihi hold), `reason` 3..500 karakter | Request `UNRESOLVED`: 200 `{ id, state: 'RESOLVED', debitMicro, resolvedAt, replayed: false }`, satu debit dan satu audit `request.resolve`. Keputusan sama diulang (debit sama, alasan sama sesudah trim): 200 receipt pertama dengan `replayed: true`, tanpa perubahan. Keputusan lain pada request yang sudah `RESOLVED`: 409 `already_resolved`. Request dalam state lain: 409 `not_unresolved`. Debit melebihi hold atau alasan kosong: 400 |
+| GET /admin/api/routes | Admin + MFA; `modelId` opsional | `{ routes: [{ id, modelId, upstreamId, protocol, upstreamModel, priority, enabled, maxConcurrency, version, circuit }] }`; `circuit: { open, openUntil, reason, failures }` dengan `reason` `failures` (tiga kegagalan berturut-turut, terbuka 30 detik) atau `upstream_auth` (401/402 dari upstream, terbuka lima menit). Disimpan di memori proses dan hilang saat server dimulai ulang; tidak pernah dikirim ke pelanggan |
 | GET /admin/api/audit | Admin + MFA; `action` (awalan nama aksi, mis. `setting.`), `actor` (username persis), `targetType`, `targetId` (persis), `before` (id event) | `{ events: [{ id, actorUser, actorUsername, actorKind, action, targetType, targetId, summary, createdAt }], nextBefore }`, terbaru dulu, 50 per halaman; parameter berulang atau terlalu panjang 400. Kode di ../server/src/audit.ts (SCR-018) |
 
 Selama dijeda, `/v1/chat/completions`, `/v1/messages` dan `/v1/responses` memeriksa key lebih dulu (key salah tetap 401, jadi orang luar tidak tahu layanan dijeda), lalu menjawab 503 `service_paused` dengan `Retry-After: 60` dalam bentuk error permukaannya, sebelum hold dibuat. `/v1/models` tidak terpengaruh. Request yang sudah admitted berjalan dan di-settle seperti biasa. Flag dibaca dari database pada setiap request; bila barisnya hilang, gateway menolak (`internal_error`), tidak meloloskan.
