@@ -127,9 +127,11 @@ const MAX_HOLD = 9223372036854775807n;
 /**
  * Tenant -> account -> key lock order matches settlement; no caller-supplied tenant/key identity.
  * `amount` may be a function of the locked funds, so a hold that has to be capped to what fits is sized under the account lock.
- * Five round trips: key, tenant share lock, account with allowance, key lock, then one statement for all three writes.
+ * `request`, when given, is read after the hold is sized and its row is inserted in the same statement as the hold (the gateway's
+ * admission). Five round trips: key, tenant share lock, account with allowance, key lock, then one statement for every write.
  */
-export async function placeKeyHold(tx: Tx, a: { secret: string; requestId: string; amount: bigint | ((funds: { available: bigint; overdraft: bigint }) => bigint); model: string }): Promise<{ tenantId: string; keyId: string; amount: bigint }> {
+export type AdmittedRequest = { protocol: string; stream: boolean; priceVersionId: string; priceSnapshot: string; maxInput: number; maxOutput: number };
+export async function placeKeyHold(tx: Tx, a: { secret: string; requestId: string; amount: bigint | ((funds: { available: bigint; overdraft: bigint }) => bigint); model: string; request?: () => AdmittedRequest }): Promise<{ tenantId: string; keyId: string; amount: bigint }> {
   const valid = (n: bigint) => { if (n <= 0n || n > MAX_HOLD) throw new AppError('invalid_request', 'Invalid hold amount', 400); return n; };
   if (typeof a.amount === 'bigint') valid(a.amount);
   const initial = await keys.authenticate(tx, a.secret);
@@ -142,38 +144,51 @@ export async function placeKeyHold(tx: Tx, a: { secret: string; requestId: strin
   if (key.allowedModels !== null && !key.allowedModels.includes(a.model)) throw new AppError('model_not_available', 'Model is outside the key scope', 403);
   if (key.spendLimit !== null && key.spent + key.held + amount > key.spendLimit) throw new AppError('limit_exceeded', 'API key spending limit reached', 429);
   assertFunds(account.available, amount, account.overdraft);
+  const r = a.request?.() ?? null;
   const w = (await tx.query(
     `with h as (insert into hold(account_id,request_id,amount,tenant_id,api_key_id) values($1,$2,$3,$4,$5) returning 1),
           a as (update ledger_account set held=held+$3 where id=$1 returning 1),
-          k as (update api_key set held=held+$3,last_used_at=case when last_used_at is null or last_used_at<clock_timestamp()-interval '1 minute' then clock_timestamp() else last_used_at end where tenant_id=$4 and id=$5 returning 1)
-     select (select count(*) from h)::int as holds, (select count(*) from a)::int as accounts, (select count(*) from k)::int as keys`,
-    [account.id, a.requestId, String(amount), key.tenantId, key.keyId])).rows[0];
-  if (w.holds !== 1 || w.accounts !== 1 || w.keys !== 1) throw new AppError('internal_error', 'Hold accounting unavailable', 500);
+          k as (update api_key set held=held+$3,last_used_at=case when last_used_at is null or last_used_at<clock_timestamp()-interval '1 minute' then clock_timestamp() else last_used_at end where tenant_id=$4 and id=$5 returning 1),
+          r as (insert into request(id, tenant_id, api_key_id, model_id, protocol, stream, state, price_version_id, price_snapshot, max_input, max_output, hold)
+                select $2, $4, $5, $6::text, $7::text, $8::boolean, 'ADMITTED', $9::uuid, $10::jsonb, $11::int, $12::int, $3::bigint where $7::text is not null returning 1)
+     select (select count(*) from h)::int as holds, (select count(*) from a)::int as accounts, (select count(*) from k)::int as keys, (select count(*) from r)::int as requests`,
+    [account.id, a.requestId, String(amount), key.tenantId, key.keyId, a.model, r?.protocol ?? null, r?.stream ?? null, r?.priceVersionId ?? null, r?.priceSnapshot ?? null, r?.maxInput ?? null, r?.maxOutput ?? null])).rows[0];
+  if (w.holds !== 1 || w.accounts !== 1 || w.keys !== 1 || w.requests !== (r ? 1 : 0)) throw new AppError('internal_error', 'Hold accounting unavailable', 500);
   return { tenantId: key.tenantId, keyId: key.keyId, amount };
 }
 
 /**
  * Settlement primitive: close the hold and post the final debit exactly once per request.
  * debit may be zero (zero usage: no entry) and may exceed the hold (bound violation: still charged, reported).
+ * `request`, when given, is the gateway's final request row (and last attempt), written in the same statement as the money.
  */
-export async function settleHold(tx: Tx, a: { tenantId: string; requestId: string; debit: bigint; ref?: Record<string, unknown> }): Promise<{ settled: boolean; boundExceeded: boolean }> {
+export type SettledRequest = { state: string; estimated: boolean; usageRaw: string | null; usageNorm: string | null; outcome: string; unbilledInputTokens: number; attempt?: { seq: number; routeId: string; outcome: string } };
+export async function settleHold(tx: Tx, a: { tenantId: string; requestId: string; debit: bigint; ref?: Record<string, unknown>; request?: SettledRequest }): Promise<{ settled: boolean; boundExceeded: boolean }> {
   if (a.debit < 0n) throw new AppError('invalid_request', 'Debit must not be negative', 400);
   const acc = await lockAccount(tx, a.tenantId);
   const h = (await tx.query('select id, amount, status, api_key_id from hold where request_id=$1 and account_id=$2 for update', [a.requestId, acc.id])).rows[0];
   if (!h) throw new AppError('not_found', 'Not found', 404);
   if (h.status !== 'ACTIVE') return { settled: false, boundExceeded: false }; // already settled: replay is a no-op
   const held = BigInt(h.amount);
-  // One statement for every write. Account and hold are locked above, so the key row is the only lock taken here: still last,
-  // as before. The counts prove each write landed exactly once.
+  const q = a.request ?? null; const t = q?.attempt ?? null;
+  // One statement for every write. Account and hold are locked above; the key and request rows are locked here, after them,
+  // in the same order as when these were separate statements. The counts prove each write landed exactly once.
   const w = (await tx.query(
     `with k as (update api_key set held=held-$4::bigint, spent=spent+$5::bigint where $3::uuid is not null and tenant_id=$2 and id=$3 returning 1),
           e as (insert into ledger_entry(account_id, kind, amount, idem_key, ref) select $1::uuid, 'DEBIT_USAGE', -$5::bigint, $6::text, $7::jsonb where $5::bigint > 0 returning 1),
           a as (update ledger_account set posted=posted-$5::bigint, held=held-$4::bigint where id=$1 returning 1),
-          h as (update hold set status=$9, closed_at=now(), settled_debit=$5::bigint where id=$8 returning 1)
-     select (select count(*) from k)::int as keys, (select count(*) from e)::int as entries, (select count(*) from a)::int as accounts, (select count(*) from h)::int as holds`,
-    [acc.id, a.tenantId, h.api_key_id, String(held), String(a.debit), a.requestId, JSON.stringify(a.ref ?? {}), h.id, a.debit > 0n ? 'CAPTURED' : 'RELEASED'])).rows[0];
+          h as (update hold set status=$9, closed_at=now(), settled_debit=$5::bigint where id=$8 returning 1),
+          r as (update request set state=$10::text, debit=$5::bigint, estimated=$11::boolean, bound_exceeded=$12::boolean, usage_raw=$13::jsonb, usage_norm=$14::jsonb,
+                outcome=$15::text, unbilled_input_tokens=$16::int, settled_at=now() where $10::text is not null and id=$6 returning 1),
+          t as (insert into attempt(request_id, seq, route_id, outcome) select $6, $17::int, $18::uuid, $19::text where $17::int is not null returning 1)
+     select (select count(*) from k)::int as keys, (select count(*) from e)::int as entries, (select count(*) from a)::int as accounts, (select count(*) from h)::int as holds,
+            (select count(*) from r)::int as requests, (select count(*) from t)::int as attempts`,
+    [acc.id, a.tenantId, h.api_key_id, String(held), String(a.debit), a.requestId, JSON.stringify(a.ref ?? {}), h.id, a.debit > 0n ? 'CAPTURED' : 'RELEASED',
+      q?.state ?? null, q?.estimated ?? null, q ? a.debit > held : null, q?.usageRaw ?? null, q?.usageNorm ?? null, q?.outcome ?? null, q?.unbilledInputTokens ?? null,
+      t?.seq ?? null, t?.routeId ?? null, t?.outcome ?? null])).rows[0];
   if (h.api_key_id && w.keys !== 1) throw new AppError('internal_error', 'Key accounting unavailable', 500);
   if (w.accounts !== 1 || w.holds !== 1 || w.entries !== (a.debit > 0n ? 1 : 0)) throw new AppError('internal_error', 'Ledger accounting unavailable', 500);
+  if (w.requests !== (q ? 1 : 0) || w.attempts !== (t ? 1 : 0)) throw new AppError('internal_error', 'Request accounting unavailable', 500);
   return { settled: true, boundExceeded: a.debit > held };
 }
 

@@ -130,15 +130,11 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
     const debit = billed ? debitMicro(billed, a.price) : 0n;
     const t = a.attempt;
     await withTx(db, async tx => {
-      const r = await ledger.settleHold(tx, { tenantId: a.tenantId, requestId: a.requestId, debit, ref: { requestId: a.requestId } });
-      if (!r.settled) { // already settled: only the attempt is new
-        if (t) await tx.query('insert into attempt(request_id, seq, route_id, outcome) values($1,$2,$3,$4)', [a.requestId, t.seq, t.routeId, t.outcome]);
-        return;
-      }
-      await tx.query(`with t as (insert into attempt(request_id, seq, route_id, outcome) select $1, $10::int, $11::uuid, $12::text where $10::int is not null returning 1)
-        update request set state=$2, debit=$3, estimated=$4, bound_exceeded=$5, usage_raw=$6, usage_norm=$7, outcome=$8, unbilled_input_tokens=$9, settled_at=now() where id=$1`,
-        [a.requestId, a.state, String(debit), a.estimated, r.boundExceeded, a.usageRaw === null || a.usageRaw === undefined ? null : JSON.stringify(a.usageRaw), billed ? JSON.stringify(billed) : null, a.outcome, capped?.unbilled ?? 0,
-          t?.seq ?? null, t?.routeId ?? null, t?.outcome ?? null]);
+      const r = await ledger.settleHold(tx, { tenantId: a.tenantId, requestId: a.requestId, debit, ref: { requestId: a.requestId }, request: {
+        state: a.state, estimated: a.estimated, usageRaw: a.usageRaw === null || a.usageRaw === undefined ? null : JSON.stringify(a.usageRaw), usageNorm: billed ? JSON.stringify(billed) : null,
+        outcome: a.outcome, unbilledInputTokens: capped?.unbilled ?? 0, attempt: t } });
+      // Already settled: the request row is left as it is; only the attempt is new.
+      if (!r.settled && t) await tx.query('insert into attempt(request_id, seq, route_id, outcome) values($1,$2,$3,$4)', [a.requestId, t.seq, t.routeId, t.outcome]);
     });
   }
 
@@ -188,7 +184,9 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
         let maxOut = Math.min(asked ?? GATEWAY_LIMITS.defaultMaxOutput, GATEWAY_LIMITS.maxOutputCap);
         // Overrun rule: when the requested output does not fit the balance plus allowance, the output is capped to what fits.
         // Sized from the balance under the account lock, so a concurrent request cannot make the cap stale.
-        const h = await ledger.placeKeyHold(tx, { secret, requestId, model, amount: ({ available, overdraft }) => {
+        const h = await ledger.placeKeyHold(tx, { secret, requestId, model, request: () => ({ protocol: s, stream, priceVersionId: snap.priceVersionId, maxInput: maxIn, maxOutput: maxOut,
+          priceSnapshot: JSON.stringify({ seq: snap.price.version, inputRate: String(snap.price.inputRate), outputRate: String(snap.price.outputRate), cacheReadRate: String(snap.price.cacheReadRate), cacheWriteRate: String(snap.price.cacheWriteRate), multiplierE4: String(snap.price.multiplierE4) }) }),
+          amount: ({ available, overdraft }) => {
           const budget = available + overdraft;
           if (available > 0n && holdMicro(maxIn, maxOut, snap.price) > budget) {
             const inputOnly = holdMicro(maxIn, 0, snap.price), perOut = holdMicro(0, 1000, snap.price);
@@ -198,8 +196,6 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
           }
           return holdMicro(maxIn, maxOut, snap.price);
         } });
-        await tx.query('insert into request(id, tenant_id, api_key_id, model_id, protocol, stream, state, price_version_id, price_snapshot, max_input, max_output, hold) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-          [requestId, h.tenantId, h.keyId, model, s, stream, 'ADMITTED', snap.priceVersionId, JSON.stringify({ seq: snap.price.version, inputRate: String(snap.price.inputRate), outputRate: String(snap.price.outputRate), cacheReadRate: String(snap.price.cacheReadRate), cacheWriteRate: String(snap.price.cacheWriteRate), multiplierE4: String(snap.price.multiplierE4) }), maxIn, maxOut, String(h.amount)]);
         return { tenantId: h.tenantId, price: snap.price, maxOut };
       });
     } catch (e) { return failApp(reply, s, e, requestId); }
