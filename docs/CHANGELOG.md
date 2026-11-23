@@ -1,9 +1,17 @@
 # Changelog: Router AI Komersial
 
-Version: 0.45.0
+Version: 0.46.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-23, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.46.0: Receipt penyelesaian request di admin, Ringkasan Operasi saat data usang
+
+Source: SCR-017 replay dan SCR-014 data-usang di `docs/UX.md`, dikerjakan Hermes (`HERMES_TASK.md` Tahap dua belas).
+
+- Admin: sesudah penyelesaian request, receipt menampilkan debit, waktu dan ID request. Pengulangan keputusan yang sama ditandai "Penyelesaian sudah tercatat sebelumnya" tanpa penagihan kedua. Keputusan berbeda pada request yang sudah diputuskan dijelaskan, dengan tombol muat ulang antrean.
+- Admin: Ringkasan Operasi tetap menampilkan angka terakhir bila pembacaan ulang gagal, dengan pesan "Ringkasan belum berhasil diperbarui. Data mungkin usang; data terakhir tetap ditampilkan."
+- Test: sebelas state backoffice tambahan teruji (58 dari 82 state UX).
 
 ## 0.45.0: Gateway 15 query per request; terpasang `r11232034`
 

@@ -240,3 +240,12 @@ Tahap sebelas diterima apa adanya: sepuluh state baru teruji, saldo usang di Ber
 2. **SCR-014 data-usang**: Ringkasan Operasi memakai pola yang sama dengan Beranda. Data terakhir dan waktu `generatedAt` tetap tampil bila pembacaan ulang gagal, ditambah penanda bahwa data mungkin usang. Layar galat hanya muncul bila belum pernah ada data.
 3. **Test untuk state "ada tanpa test"**: paling banyak sepuluh, kali ini utamakan backoffice (SCR-015 sampai SCR-018), lalu sisa portal. Aturannya sama seperti Tahap sebelas.
 4. Tetap jangan menjalankan Playwright bersamaan dengan Antigravity dan jangan menyentuh berkas Antigravity. Aturan selesai dari Tahap tujuh tetap berlaku. Laporan di `docs/handoff/hermes-log.md`; jangan commit dan jangan deploy.
+
+## Tahap tiga belas (2026-11-24)
+
+Tahap dua belas diterima apa adanya (`2ace843`): receipt penyelesaian dan replay, konflik `already_resolved`, Ringkasan Operasi yang mempertahankan data terakhir, dan sebelas state backoffice. Izin founder untuk perubahan minimal pada `admin-overview.tsx` sudah dicatat. Matriks kini 58 teruji, 17 ada tanpa test, 0 belum, 7 butuh server. Verify-all Claude lulus 15/15. Isolasi Chromium dari Antigravity kini bawaan di verify-all. Untuk Playwright langsung, tetap pakai `PLAYWRIGHT_CHROMIUM_EXECUTABLE=./scripts/chromium-netns.sh` seperti yang sudah Anda lakukan.
+
+1. **Selesaikan 17 state "ada tanpa test"** yang tidak butuh kontrak server baru, dengan aturan yang sama seperti Tahap sebelas: teks atau role yang terlihat, respons tiruan hanya berbentuk kontrak yang ada. Bila sebuah state ternyata butuh server, pindahkan ke "butuh server" dengan alasan yang jelas.
+2. **Kunci kontrak di test unit**: tambahkan test unit untuk `parseResolveReceipt` (dan pembaca payload sejenis yang Anda temukan) dengan bentuk sah dan beberapa bentuk rusak. Bentuk rusak harus menjadi hasil tidak diketahui, bukan angka.
+3. Kontrak server berikutnya (filter transaksi SCR-011 dan agregat grafik SCR-010) sedang disiapkan Claude. Jangan dibuatkan tiruan dulu.
+4. Tetap jangan menjalankan Playwright bersamaan dengan Antigravity dan jangan menyentuh berkas Antigravity kecuali dengan izin seperti di Tahap dua belas. Aturan selesai dari Tahap tujuh tetap berlaku. Laporan di `docs/handoff/hermes-log.md`; jangan commit dan jangan deploy.

@@ -381,3 +381,11 @@ Usulan Antigravity nomor 1 dan 5 dikerjakan. Insert `request` kini ada di pernya
 ### Terpasang `zrouter:r11232034`
 
 Isi: `7e6c743` (pemangkasan query kedua), dibangun dari worktree bersih karena folder utama berisi pekerjaan Hermes Tahap dua belas yang belum selesai. Pengiriman image lewat pipa `docker save | ssh` putus dua kali (Wi-Fi laptop), lalu berhasil lewat berkas dan `rsync --partial`. Backup sebelum pemasangan `zrouter-20261123T135707Z.dump`. Tanpa migrasi baru (14 migrasi; `gateway_paused` = 0). Bukti: kontainer `healthy`, `smoke-public.sh` 7/7. Tidak ada request gateway ke upstream berbayar.
+
+## 2026-11-23 malam: Tahap dua belas Hermes digabung (`2ace843`)
+
+Penyelesaian request di admin kini menampilkan receipt sesudah server menjawab (debit dalam kredit token, waktu WIB, ID request; fokus pindah ke receipt). Replay ditandai "Penyelesaian sudah tercatat sebelumnya" dengan catatan bahwa tidak ada penagihan kedua. Konflik `already_resolved` punya penjelasan dan tombol muat ulang antrean. Respons yang tidak cocok dengan kontrak (ID lain, state lain, debit bukan integer, waktu tak terbaca, `replayed` bukan boolean) dibaca sebagai hasil tidak diketahui, bukan angka. Ringkasan Operasi mempertahankan angka terakhir bila pembacaan ulang gagal, dengan penanda usang. `admin-overview.tsx` terdaftar sebagai berkas Antigravity; Hermes menanyakannya ke founder dan mendapat izin untuk perubahan minimal. Sebelas state backoffice baru teruji. Matriks: 58 teruji, 17 ada tanpa test, 0 belum, 7 butuh server. Claude memeriksa jalur step-up (`useAdminAction` mengulang aksi yang sama sesudah kode), penanganan galat, dan teks baru. Tidak ada temuan.
+
+Bukti: `verify-all.mjs --skip server-test` 15/15 dengan Chromium terisolasi, nol `ERR_NETWORK_CHANGED` (932 detik karena beban laptop tinggi, load average 3,6). Hermes: Playwright penuh 115/115, `hermes verify` server 146/146.
+
+Hermes Tahap tiga belas dan Antigravity Tugas tiga belas ditulis untuk besok (founder: "lanjut besok").
