@@ -150,6 +150,13 @@ test('gateway keeps ledger, hold, overdraft, spend-limit, and single-debit invar
   await publishRouteModel('st/fallback', [['fail500', 1], ['ok', 2]]);
   await publishRouteModel('st/timeout', [['slow-first', 1]]);
 
+  // Fallback, checked on its own before the burst: inside the burst every fallback request may be refused for balance first.
+  const fb = await fetch(`${base}/v1/chat/completions`, { method: 'POST', headers: { authorization: `Bearer ${keyA}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'st/fallback', stream: false, max_tokens: 20, messages: [{ role: 'user', content: 'fallback' }] }) });
+  await fb.text(); assert.equal(fb.status, 200, 'the second route serves after the first answers 500');
+  const fbAttempts = (await db.query('select outcome from attempt where request_id=$1 order by seq', [fb.headers.get('x-request-id')])).rows.map(r => r.outcome);
+  assert.deepEqual(fbAttempts, ['upstream_500', 'completed'], 'priority 1 answered 500, then route 2 completed');
+
   type Kind = 'normal' | 'stream' | 'no_usage' | 'abort_mid' | 'fallback_500' | 'slow_timeout' | 'limited_key';
   const pattern: Kind[] = [
     'limited_key', 'fallback_500', 'normal', 'no_usage', 'stream', 'abort_mid', 'slow_timeout',
@@ -240,7 +247,10 @@ test('gateway keeps ledger, hold, overdraft, spend-limit, and single-debit invar
   const doubleDebits = (await db.query("select idem_key, count(*)::int n from ledger_entry where kind='DEBIT_USAGE' group by idem_key having count(*) > 1")).rows;
   assert.deepEqual(doubleDebits, [], 'no request may have two DEBIT_USAGE entries');
 
-  // Verify fallback attempts: at least one fallback request recorded upstream_500 before route 2 succeeded.
-  const fbAttempts = (await db.query("select count(*) n from attempt where outcome='upstream_500'")).rows[0].n;
-  assert.ok(Number(fbAttempts) >= 1, 'fallback route should hit upstream_500 on priority 1 before route 2');
+  // Every fallback request the burst served ended on route 2, after at most failed attempts on route 1 (none once its circuit opened).
+  for (const o of outcomes.filter(x => x.kind === 'fallback_500' && x.status === 200)) {
+    const seen = (await db.query('select outcome from attempt where request_id=$1 order by seq', [o.id])).rows.map(r => r.outcome);
+    assert.equal(seen.at(-1), 'completed', `fallback request ${o.id} ends completed`);
+    assert.ok(seen.slice(0, -1).every(x => x === 'upstream_500'), `fallback request ${o.id} only failed on route 1 before: ${seen.join(',')}`);
+  }
 });
