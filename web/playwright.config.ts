@@ -14,7 +14,7 @@ const serverReady = (origin: string) => (process.env.CI ? { wait: { stdout: /Loc
 export default defineConfig({
   testDir: './test/e2e', workers: 1, timeout: 30_000,
   use: { baseURL: webOrigin, headless: true,
-    launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ?? (existsSync(cached) ? cached : undefined) },
+    launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || (existsSync(cached) ? cached : undefined) },
     trace: 'off', screenshot: 'off', video: 'off' },
   projects: [
     { name: 'app-build', testIgnore: devOriginSpecs, use: { baseURL: previewOrigin } },

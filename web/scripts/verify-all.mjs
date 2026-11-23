@@ -8,6 +8,15 @@ const webDir = resolve(scriptDir, '..');
 const repoRoot = resolve(webDir, '..');
 const serverDir = join(repoRoot, 'server');
 const evidenceDir = join(webDir, 'evidence', 'verify-all');
+const netnsChromiumWrapper = join(scriptDir, 'chromium-netns.sh');
+
+/** Use the isolated-netns Chromium wrapper by default unless disabled via VERIFY_DISABLE_CHROMIUM_NETNS=1 or overridden. */
+function defaultChromiumEnv() {
+  const disable = process.env.VERIFY_DISABLE_CHROMIUM_NETNS;
+  if (disable === '1' || disable === 'true') return {};
+  if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE) return {};
+  return { PLAYWRIGHT_CHROMIUM_EXECUTABLE: netnsChromiumWrapper };
+}
 
 /** Discover all `*-local-verify.mjs` scripts in `web/scripts/` dynamically in sorted order. */
 function discoverLocalVerifySteps() {
@@ -157,6 +166,7 @@ function printHelp(steps) {
     'Pemakaian: node scripts/verify-all.mjs [--only <nama[,nama2]>] [--skip <nama[,nama2]>] [--list]',
     '',
     'Menjalankan seluruh verifikasi secara berurutan dengan port & database dari environment.',
+    'Secara bawaan Chromium dijalankan lewat web/scripts/chromium-netns.sh (isolasi network namespace); matikan dengan VERIFY_DISABLE_CHROMIUM_NETNS=1.',
     `Langkah tersedia: ${names}`
   ].join('\n'));
 }
@@ -241,7 +251,7 @@ function runStep(step) {
       }
     }
 
-    const env = { ...process.env, ...step.envOverrides };
+    const env = { ...process.env, ...defaultChromiumEnv(), ...step.envOverrides };
     const child = spawn(step.command, step.args, {
       cwd: step.cwd,
       env,

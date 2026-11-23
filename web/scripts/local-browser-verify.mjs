@@ -87,7 +87,7 @@ try {
     cwd: new URL('..', import.meta.url), env: { ...process.env, ROUTER_API_TARGET: `http://127.0.0.1:${apiPort}` }, stdio: 'ignore',
   });
   await waitFor(`http://127.0.0.1:${webPort}/`);
-  browser = await chromium.launch({ executablePath: '/root/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome', headless: true, args: ['--no-proxy-server'] });
+  browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || '/root/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome', headless: true, args: ['--no-proxy-server'] });
   const page = await browser.newPage({ viewport: { width: 360, height: 640 } });
   page.on('console', message => process.stderr.write(`browser:${message.type()}:${message.text()}\n`));
   page.on('response', async response => {
