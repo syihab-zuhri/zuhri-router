@@ -348,3 +348,7 @@ Isi: `0e0ab2b` (pemangkasan query gateway, status circuit route, Hermes Tahap se
 `POST /admin/api/requests/:id/resolve` kini mengembalikan `{ id, state, debitMicro, resolvedAt, replayed }`. Keputusan yang sama dikirim ulang (debit sama, alasan sama sesudah trim) mengembalikan receipt pertama dengan `replayed: true` tanpa menulis apa pun. Keputusan lain pada request yang sudah `RESOLVED` menjadi 409 `already_resolved`; state lain tetap 409 `not_unresolved`. Test pemulihan diperluas: receipt ulang identik, dua keputusan berbeda ditolak, satu audit event dan satu debit. `docs/ARCHITECTURE.md` 0.8.3 mencatat endpoint ini dan `GET /admin/api/routes` dengan `circuit`. Suite server 146/146.
 
 Antrean server dari Hermes yang tersisa: uji koneksi tanpa biaya (API-035), model dijeda di katalog (SCR-009), agregat grafik pemakaian (SCR-010), filter transaksi (SCR-011), cost profile dan kurs (menunggu keputusan margin guard).
+
+### Terpasang `zrouter:r11231813`
+
+Isi: `e44da16` (Hermes Tahap sebelas, Antigravity Tugas dua belas A, receipt penyelesaian request). Backup sebelum pemasangan `zrouter-20261123T111503Z.dump`. Tanpa migrasi baru (14 migrasi; `gateway_paused` = 0). Bukti: kontainer `healthy`, `smoke-public.sh` 7/7, chunk `main` yang tayang memuat "Data mungkin usang" dan "Circuit terbuka. Route dilewati sementara".

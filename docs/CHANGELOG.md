@@ -5,7 +5,7 @@ Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-23, Asia/Jakarta
 Owner keputusan: founder
 
-## 0.44.0: Saldo usang tetap tampil, status circuit di admin, receipt penyelesaian request, Chromium terisolasi untuk test
+## 0.44.0: Saldo usang tetap tampil, status circuit di admin, receipt penyelesaian request, Chromium terisolasi untuk test; terpasang `r11231813`
 
 Source: SCR-007, SCR-016 dan SCR-004 sampai SCR-012 di `docs/UX.md`, dikerjakan Hermes (`HERMES_TASK.md` Tahap sebelas); SCR-017 replay dan isolasi browser test oleh Claude dan Antigravity (Tugas dua belas A).
 
@@ -13,6 +13,7 @@ Source: SCR-007, SCR-016 dan SCR-004 sampai SCR-012 di `docs/UX.md`, dikerjakan 
 - Admin: daftar route menampilkan circuit terbuka beserta alasan dan waktu dicoba lagi, serta peringatan kegagalan berturut-turut.
 - Server: penyelesaian request yang diulang dengan keputusan sama mengembalikan receipt pertama (`replayed: true`); keputusan berbeda 409 `already_resolved`.
 - Test: sepuluh state portal tambahan teruji; Chromium untuk semua pemeriksaan browser berjalan di network namespace sendiri, sehingga perubahan jaringan laptop tidak lagi menggagalkan test.
+- Bukti pemasangan: suite server 146/146; `verify-all.mjs` 15/15 dengan Chromium terisolasi; `smoke-public.sh` 7/7 terhadap https://zrouter.web.id; bundle yang tayang memuat teks baru. Tanpa migrasi baru (14 migrasi); backup sebelum pemasangan `zrouter-20261123T111503Z.dump`.
 
 ## 0.43.0: Gateway 17 query per request, status circuit route, matriks state UX; terpasang `r11231617`
 
