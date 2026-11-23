@@ -322,3 +322,100 @@ Ini permintaan kebutuhan, bukan kontrak baru yang sudah disetujui; tidak ada end
 - SCR-017 replay penyelesaian: `resolveRequest` kini mengembalikan 409 `not_unresolved` untuk pengulangan, bukan receipt replay. Dibutuhkan semantic replay/hasil keputusan sebelumnya (ID request, debit final, waktu, penanda sudah diputuskan dan aturan konflik) sebelum UI boleh mengklaim pengulangan berhasil.
 
 Catatan permintaan terdahulu: Tidak ada kebutuhan kontrak server baru untuk tahap sembilan. Untuk tahap dua: bila diinginkan integrasi backend browser SCR-017/018, siapkan seed request unresolved dengan hold konsisten di schema privat dan step-up test yang sesuai. Jangan memakai atau menghentikan container bersama `router-spike-pg`. Tahap tiga lanjutan belum dipasang ke layanan publik.
+
+## 2026-11-23 — Tahap sebelas
+
+### Ditulis
+
+Base `main`/`34cef52`, working tree bersih sebelum pekerjaan. Membaca HERMES_TASK.md Tahap sebelas dan claude-log.md bagian 2026-11-23; kontrak executable tetap acuan. Tidak mengubah `server/`, berkas akun/ringkasan/skrip Antigravity, blok `am`/`ov`, dependency atau lockfile. Pada `web/playwright.config.ts` hanya menghapus entri `'**/guide.spec.ts'` sesuai izin.
+
+1. `web/test/e2e/portal-state-matrix.spec.ts`: sepuluh test state yang sebelumnya ada tanpa test, seluruhnya memeriksa teks/role terlihat, bukan sekadar membuka halaman:
+   - SCR-004: submitting (`m.saving` dan aria-busy), pembatasan dengan Retry-After 120 detik, server-error tanpa navigasi sukses.
+   - SCR-005: username sudah dipakai (alert username_taken; isian tetap dan tidak ada pesan berhasil).
+   - SCR-006: pesan terkirim sama untuk dua email fixture dengan respons `{ ok: true }`; token hilang dan token ditolak reset_invalid.
+   - SCR-007: loading tanpa angka saldo/ajakan saldo nol palsu; saldo nol dengan tautan Isi saldo melalui keyboard dan 360 px.
+   - SCR-008: empty menampilkan judul belum ada API key, tombol buat, tanpa cabut.
+   - SCR-012: belum ada key dengan pesan dan tautan /api-key yang dapat dipakai keyboard pada 360 px.
+   Tidak ada produksi yang perlu diubah untuk sepuluh state ini. Mock memakai endpoint/error/payload yang ada di server; fixture email bukan bukti pengiriman email nyata.
+2. `web/src/customer.tsx` HomePage: saldo terakhir dan waktu sukses terakhir tetap terpasang saat refetch gagal, alert usang dan tombol Muat ulang; galat awal tetap ErrorBox tanpa angka buatan. Checklist tetap ada saat saldo lama tersedia. Test `home-stale.spec.ts` memeriksa nilai mikro eksak, waktu tidak maju saat gagal, node metrics yang sama, 360 px, pemulihan lewat keyboard dan galat pertama.
+3. `web/test/e2e/guide.spec.ts:11`: origin diambil dari `new URL(page.url()).origin`; spec pindah dari dev-harness ke app-build, lulus pada preview (bukan lagi asumsi WEB_PORT).
+4. `web/src/admin-upstreams.tsx`: CircuitStatus pada daftar route memakai kontrak server `{ open, openUntil, reason, failures }`. Alasan failures/upstream_auth diterjemahkan, waktu ISO ditampilkan sebagai WIB dengan elemen time, route sehat tidak mendapat peringatan, route tertutup dengan kegagalan mendapat peringatan. Tidak mengubah timer server atau mengklaim uji koneksi; status adalah snapshot pembacaan, dapat hilang sesudah restart server. `route-circuit.spec.ts` memeriksa kedua alasan dan waktu, peringatan/hilang saat data baru, keyboard/fokus dialog, reflow 360 px dan Axe 0 pelanggaran.
+5. Matriks: tetap 82 baris/15 layar dan empat kolom; 47 teruji, 26 ada tanpa test, 1 belum, 8 butuh server (dihitung dari kolom Status). Sepuluh kenaikan berasal dari butir 1; dua lainnya data-usang dan circuit-terbuka. `docs/UI_REFERENCES.md` mencatat adaptasi UAR-003/UAR-010/UAR-011/UAR-002; tidak ada aset/dependency baru atau item Pro.
+
+### Teks terlihat yang ditambah/berubah
+
+Semua teks baru di `messages.ts` sebelum blok Antigravity, tanpa emoji:
+
+- `balanceStale`: "Saldo belum berhasil diperbarui. Data mungkin usang; saldo terakhir tetap ditampilkan."
+- `circuitOpen`: "Circuit terbuka. Route dilewati sementara."
+- `circuitFailures`: "Kegagalan berturut-turut pada upstream."
+- `circuitUpstreamAuth`: "Upstream menolak autentikasi atau pembayaran (HTTP 401/402)."
+- `circuitRetryAt`: "Dicoba lagi mulai" (disertai waktu WIB dari server).
+- `circuitReasonUnknown`: "Alasan circuit tidak tersedia." (cadangan, tidak menerjemahkan nilai tak dikenal menjadi alasan terpercaya).
+- `circuitWarning(count)`: "Kegagalan berturut-turut: {count}. Circuit belum terbuka."
+- `circuitMemoryNote`: "Status circuit disimpan di memori server dan hilang saat server dimulai ulang."
+- Beranda kini juga memiliki tombol "Muat ulang" (memakai kunci lama `m.refresh`). Teks lama lain tidak diubah.
+
+### Dijalankan — setiap run tersendiri
+
+Semua perintah di cwd `/mnt/d/router.dev.zuhri/web`, Node v24.21.0; semua run di bawah memakai `CI=1`. Setiap browser run didahului pemeriksaan proses Node/Chromium/Playwright/Vite/verifier/benchmark melalui `/proc` dan kunci `/tmp/router-browser-suite.lock`. Pemeriksaan awal `ps` tidak menemukan suite aktif. Tidak ada suite browser Antigravity yang berjalan bersamaan, tidak ada proses agen lain dihentikan, tidak memakai retries atau memperpanjang timeout. Container bersama router-spike-pg tetap hidup. Verifier lokal memakai database loopback router_test dengan schema privat acak yang dibuang skripnya, mailer fixture, tanpa email nyata/upstream berbayar.
+
+Runner eksternal `/tmp/router-stage11-run.py` menyimpan per run `web/evidence/stage11/<label>.txt` dan `.json` (perintah, PID runner/child, waktu mulai/akhir, exit, SHA-256 source/test/config). Folder evidence diabaikan Git. Tabel ini dibuat dari metadata aktual, bukan `.last-run` bersama. Tidak ada run yang dihentikan/timeout runner.
+
+| Label / bukti .txt + .json | Mulai–akhir WIB | PID runner / child | Sesi proses | Perintah (diawali CI=1) | Hasil | Exit |
+|---|---|---|---|---|---|---|
+| `baseline-typecheck` | 16:36:10–16:36:12 | 83145 / 83146 | `proc_4280b822f747` | `npm run typecheck` | PASS | 0 |
+| `baseline-unit` | 16:36:12–16:36:14 | 83242 / 83244 | `proc_4280b822f747` | `npm test` | 7/7 | 0 |
+| `baseline-focused` | 16:36:14–16:36:25 | 83290 / 83293 | `proc_4280b822f747` | `npx playwright test test/e2e/portal-state-matrix.spec.ts test/e2e/guide.spec.ts test/e2e/upstream.spec.ts` | 5/5 | 0 |
+| `portal-ten-states` | 16:38:29–16:39:21 | 85808 / 85832 | `proc_a6d72380c60c` | `npx playwright test test/e2e/portal-state-matrix.spec.ts` | 9/12; 3 gagal test fixture/locator | 1 |
+| `portal-ten-states-corrected` | 16:40:20–16:40:32 | 89091 / 89123 | `proc_a0e4bfd47cf1` | `npx playwright test test/e2e/portal-state-matrix.spec.ts` | 12/12 | 0 |
+| `stale-red` | 16:42:00–16:42:39 | 93024 / 93044 | `proc_7b1f7444719a` | `npx playwright test test/e2e/home-stale.spec.ts` | 1/2; 1 RED | 1 |
+| `stale-green` | 16:43:38–16:43:46 | 95077 / 95097 | `proc_ca7ee2de694e` | `npx playwright test test/e2e/home-stale.spec.ts` | 2/2 | 0 |
+| `guide-build` | 16:44:25–16:44:32 | 96305 / 96325 | `proc_d2ee770e2ffa` | `npx playwright test test/e2e/guide.spec.ts` | 1/1 app-build | 0 |
+| `circuit-red` | 16:45:30–16:45:42 | 97992 / 98012 | `proc_fc79d61e71f0` | `npx playwright test test/e2e/route-circuit.spec.ts` | 0/1; RED | 1 |
+| `circuit-green` | 16:47:08–16:47:16 | 100563 / 100583 | `proc_0afefee13487` | `npx playwright test test/e2e/route-circuit.spec.ts` | 1/1 | 0 |
+| `circuit-warning-red` | 16:48:07–16:48:20 | 102166 / 102186 | `proc_d8d68219f483` | `npx playwright test test/e2e/route-circuit.spec.ts --grep tertutup` | 0/1; RED | 1 |
+| `circuit-warning-green` | 16:49:01–16:49:11 | 103604 / 103627 | `proc_802cfe40b929` | `npx playwright test test/e2e/route-circuit.spec.ts` | 2/2 | 0 |
+| `final-typecheck` | 16:51:21–16:51:23 | 106891 / 106892 | `proc_5ae61261a840` | `npm run typecheck` | PASS | 0 |
+| `final-unit` | 16:51:23–16:51:24 | 107001 / 107002 | `proc_5ae61261a840` | `npm test` | 7/7 | 0 |
+| `final-e2e` | 16:51:25–16:52:46 | 107048 / 107049 | `proc_5ae61261a840` | `npm run test:e2e` | 99/99; skipped/flaky/unexpected 0 | 0 |
+| `final-local` | 16:53:01–16:53:11 | 113633 / 113637 | `proc_ec1fb113bdac` | `npm run test:local` | local-browser-verify: PASS (1 skrip, tanpa total assertion) | 0 |
+| `final-browser` | 16:53:12–16:53:20 | 113938 / 113940 | `proc_ec1fb113bdac` | `npm run test:browser` | build + same-origin-dist-verify: PASS (1 skrip, tanpa total assertion) | 0 |
+
+### Kegagalan awal, RED dan pengulangan
+
+- `portal-ten-states` pukul 16:38:29–16:39:21: 9/12. Bukan bug produksi atau gangguan jaringan: (a) test token reset berpindah ke URL dengan pathname sama dan hanya fragment berubah, sehingga tidak memulai dokumen baru/takeToken; test kini melewati /lupa-password dulu, (b) locator loading ambigu karena ada pending paket dan saldo; dipersempit ke status saldo anak langsung main, (c) exact text gagal karena Alert panduan juga mengandung teks tautan; assertion menjadi role status dengan hasText. Sesudah koreksi fixture/locator saja, `portal-ten-states-corrected` 12/12. Tidak diklaim sebagai RED fitur atau menutupi kegagalan.
+- `stale-red`: 1/2; test galat pertama lulus, test refresh gagal pada kontrol Muat ulang yang belum ada. Sesudah implementasi lengkap, `stale-green` 2/2 memeriksa saldo lama/waktu/node tetap saat respons 503 dan pulih saat respons sukses.
+- `circuit-red`: 0/1 karena role status circuit terbuka belum ada pada baris route; `circuit-green` 1/1 sesudah implementasi.
+- `circuit-warning-red`: 0/1 karena peringatan kegagalan saat tertutup belum ada; sesudah implementasi `circuit-warning-green` 2/2 termasuk test circuit terbuka sebelumnya.
+- Tidak ada `ERR_NETWORK_CHANGED` atau `Failed to fetch dynamically imported module` di seluruh keluaran run sesi ini; tidak mengklaim perbaikan jaringan Antigravity sudah masuk. Peringatan bundler dependency `use client` tetap muncul seperti baseline, bukan error aplikasi.
+
+### Lulus dan batas bukti
+
+- Final source: typecheck exit 0, unit 7/7, Playwright penuh 99/99 (0 skipped/flaky/unexpected), `test:local` PASS, `test:browser` build dan same-origin PASS. Hash seluruh source/test/config final cocok dengan snapshot run e2e; tidak ada edit source sesudah final run tersebut.
+- `test:local` menjalankan alur aktivasi/login, API key sekali tampil dan cabut, admin step-up top-up, paket/model/harga/kode, redeem/replay dan ledger terhadap Fastify/PostgreSQL nyata. `test:browser` menjalankan aktivasi/login/panduan, reflow, CSP serta pemisahan API/static terhadap build same-origin. Skrip-skrip ini mengeluarkan PASS, tidak mengeluarkan jumlah assertion; tidak dibuat-buat sebagai N test.
+- Fitur baru stale/circuit diperiksa dengan mock kontrak server pada build oleh Playwright; belum ada skenario integrasi circuit nyata yang dipicu gateway atau audit visual/manual screen reader baru. Tidak mengklaim semua 82 state sudah dijalankan atau semua skrip Antigravity lulus.
+- Pada verifikasi UI awal, suite server penuh belum dijalankan; catatan 144/145 Tahap sepuluh di atas tetap historis. Verifikasi recipe tambahan di bawah kemudian lulus 146/146. Tidak ada kode server yang diubah.
+- `git diff --check` lulus; tidak ada perubahan `server/`, dependency/lockfile, blok am/ov, atau berkas terlarang. Build lokal siap ditinjau Claude untuk pemasangan; Hermes tidak commit, stage, push atau deploy.
+- Pemeriksaan akhir 17:05:20 WIB menemukan Playwright Antigravity PID 124108 di `/mnt/d/router.dev.zuhri-antigravity/web` mulai 17:04:32 WIB, sesudah run browser Hermes terakhir berakhir 16:53:20 WIB. Tidak ada suite Hermes baru dijalankan atau proses Antigravity dihentikan.
+- Review independen read-only `deleg_275e22c6`/`sa-0-e67a51d0`: verdict `passed: true`, tanpa security concern atau logic error. Saran dokumentasi yang terverifikasi ditindaklanjuti: rujukan daftar route dikoreksi dari CMP-017 ke CMP-012/UAR-002 sesuai DSD.md. Tidak ada edit source/test atau run browser tambahan sesudah review.
+
+### Verifikasi recipe workspace tambahan (2026-11-23)
+
+Dijalankan sesudah pengingat verification gate, bukan pengganti bukti UI di atas:
+
+- Membaca `.hermes/environment.json`, `server/scripts/verify-local.ts`, dan kontrak database test. Recipe `Router API M1 local verification` hanya mencakup server: typecheck, test, boot dan readiness. Tidak mengubah manifest agar status hijau.
+- Preflight read-only mengonfirmasi `127.0.0.1:55432/router_test` dan `select 1` berhasil; tidak mencetak kredensial. Container router-spike-pg tetap hidup.
+- Awalnya Antigravity menjalankan `node scripts/verify-all.mjs` PID 142117 dan suite server PID 142378. Runner Hermes menunggu seluruh suite/verifier/browser Router lain selesai, tanpa menghentikan prosesnya. Recipe baru mulai setelah guard tidak menemukan proses tersebut. Tidak menjalankan Playwright baru pada kelanjutan ini.
+- Perintah aktual `CI=1 hermes verify --json`, cwd root repo. Runner `/tmp/router-stage11-recipe.py` PID 147317, child Hermes PID 157970, sesi `proc_ffff14e80cfc`. Mulai 17:18:25 WIB, selesai 17:20:58 WIB, exit 0, `ok: true`.
+- Build `npm --prefix server run typecheck`: exit 0, 1,097 detik. Test `npm --prefix server run test`: exit 0, 145,010 detik; 146 tests, 146 pass, 0 fail/cancelled/skipped. Tidak ada timeout phase.
+- Boot `node server/scripts/verify-local.ts`: readiness `http://127.0.0.1:55480/readyz` HTTP 200, ready true, 6,033 detik. Sesudah runner keluar, `ss -ltnp 'sport = :55480'` tidak menunjukkan listener dan PID server 159448 sudah tidak ada: teardown terverifikasi.
+- Output JSON recipe disimpan utuh di `web/evidence/stage11/hermes-verify-fresh.txt`; metadata command/PID/waktu/exit dan snapshot hash di `hermes-verify-fresh.json`. Hash source/test/config cocok dengan snapshot recipe dan snapshot UI final 99/99 sebelumnya. Tidak ada edit kode untuk menjalankan recipe; tidak ada commit, stage, push, deploy atau perubahan server/manifest.
+
+### Pengulangan gate sesudah laporan final
+
+Penulisan laporan di atas terjadi sesudah recipe lulus dan membuat gate workspace menandai buktinya stale, walaupun hash source/test/config masih cocok. Karena itu `CI=1 hermes verify --json` dijalankan sekali lagi setelah semua edit laporan. Tidak ada perubahan kode atau Playwright baru. Output dan metadata pengulangan (command, PID, waktu, exit serta hash source) ditempatkan di luar workspace: `/root/router-stage11-verification/hermes-verify-final-seal.txt` dan `.json`, supaya penulisan bukti tidak kembali mengubah workspace. Hasil pengulangan harus dibaca dari kedua berkas tersebut dan respons akhir, bukan diasumsikan lulus dari rencana ini. Tidak ada edit repo setelah pengulangan berhasil.
+
+### Permintaan ke Claude — pembaruan Tahap sebelas
+
+Permintaan circuit per route dari Tahap sepuluh sudah terpenuhi oleh kontrak `5b9607a` dan kini dipakai UI. Delapan state butuh server pada matriks tetap menunggu antrean yang dicatat Claude. Tidak ada permintaan kontrak tambahan atau perubahan semantic timer circuit. DRIFT timer upstream_auth pada dokumen arsitektur sudah dicatat Claude; UI mengikuti kontrak executable dan tugas eksplisit, tidak mengubah keputusan tersebut.

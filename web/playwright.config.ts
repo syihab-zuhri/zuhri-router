@@ -7,7 +7,6 @@ const devOriginSpecs = [
   '**/admin.spec.ts',
   '**/admin-customers.spec.ts',
   '**/admin-operations.spec.ts',
-  '**/guide.spec.ts',
   '**/portal.spec.ts',
   '**/upstreams.spec.ts',
 ];

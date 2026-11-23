@@ -4,23 +4,23 @@ Kerangka dibuat Claude dari tabel layar `docs/UX.md` (SCR-004 sampai SCR-018), k
 
 Jumlah state: 82. Inventaris source dan assertion pada 2026-11-21, base `48a60a3` beserta perubahan lokal Tahap sepuluh. `teruji` berarti ada assertion teks/role khusus state di test yang disebut; bukan klaim bahwa seluruh skrip tersebut dijalankan ulang pada sesi ini. Run aktual, kegagalan dan pengulangan dicatat terpisah di `hermes-log.md`. Baris gabungan dari kerangka tetap dipertahankan; bila baru sebagian varian tercakup, kolom Test menjelaskan batasnya dan status tidak dinaikkan menjadi teruji.
 
-Rekap setelah dua state submitting dilengkapi: 35 teruji, 36 ada tanpa test, 2 belum, 9 butuh server. Total 82; 15 layar. `butuh server` berarti kontrak executable saat ini belum cukup, bukan izin membuat kontrak atau mock baru.
+Rekap Tahap sebelas (2026-11-23): 47 teruji, 26 ada tanpa test, 1 belum, 8 butuh server. Total 82; 15 layar (dihitung dengan skrip dari kolom Status). Sepuluh state yang sebelumnya ada tanpa test mendapat assertion terlihat; SCR-007 data-usang dan SCR-016 circuit-terbuka dilengkapi dengan RED-GREEN. Rekap Tahap sepuluh sebelumnya: 35 teruji, 36 ada tanpa test, 2 belum, 9 butuh server. `butuh server` berarti kontrak executable saat ini belum cukup, bukan izin membuat kontrak atau mock baru.
 
 ## SCR-004 Masuk
 
 | State | Penerapan | Test | Status |
 |---|---|---|---|
-| submitting | `web/src/auth.tsx` — `LoginPage` memakai `useAction` dan `Button busy` | `web/test/e2e/portal.spec.ts` — `masuk keyboard, CSRF, shell 360px dan fokus navigasi` memeriksa login sukses, bukan indikator submitting | ada tanpa test |
+| submitting | `web/src/auth.tsx` — `LoginPage` memakai `useAction` dan `Button busy` | `web/test/e2e/portal-state-matrix.spec.ts` — `masuk menampilkan submitting sampai respons diterima`; menahan respons; status m.saving dan tombol aria-busy | teruji |
 | kredensial-salah (pesan seragam) | `web/src/auth.tsx` — `LoginPage` merender `ErrorBox`; `web/src/messages.ts` — `errorText.auth_invalid` dan `invalid_credentials` memakai pesan seragam | `web/scripts/account-local-verify.mjs:193–222` — skenario “Ubah password pelanggan” dan “Tutup akun permanen” memeriksa pesan `errorText.auth_invalid` saat password lama/akun tertutup ditolak | teruji |
-| dibatasi dengan waktu tunggu | `web/src/auth.tsx` — `LoginPage` memakai `ErrorBox`; `web/src/ui.tsx` — `errorMessage` menangani HTTP 429 dan Retry-After | belum; test cooldown redeem tidak menguji layar masuk | ada tanpa test |
-| server-error | `web/src/auth.tsx` — `LoginPage` merender `ErrorBox` | belum | ada tanpa test |
+| dibatasi dengan waktu tunggu | `web/src/auth.tsx` — `LoginPage` memakai `ErrorBox`; `web/src/ui.tsx` — `errorMessage` menangani HTTP 429 dan Retry-After | `web/test/e2e/portal-state-matrix.spec.ts` — `masuk dibatasi menampilkan waktu tunggu dari Retry-After`; alert waktu tunggu 120 detik | teruji |
+| server-error | `web/src/auth.tsx` — `LoginPage` merender `ErrorBox` | `web/test/e2e/portal-state-matrix.spec.ts` — `masuk menampilkan server-error tanpa mengaku berhasil`; alert internal_error dan tetap di /masuk | teruji |
 
 ## SCR-005 Aktivasi Undangan
 
 | State | Penerapan | Test | Status |
 |---|---|---|---|
 | token-valid | `web/src/auth.tsx` — `TokenPage` mengambil token dari `takeToken` dan menampilkan form aktivasi | `web/test/e2e/portal.spec.ts` — `aktivasi menghapus fragment sebelum request dan merender hasil server` menjalankan aktivasi dengan token lalu memeriksa pesan sukses terlihat | teruji |
-| username-sudah-dipakai | `web/src/auth.tsx` — `TokenPage` merender `ErrorBox`; pesan `username_taken` ada di `web/src/messages.ts` | belum | ada tanpa test |
+| username-sudah-dipakai | `web/src/auth.tsx` — `TokenPage` merender `ErrorBox`; pesan `username_taken` ada di `web/src/messages.ts` | `web/test/e2e/portal-state-matrix.spec.ts` — `aktivasi username sudah dipakai menampilkan arahan memilih nama lain`; alert username_taken, nama tetap terisi dan tidak ada pesan sukses | teruji |
 | username-tidak-valid | `web/src/auth.tsx` — validasi HTML `pattern` dan `ErrorBox`; pesan `username_invalid` ada di `web/src/messages.ts` | belum | ada tanpa test |
 | token-kedaluwarsa/terpakai (arahan hubungi admin) | `web/src/auth.tsx` — `TokenPage` menampilkan `ErrorBox`; pesan `invite_invalid` ada di `web/src/messages.ts` | `web/scripts/admin-customers-local-verify.mjs:307–320` — skenario “Memakai tautan aktivasi yang sama kedua kali harus ditolak” memeriksa `errorText.invite_invalid` terlihat dan arahan hubungi admin | teruji |
 | submitting | `web/src/auth.tsx` — `TokenPage` menampilkan `Alert` dengan `m.saving` dan `Button busy` sampai respons aktivasi diterima | `web/test/e2e/portal-state-matrix.spec.ts` — `aktivasi mengumumkan submitting sampai server menjawab` menahan respons, memeriksa teks status, aria-busy dan belum ada sukses; GREEN 1/1 | teruji |
@@ -31,8 +31,8 @@ Rekap setelah dua state submitting dilengkapi: 35 teruji, 36 ada tanpa test, 2 b
 
 | State | Penerapan | Test | Status |
 |---|---|---|---|
-| terkirim (pesan sama untuk semua email) | `web/src/auth.tsx` — `RequestResetPage` menampilkan `m.resetSent` setelah `/api/auth/reset/request` sukses | belum | ada tanpa test |
-| token-tidak-valid | `web/src/auth.tsx` — `TokenPage` tanpa token menampilkan `m.tokenMissing`; token ditolak ditampilkan lewat `ErrorBox` dan `reset_invalid` di `web/src/messages.ts` | `web/test/e2e/portal.spec.ts` — `halaman aktivasi tanpa token memberi bantuan dan link kembali` hanya menguji aktivasi tanpa token, bukan halaman reset | ada tanpa test |
+| terkirim (pesan sama untuk semua email) | `web/src/auth.tsx` — `RequestResetPage` menampilkan `m.resetSent` setelah `/api/auth/reset/request` sukses | `web/test/e2e/portal-state-matrix.spec.ts` — `pemulihan terkirim memakai pesan sama untuk email terdaftar dan tidak dikenal`; status m.resetSent sama untuk kedua respons kontrak ok | teruji |
+| token-tidak-valid | `web/src/auth.tsx` — `TokenPage` tanpa token menampilkan `m.tokenMissing`; token ditolak ditampilkan lewat `ErrorBox` dan `reset_invalid` di `web/src/messages.ts` | `web/test/e2e/portal-state-matrix.spec.ts` — `pemulihan token tidak valid memberi arahan tanpa form sukses`; alert token hilang dan reset_invalid dari server; tidak ada sukses | teruji |
 | submitting | `web/src/auth.tsx` — `RequestResetPage` dan `TokenPage` menampilkan `Alert` dengan `m.saving` serta tombol busy selama permintaan/penyelesaian reset | `web/test/e2e/portal-state-matrix.spec.ts` — `pemulihan akses mengumumkan submitting pada permintaan dan penyelesaian reset` menahan kedua respons, memeriksa teks status, aria-busy dan belum ada sukses; GREEN 1/1 | teruji |
 | berhasil | `web/src/auth.tsx` — `TokenPage` menampilkan `m.resetDone` setelah `/api/auth/reset/complete` sukses | `web/test/e2e/portal-state-matrix.spec.ts` — `pemulihan akses mengumumkan submitting pada permintaan dan penyelesaian reset` memeriksa role status dengan `m.resetDone` sesudah respons sukses | teruji |
 
@@ -40,17 +40,17 @@ Rekap setelah dua state submitting dilengkapi: 35 teruji, 36 ada tanpa test, 2 b
 
 | State | Penerapan | Test | Status |
 |---|---|---|---|
-| loading | `web/src/customer.tsx` — `HomePage` memakai `Pending` untuk `/api/balance` dan `/api/packs`; `useResource` untuk data portal | belum | ada tanpa test |
+| loading | `web/src/customer.tsx` — `HomePage` memakai `Pending` untuk `/api/balance` dan `/api/packs`; `useResource` untuk data portal | `web/test/e2e/portal-state-matrix.spec.ts` — `beranda loading tidak menampilkan saldo nol sebelum data diterima`; status memuat ditahan sampai saldo diterima | teruji |
 | first-use (checklist) | `web/src/customer.tsx` — `FirstUseChecklist` menghitung saldo, key, dan baca panduan; hilang setelah seluruh langkah selesai | `web/test/e2e/portal.spec.ts` — `checklist first-use memakai saldo dan daftar key dari API lalu hilang saat semua langkah selesai`; `membuka panduan langsung menandai langkah baca pada checklist` | teruji |
-| saldo-nol (ajakan isi saldo) | `web/src/customer.tsx` — `HomePage` merender ajakan saat `availableMicro <= 0` | belum; tes checklist memakai saldo nol, tidak menegaskan ajakan isi saldo | ada tanpa test |
-| data-usang dengan waktu pembaruan | belum lengkap; `web/src/customer.tsx` — `HomePage` menampilkan `m.updated`/`balance.dataUpdatedAt` hanya saat sukses; saat refetch gagal `ErrorBox` menggantikan saldo, tanpa penanda data usang | belum | belum |
+| saldo-nol (ajakan isi saldo) | `web/src/customer.tsx` — `HomePage` merender ajakan saat `availableMicro <= 0` | `web/test/e2e/portal-state-matrix.spec.ts` — `beranda saldo nol mengajak isi saldo dengan tautan keyboard`; status m.zeroBalance dan tautan Isi saldo dapat dipakai keyboard pada 360 px | teruji |
+| data-usang dengan waktu pembaruan | `web/src/customer.tsx` — `HomePage` mempertahankan `balance.data` dan waktu sukses terakhir saat refetch gagal; alert usang dan tombol Muat ulang; ErrorBox hanya bila belum ada data | `web/test/e2e/home-stale.spec.ts` — `saldo gagal diperbarui mempertahankan nilai dan waktu terakhir lalu pulih lewat keyboard`, `saldo gagal pertama kali tetap memakai layar galat tanpa angka rekaan`; nilai mikro eksak, node saldo sama, waktu tetap/pulih dan 360 px | teruji |
 | layanan-dijeda | `web/src/customer.tsx` — `HomePage` memuat status dari `/api/me`; `web/src/app.tsx` — shell portal memuat banner jeda | `web/test/e2e/service-paused.spec.ts` — `status layanan menunjukkan Berjalan tanpa banner bila servicePaused false atau tidak ada` dan `banner layanan dijeda tampil di semua halaman portal dan tidak diulang saat navigasi` memeriksa teks/role status layanan | teruji |
 
 ## SCR-008 API Key
 
 | State | Penerapan | Test | Status |
 |---|---|---|---|
-| empty | `web/src/customer.tsx` — `KeysPage` menampilkan `Empty` saat tidak ada key | `web/test/e2e/states.spec.ts` — `secret tidak berada di URL/storage, copy gagal tetap tampil, escape meminta kepastian` membuat daftar kosong tetapi tidak mengassert teks empty | ada tanpa test |
+| empty | `web/src/customer.tsx` — `KeysPage` menampilkan `Empty` saat tidak ada key | `web/test/e2e/portal-state-matrix.spec.ts` — `API key empty menampilkan belum ada key tanpa tombol cabut`; heading m.keyEmpty dan tombol buat, tanpa tombol cabut | teruji |
 | creating | `web/src/customer.tsx` — `KeysPage.create` memakai `useAction` dan tombol `busy`; belum ada teks submitting pada form key | belum | ada tanpa test |
 | secret-sekali-tampil (peringatan tidak dapat dilihat lagi) | `web/src/customer.tsx` — `KeysPage` membuka `SecretReveal`; `web/src/ui.tsx` — `SecretReveal` menampilkan peringatan, secret dan konfirmasi buang | `web/test/e2e/states.spec.ts` — `secret tidak berada di URL/storage, copy gagal tetap tampil, escape meminta kepastian` memeriksa secret terlihat dan teks peringatan buang | teruji |
 | salin-gagal | `web/src/ui.tsx` — `SecretReveal` menampilkan `m.copyFailed` ketika clipboard gagal | `web/test/e2e/states.spec.ts` — `secret tidak berada di URL/storage, copy gagal tetap tampil, escape meminta kepastian` mengassert teks status kegagalan salin | teruji |
@@ -89,7 +89,7 @@ Rekap setelah dua state submitting dilengkapi: 35 teruji, 36 ada tanpa test, 2 b
 
 | State | Penerapan | Test | Status |
 |---|---|---|---|
-| belum-ada-key (tautan buat key) | `web/src/guide.tsx` — `GuidePage` memuat `/api/keys?limit=1` dan menampilkan `m.guideNoKey` serta tautan `/api-key` saat kosong | `web/test/e2e/guide.spec.ts` — `panduan menampilkan tiga permukaan, base URL, key placeholder dan pemetaan error` memeriksa heading/tautan untuk key, namun fixture kosong tidak mengassert pesan belum ada key | ada tanpa test |
+| belum-ada-key (tautan buat key) | `web/src/guide.tsx` — `GuidePage` memuat `/api/keys?limit=1` dan menampilkan `m.guideNoKey` serta tautan `/api-key` saat kosong | `web/test/e2e/portal-state-matrix.spec.ts` — `panduan tanpa key menampilkan ajakan dan tautan membuat key`; status m.guideNoKey, tautan /api-key dengan keyboard dan reflow 360 px | teruji |
 
 ## SCR-013 Akun dan Keamanan
 
@@ -140,7 +140,7 @@ Rekap setelah dua state submitting dilengkapi: 35 teruji, 36 ada tanpa test, 2 b
 | uji-lulus/gagal/tidak-tersedia | belum; belum ada hasil/kemampuan uji koneksi tanpa biaya pada kontrak executable | belum | butuh server |
 | cost-usang | belum; `server/src/upstreams.ts` menyatakan cost profile belum tersedia; payload upstream belum memuat profil biaya/waktu acuannya | belum | butuh server |
 | kurs-usang | belum; payload upstream belum memuat kurs, waktu acuannya dan ambang kedaluwarsa | belum | butuh server |
-| circuit-terbuka | belum; payload route belum memuat keadaan circuit breaker | belum | butuh server |
+| circuit-terbuka | `web/src/admin-upstreams.tsx` — `CircuitStatus` pada `RoutesTable`, kontrak `circuit` dari `server/src/route-health.ts`/`upstreams.ts`; alasan dan waktu coba lagi, peringatan kegagalan saat tertutup | `web/test/e2e/route-circuit.spec.ts` — `circuit terbuka menjelaskan kegagalan dan upstream auth beserta waktu coba lagi`, `circuit tertutup dengan kegagalan memberi peringatan lalu hilang sesudah pembacaan baru`; kedua alasan, waktu ISO/WIB, sehat tanpa peringatan, keyboard, 360 px dan Axe | teruji |
 | konflik | `web/src/admin-upstreams.tsx` — `UpstreamsPage`/`ArchiveConfirmation` memakai `ErrorBox`; pesan `version_conflict` ada di `web/src/messages.ts` | belum | ada tanpa test |
 | gagal | `web/src/admin-upstreams.tsx` — `UpstreamsPage` menampilkan `ErrorBox` untuk read/mutasi dan pesan katalog upstream gagal | `web/test/e2e/upstreams.spec.ts` — `kegagalan daftar model upstream menjelaskan bahwa ID dapat diketik manual` mengassert `m.upstreamModelsUnavailable` | teruji |
 

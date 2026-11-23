@@ -129,4 +129,11 @@ Sumber panduan luar yang dibandingkan:
 [4] https://developers.google.com/style/code-in-text — Google developer style: code in text
 [5] https://designsystem.digital.gov/components/typography — USWDS typography
 
+## 8. Adaptasi Tahap sebelas (2026-11-23)
+
+- Pembacaan desain: portal saldo dan backoffice operasional, mengikuti bahasa visual Navy/Blue/Gold yang ada; ENERGY/RHYTHM/MOTION = 1/1/1. Perubahan hanya menambah informasi state, bukan tata letak atau dekorasi.
+- SCR-007 data-usang: CMP-015/UAR-003 mempertahankan angka saldo terakhir dan waktu sukses terakhir; CMP-018/UAR-010 memberi pesan menetap ketika refresh gagal, dengan tombol Muat ulang CMP-002/UAR-011. Bukan toast, tidak ada animasi angka, tidak mengarang saldo nol saat pembacaan pertama gagal.
+- SCR-016 circuit route: daftar CMP-012/UAR-002 tetap dipakai, dengan pesan menetap CMP-018/UAR-010 untuk circuit terbuka (alasan dan waktu WIB) atau kegagalan berturut-turut saat circuit belum terbuka. Status bukan hanya warna. Catatan penyimpanan in-memory tampil sekali pada bagian Route.
+- Tetap PATTERN_ADAPTATION atas referensi Free yang sudah diperiksa; komponen Alert/Button/DataList dan token yang ada dipakai ulang. Tidak ada registry/dependency/aset baru dan tidak memakai Provider status Pro. Bukti keyboard, 360 px, role/teks dan Axe pada `home-stale.spec.ts`/`route-circuit.spec.ts`; hasil run tercatat di `handoff/hermes-log.md`.
+
 <!-- END ROUTER-UI-REFERENCES v0.5.0 -->

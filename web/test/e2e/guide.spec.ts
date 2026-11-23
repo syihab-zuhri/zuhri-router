@@ -8,7 +8,7 @@ test('panduan menampilkan tiga permukaan, base URL, key placeholder dan pemetaan
   await page.goto('/panduan');
   await expect(page).toHaveURL(/\/panduan$/);
   await expect(page.getByRole('heading', { name: 'Panduan Integrasi', exact: true })).toBeVisible();
-  await expect(page.getByText(`http://127.0.0.1:${Number(process.env.WEB_PORT ?? 5173)}/v1`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`${new URL(page.url()).origin}/v1`, { exact: true })).toBeVisible();
   for (const endpoint of ['POST /v1/chat/completions', 'POST /v1/messages', 'POST /v1/responses', 'GET /v1/models']) await expect(page.getByText(endpoint, { exact: true })).toBeVisible();
   await expect(page.getByText(m.responsesStateless, { exact: true })).toBeVisible();
   await expect(page.getByText(m.responsesStateless, { exact: true })).toContainText('kirim konteks lengkap pada setiap permintaan');

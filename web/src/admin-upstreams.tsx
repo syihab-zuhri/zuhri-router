@@ -3,12 +3,14 @@ import { Link, useSearchParams } from 'react-router';
 import { ApiError, api, post } from './api.ts';
 import { useAdminAction, useResource } from './hooks.tsx';
 import { m } from './messages.ts';
+import { formatDate } from './credits.ts';
 import { Alert, Badge, Button, DataList, Empty, ErrorBox, Field, Modal, PageTitle, Pending } from './ui.tsx';
 
 const protocols = ['CHAT', 'ANTHROPIC', 'RESPONSES'] as const;
 type Protocol = typeof protocols[number];
 type Upstream = { id: string; name: string; status: 'PENDING' | 'ELIGIBLE' | 'BLOCKED'; archived: boolean; baseUrls: Record<Protocol, string | null>; keySet: boolean; keySetAt: string | null; termsNote: string; version: string };
-type Route = { id: string; modelId: string; upstreamId: string; protocol: Protocol; upstreamModel: string; priority: number; enabled: boolean; maxConcurrency: number | null; version: string };
+type Circuit = { open: boolean; openUntil: string | null; reason: 'failures' | 'upstream_auth' | null; failures: number };
+type Route = { id: string; modelId: string; upstreamId: string; protocol: Protocol; upstreamModel: string; priority: number; enabled: boolean; maxConcurrency: number | null; version: string; circuit: Circuit };
 type Model = { id: string; displayName: string; version: string; sellable: boolean; archived: boolean; published: unknown; draft: unknown };
 type UpstreamModelList = { upstreamId: string; protocol: Protocol; models: string[] };
 type Urls = Record<Protocol, string>;
@@ -22,10 +24,16 @@ function UpstreamRows({ rows, onEdit, onStatus, onArchive }: { rows: Upstream[];
     <div className="actions">{!row.archived && <><Button className="secondary" onClick={() => onEdit(row)}>{m.edit}</Button>{row.status !== 'PENDING' && <Button className="secondary" onClick={() => onStatus(row, 'PENDING')}>{m.statusPending}</Button>}{row.status !== 'ELIGIBLE' && <Button onClick={() => onStatus(row, 'ELIGIBLE')}>{m.statusEligible}</Button>}{row.status !== 'BLOCKED' && <Button className="danger-button" onClick={() => onStatus(row, 'BLOCKED')}>{m.statusBlocked}</Button>}</>}<Button className={row.archived ? 'secondary' : 'danger-button'} onClick={() => onArchive(row)}>{row.archived ? m.restoreUpstream : m.archiveUpstream}</Button></div>
   </article>)}</DataList>;
 }
+function CircuitStatus({ circuit }: { circuit: Circuit }) {
+  if (!circuit) return null;
+  if (!circuit.open) return circuit.failures > 0 ? <Alert>{m.circuitWarning(String(circuit.failures))}</Alert> : null;
+  const reason = circuit.reason === 'failures' ? m.circuitFailures : circuit.reason === 'upstream_auth' ? m.circuitUpstreamAuth : m.circuitReasonUnknown;
+  return <Alert><p>{m.circuitOpen}</p><p>{reason}</p>{circuit.openUntil && <p>{m.circuitRetryAt}: <time dateTime={circuit.openUntil}>{formatDate(circuit.openUntil)}</time></p>}</Alert>;
+}
 function RoutesTable({ rows, upstreams, onEdit }: { rows: Route[]; upstreams: Upstream[]; onEdit: (row: Route) => void }) {
   const names = new Map(upstreams.map(upstream => [upstream.id, upstream.name]));
   return rows.length === 0 ? <Empty title={m.noRoutes} /> : <DataList caption={m.routes}>{rows.map(route => <article className="data-row" key={route.id}>
-    <h3>{route.modelId}</h3><dl><dt>{m.upstream}</dt><dd>{names.get(route.upstreamId) ?? route.upstreamId}</dd><dt>{m.protocol}</dt><dd>{route.protocol}</dd><dt>{m.upstreamModel}</dt><dd className="mono">{route.upstreamModel}</dd><dt>{m.priority}</dt><dd>{route.priority}</dd><dt>{m.active}</dt><dd>{route.enabled ? m.active : m.inactive}</dd><dt>{m.concurrency}</dt><dd>{route.maxConcurrency ?? m.unlimited}</dd><dt>{m.version}</dt><dd>{route.version}</dd></dl><Button className="secondary" onClick={() => onEdit(route)}>{m.edit}</Button>
+    <h3>{route.modelId}</h3><dl><dt>{m.upstream}</dt><dd>{names.get(route.upstreamId) ?? route.upstreamId}</dd><dt>{m.protocol}</dt><dd>{route.protocol}</dd><dt>{m.upstreamModel}</dt><dd className="mono">{route.upstreamModel}</dd><dt>{m.priority}</dt><dd>{route.priority}</dd><dt>{m.active}</dt><dd>{route.enabled ? m.active : m.inactive}</dd><dt>{m.concurrency}</dt><dd>{route.maxConcurrency ?? m.unlimited}</dd><dt>{m.version}</dt><dd>{route.version}</dd></dl><CircuitStatus circuit={route.circuit} /><Button className="secondary" onClick={() => onEdit(route)}>{m.edit}</Button>
   </article>)}</DataList>;
 }
 function ArchiveConfirmation({ target, busy, error, onCancel, onConfirm }: { target: ArchiveTarget; busy: boolean; error: unknown; onCancel: () => void; onConfirm: () => void }) {
@@ -83,7 +91,7 @@ export function UpstreamsPage() {
     <div className="actions"><Button onClick={newUpstream}>{m.addUpstream}</Button><Button className="secondary" busy={listPending} disabled={listPending} onClick={() => { void upstreams.refetch(); void models.refetch(); }}>{m.refresh}</Button></div>
     <Field label={m.showArchived} type="checkbox" checked={includeArchived} onChange={event => setArchivedFilter(event.target.checked)} />
     {saved && <Alert>{saved}</Alert>}{upstreams.isPending ? <Pending /> : upstreams.isError ? <ErrorBox error={upstreams.error} retry={() => { void upstreams.refetch(); }} /> : <UpstreamRows rows={upstreams.data.upstreams} onEdit={editUpstream} onStatus={(row, status) => { setStatusForm({ row, status }); setReason(''); action.setError(null); }} onArchive={row => { setArchiveTarget({ id: row.id, name: row.name, version: row.version, archived: row.archived }); action.setError(null); }} />}
-    <section className="panel stack"><div className="actions"><h2>{m.routes}</h2><Button onClick={newRoute}>{m.addRoute}</Button></div>
+    <section className="panel stack"><div className="actions"><h2>{m.routes}</h2><Button onClick={newRoute}>{m.addRoute}</Button></div><p>{m.circuitMemoryNote}</p>
       {models.isPending ? <Pending /> : models.isError ? <ErrorBox error={models.error} retry={() => { void models.refetch(); }} /> : <div className="field"><label htmlFor="route-model-filter">{m.modelFilter}</label><select id="route-model-filter" value={modelFilter} onChange={event => { const next = new URLSearchParams(params); if (event.target.value) next.set('modelId', event.target.value); else next.delete('modelId'); setParams(next); }}><option value="">{m.allModels}</option>{models.data.models.filter(model => !model.archived).map(model => <option key={model.id} value={model.id}>{model.id} · {model.displayName}</option>)}</select></div>}
       {routes.isPending ? <Pending /> : routes.isError ? <ErrorBox error={routes.error} retry={() => { void routes.refetch(); }} /> : <RoutesTable rows={routes.data.routes} upstreams={upstreams.data?.upstreams ?? []} onEdit={editRoute} />}
     </section>
