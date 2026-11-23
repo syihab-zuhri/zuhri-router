@@ -1417,3 +1417,210 @@ Total: 13/16 lulus dalam 558.97s
   - [`admin-customers-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-customers-local-verify.txt): gagal saat memuat halaman aktivasi pelanggan dengan log browser `cust:error:Failed to load resource: net::ERR_NETWORK_CHANGED` (2×).
   - [`admin-overview-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-overview-local-verify.txt): gagal pada `Warmup Vite gagal` (`warmPage.goto`), sedangkan eksekusi mandiri pasca-commit `ffe4f06` lulus penuh (`PASS`).
   - [`a11y-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/a11y-audit.txt): `170` kombinasi layar-lebar diaudit, `0` temuan unik (`a11y-audit: PASS (0 findings)`).
+
+---
+
+## 2026-11-23 — Tugas dua belas: Chromium di network namespace sendiri dan pengukuran ulang gateway sesudah pemangkasan query (`950b3b6` vs `d40db59`)
+
+Cabang: `antigravity/akun` (dimajukan fast-forward dari `origin/main` di `34cef52` — tidak di-push).
+Commit per bagian:
+- Bagian A: `6472549` (`web: isolate Chromium in its own network namespace with loopback bridge and enable by default in verify-all (Tugas 12 Part A)`)
+- Bagian B: `8a0f47a` (`bench: adapt SQL classification and summary labels for admission and settlement CTEs (Tugas 12 Part B)`)
+- Log laporan akhir: commit terpisah pada berkas ini.
+
+### Bagian A — Chromium di network namespace sendiri (`6472549`)
+- **Ditulis**:
+  - [`web/scripts/chromium-netns.sh`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/chromium-netns.sh) & [`web/scripts/chromium-netns-bridge.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/chromium-netns-bridge.mjs) (baru, tanpa dependency eksternal, mode `100755`):
+    - Menjalankan Chromium di dalam network namespace Linux terisolasi (`unshare -n` dengan hanya antarmuka `lo` aktif) sehingga churn antarmuka host (Wi-Fi WSL2 mirrored `eth8`) tidak pernah masuk ke `NetworkChangeNotifierLinux` milik Chromium.
+    - Meneruskan port loopback yang dibutuhkan browser (`WEB_PORT`, `WEB_PREVIEW_PORT`, `VERIFY_WEB_PORT`, `VERIFY_API_PORT`, `VERIFY_DIST_PORT`, port `ROUTER_API_TARGET`, port bawaan repo `5173/4173/5175/5185/55480/55481/55482/55491/55492`, serta port tambahan opsional lewat `CHROMIUM_NETNS_PORTS`) dari `127.0.0.1:<port>` di namespace anak ke `127.0.0.1:<port>` di namespace utama melalui Unix domain socket di `/tmp/chromium-netns.XXXXXX/` memakai modul `net` Node (`setNoDelay(true)`). Host bridge tidak mengikat port TCP apa pun di host sehingga tidak pernah bentrok dengan server atau agen lain.
+    - Menjaga FD 3 dan FD 4 (`--remote-debugging-pipe` milik Playwright) tetap utuh hanya untuk proses Chromium dan menutupnya (`3>&- 4>&-`) pada proses jembatan latar belakang agar `browser.close()` tidak pernah menggantung.
+    - Memastikan semua proses jembatan berhenti bersama Chromium lewat `trap cleanup EXIT/TERM/INT`, `unshare -n --kill-child`, serta watchdog PID induk (`400ms`) di `chromium-netns-bridge.mjs` yang juga menghapus direktori `/tmp/chromium-netns.*`.
+    - Bila `unshare -n` tidak tersedia atau tidak diizinkan, mencetak peringatan ke `stderr` (`[chromium-netns] peringatan: unshare -n tidak tersedia; menjalankan Chromium tanpa isolasi network namespace.`) lalu `exec` ke biner Chromium asli.
+  - Memperbarui 11 skrip browser ([`a11y-audit.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/a11y-audit.mjs), [`account-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/account-local-verify.mjs), [`admin-audit-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-audit-local-verify.mjs), [`admin-catalog-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-catalog-local-verify.mjs), [`admin-customers-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-customers-local-verify.mjs), [`admin-overview-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-overview-local-verify.mjs), [`admin-requests-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/admin-requests-local-verify.mjs), [`golden-path-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/golden-path-local-verify.mjs), [`portal-local-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/portal-local-verify.mjs), [`local-browser-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/local-browser-verify.mjs), [`dist-browser-verify.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/dist-browser-verify.mjs)) untuk membaca `process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || '/root/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome'`, serta menyelaraskan [`web/playwright.config.ts`](file:///mnt/d/router.dev.zuhri-antigravity/web/playwright.config.ts#L18) agar string kosong `""` juga jatuh kembali ke jalur cache.
+  - Karena seluruh run pengukuran sesudah perubahan mencapai **0 kegagalan dan 0 `ERR_NETWORK_CHANGED`**, pembungkus dijadikan bawaan di [`web/scripts/verify-all.mjs`](file:///mnt/d/router.dev.zuhri-antigravity/web/scripts/verify-all.mjs) (dapat dimatikan lewat `VERIFY_DISABLE_CHROMIUM_NETNS=1` atau ditimpa lewat `PLAYWRIGHT_CHROMIUM_EXECUTABLE`).
+- **Dijalankan**:
+  - Pemeriksaan sintaks & tipe: `bash -n web/scripts/chromium-netns.sh`, `node --check web/scripts/chromium-netns-bridge.mjs`, `node --check web/scripts/verify-all.mjs`, `cd web && npm run typecheck`.
+  - Uji jalur fallback tanpa `unshare -n` (di dalam sandbox tanpa `CAP_SYS_ADMIN`): `./web/scripts/chromium-netns.sh --version`.
+  - Smoke test awal dengan `PLAYWRIGHT_CHROMIUM_EXECUTABLE="$PWD/web/scripts/chromium-netns.sh"` pada `guide.spec.ts` (`dev-harness`) + `catalogue.spec.ts` (`app-build`) beserta cek sisa proses jembatan & `/tmp/chromium-netns.*`.
+  - Pengukuran **SEBELUM** (`PLAYWRIGHT_CHROMIUM_EXECUTABLE` kosong) dan **SESUDAH** (`PLAYWRIGHT_CHROMIUM_EXECUTABLE="$PWD/web/scripts/chromium-netns.sh"`): masing-masing **3 run Playwright penuh (`85` test/run) + 1 run `verify-all.mjs` penuh (`16` langkah)** sambil merekam `ip -ts monitor address link route` (memastikan `ps` tidak ada proses test lain sebelum tiap pengukuran).
+  - Pengukuran akhir `verify-all.mjs` penuh **tanpa menyetel `PLAYWRIGHT_CHROMIUM_EXECUTABLE`** (membuktikan bawaan di `verify-all.mjs`).
+- **Lulus**:
+  - Uji fallback: lulus (`exit 0`), mencetak `[chromium-netns] peringatan: unshare -n tidak tersedia; menjalankan Chromium tanpa isolasi network namespace.` lalu `Google Chrome for Testing 156.0.8078.4`.
+  - Smoke test: lulus (`2 passed (11.3s)`, `NO_BRIDGE_LEFTOVERS`, `NO_TMP_LEFTOVERS`).
+  - **Perbandingan SEBELUM vs SESUDAH (3 run Playwright penuh + 1 `verify-all.mjs` penuh, direkam bersama `ip -ts monitor address link route`)**:
+
+| Run | SEBELUM (host netns) | SESUDAH (`chromium-netns.sh`) |
+|---|---|---|
+| Playwright Run 1 (`85` test) | `85/85` lulus, `0` gagal, `0` `ERR_NETWORK_CHANGED` (`78.0s`, `288` baris ip / `6` burst `eth8`) | **`85/85` lulus, `0` gagal, `0` `ERR_NETWORK_CHANGED`** (`98.6s`, `266` baris ip / `7` burst `eth8`) |
+| Playwright Run 2 (`85` test) | **`84/85` (`1` gagal: `return-to.spec.ts:391` `page.goto: net::ERR_NETWORK_CHANGED at http://127.0.0.1:4183/transaksi`)**, `1` `ERR_NETWORK_CHANGED` (`75.1s`, `696` baris ip / `18` burst `eth8`) | **`85/85` lulus, `0` gagal, `0` `ERR_NETWORK_CHANGED`** (`99.9s`, `112` baris ip / `2` burst `eth8`) |
+| Playwright Run 3 (`85` test) | **`83/85` (`2` gagal: `return-to.spec.ts:375` & `portal.spec.ts:85` timeout 5000ms)** (`88.9s`, `446` baris ip / `10` burst `eth8`) | **`85/85` lulus, `0` gagal, `0` `ERR_NETWORK_CHANGED`** (`97.1s`, `270` baris ip / `6` burst `eth8`) |
+| `verify-all.mjs` penuh (`16` langkah) | `16/16` lulus, **`1` `ERR_NETWORK_CHANGED`** pada `admin-catalog-local-verify.txt` (`579.8s`, `2.554` baris ip / `53` burst `eth8`) | **`16/16` lulus, `0` gagal, `0` `ERR_NETWORK_CHANGED`** (`592.8s`, `1.448` baris ip / `28` burst `eth8`) |
+| **Total** | **`3/255` gagal Playwright (`2/3` run gagal), `2` `ERR_NETWORK_CHANGED`, `87` burst `eth8` (`3.984` baris ip)** | **`0/255` gagal Playwright (`0/3` run gagal), `0/16` gagal `verify-all`, `0` `ERR_NETWORK_CHANGED`, `43` burst `eth8` (`2.096` baris ip), `0` sisa proses/direktori jembatan** |
+
+  - Run `verify-all.mjs` penuh akhir (mode bawaan tanpa env tambahan): **`16/16` lulus (`613.36s`), `ZERO_ERR_NETWORK_CHANGED`, `NO_BRIDGE_LEFTOVERS`, `NO_TMP_LEFTOVERS`**.
+
+#### Cara memakai untuk Hermes dan Claude
+- **Lewat `verify-all.mjs` (otomatis aktif sebagai bawaan)**:
+  ```bash
+  cd web && node scripts/verify-all.mjs
+  ```
+  - Untuk mematikan isolasi sementara: `VERIFY_DISABLE_CHROMIUM_NETNS=1 node scripts/verify-all.mjs`
+  - Untuk memakai executable lain: `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/jalur/lain node scripts/verify-all.mjs`
+- **Langsung lewat Playwright atau skrip `*-local-verify.mjs` / `a11y-audit.mjs` (mis. Hermes dengan `WEB_PORT=5197`)**:
+  ```bash
+  PLAYWRIGHT_CHROMIUM_EXECUTABLE="$PWD/web/scripts/chromium-netns.sh" WEB_PORT=5197 npm --prefix web run test:e2e
+  ```
+  - `WEB_PORT`, `WEB_PREVIEW_PORT`, `VERIFY_WEB_PORT`, `VERIFY_API_PORT`, `VERIFY_DIST_PORT`, dan port pada `ROUTER_API_TARGET` otomatis diteruskan ke namespace anak. Bila butuh port loopback tambahan lain, setel `CHROMIUM_NETNS_PORTS=6001,6002`.
+  - Bila dijalankan di lingkungan tanpa izin `unshare -n`, pembungkus otomatis mencetak peringatan ke `stderr` dan menjalankan Chromium seperti biasa.
+
+### Bagian B — Pengukuran ulang gateway sesudah pemangkasan query (`8a0f47a`)
+- **Ditulis**:
+  - Memperbarui [`server/scripts/bench-gateway.ts`](file:///mnt/d/router.dev.zuhri-antigravity/server/scripts/bench-gateway.ts) tanpa mengubah `server/src/**`:
+    - Memperluas `classifyRequestEvents` untuk mengenali CTE baru pada Admission (`with h as (insert into hold...`) dan Settlement (`with k as (update api_key...`, `with t as (insert into attempt...) update request ...`) serta `from price_version`.
+    - Menambah `summarizeSql` agar setiap CTE dan ketiga varian query `api_key join tenant` (`gateway_paused`, `tanpa lock`, `for update of k`) tampil jelas dan tidak terpotong identik pada tabel SQL `c=1`.
+- **Dijalankan**:
+  - `cd server && npm run typecheck`.
+  - Pemeriksaan `ps` sebelum jalan: kosong (tidak ada Playwright/verify-all berjalan bersamaan).
+  - Menjalankan `server/scripts/bench-gateway.ts --pool-max 20` **tiga kali pada `950b3b6` dan tiga kali pada `d40db59`, berselang-seling** (`950b3b6 #1 → d40db59 #1 → 950b3b6 #2 → d40db59 #2 → 950b3b6 #3 → d40db59 #3`), memakai salinan `bench-gateway.ts` yang sama pada arsip sementara kedua commit di `/tmp` (dibersihkan sesudah selesai).
+- **Lulus**:
+  - `typecheck-server`: lulus (`exit 0`).
+  - Seluruh 6 run benchmark (`3× 950b3b6` + `3× d40db59`): lulus (`exit 0`, `invariantViolations=[]`, `active holds = 0`).
+  - **Spesifikasi mesin**: `OS=linux 6.18.33.2-microsoft-standard-WSL2 (x64) | CPU=13th Gen Intel(R) Core(TM) i5-13420H (12 vCPU) | RAM=7.61 GiB | Node=v24.21.0 | DB=PostgreSQL 18.7 (Debian 18.7-1.pgdg13+2) on x86_64-pc-linux-gnu | PoolMax=20`.
+
+#### Tabel median dan rentang (3 run berselang-seling, `--pool-max 20`)
+
+| Mode | `c / t` | Commit | GW TTFB p50 median (rentang) | Overhead TTFB p50 median (rentang) | GW TTFB p95 median (rentang) | Overhead TTFB p95 median (rentang) | PoolWait/req median (rentang) |
+|---|---|---|---:|---:|---:|---:|---:|
+| non-stream | `c=1 / t=1` | `950b3b6` | 27.25 ms (25.23..27.75) | 26.04 ms (24.20..26.46) | 31.43 ms (30.56..31.78) | 29.79 ms (28.91..30.27) | 0.18 ms (0.16..0.18) |
+| non-stream | `c=1 / t=1` | `d40db59` | **19.07 ms** (18.49..19.80) | **17.93 ms** (17.56..18.67) | **22.77 ms** (21.02..25.36) | **20.89 ms** (19.80..22.88) | **0.11 ms** (0.10..0.12) |
+| non-stream | `c=10 / t=1` | `950b3b6` | 140.95 ms (140.22..146.22) | 135.41 ms (134.67..140.00) | 181.91 ms (174.25..187.93) | 172.80 ms (162.18..177.22) | 0.15 ms (0.15..0.16) |
+| non-stream | `c=10 / t=1` | `d40db59` | **84.43 ms** (72.62..85.29) | **78.81 ms** (66.57..79.30) | 227.31 ms (133.90..272.10) | 215.87 ms (124.44..259.18) | **0.11 ms** (0.08..0.12) |
+| non-stream | `c=10 / t=10` | `950b3b6` | 49.96 ms (46.59..52.95) | 43.75 ms (41.05..47.41) | 61.16 ms (60.98..62.98) | 52.04 ms (48.91..52.27) | 0.13 ms (0.12..0.14) |
+| non-stream | `c=10 / t=10` | `d40db59` | **39.81 ms** (26.70..42.56) | **33.75 ms** (21.57..36.08) | **46.06 ms** (29.75..55.33) | **34.62 ms** (20.29..42.41) | **0.08 ms** (0.05..0.09) |
+| non-stream | `c=50 / t=1` | `950b3b6` | 655.01 ms (632.23..697.27) | 650.61 ms (628.10..692.17) | 1033.73 ms (907.08..1040.17) | 956.08 ms (839.59..977.82) | 380.07 ms (356.83..391.20) |
+| non-stream | `c=50 / t=1` | `d40db59` | **451.92 ms** (349.61..512.42) | **448.39 ms** (346.09..506.56) | **647.90 ms** (479.31..773.36) | **589.59 ms** (428.09..677.24) | **246.04 ms** (189.25..284.84) |
+| non-stream | `c=50 / t=50` | `950b3b6` | 217.91 ms (173.17..255.29) | 213.51 ms (169.04..250.19) | 271.43 ms (207.70..303.18) | 209.08 ms (140.21..225.53) | 95.62 ms (82.11..114.54) |
+| non-stream | `c=50 / t=50` | `d40db59` | **120.93 ms** (114.21..186.56) | **117.41 ms** (110.69..180.70) | **146.61 ms** (142.81..218.50) | **91.59 ms** (88.30..122.38) | **49.09 ms** (46.08..75.09) |
+| stream | `c=1 / t=1` | `950b3b6` | 17.75 ms (15.21..20.45) | 16.77 ms (14.46..19.51) | 21.76 ms (17.51..22.28) | 20.19 ms (16.49..20.99) | 0.19 ms (0.16..0.26) |
+| stream | `c=1 / t=1` | `d40db59` | **11.96 ms** (11.06..14.54) | **11.11 ms** (10.39..13.49) | **17.40 ms** (15.21..17.66) | **15.21 ms** (14.36..16.65) | **0.11 ms** (0.09..0.13) |
+| stream | `c=10 / t=1` | `950b3b6` | 50.11 ms (36.15..56.92) | 47.55 ms (34.00..53.80) | 422.80 ms (325.35..433.34) | 418.49 ms (322.42..428.06) | 0.61 ms (0.15..3.04) |
+| stream | `c=10 / t=1` | `d40db59` | 59.74 ms (53.12..62.16) | 57.75 ms (51.29..59.77) | **146.46 ms** (131.65..192.89) | **143.19 ms** (128.20..189.23) | 2.12 ms (0.80..2.16) |
+| stream | `c=10 / t=10` | `950b3b6` | 46.71 ms (35.23..55.18) | 43.59 ms (33.08..52.62) | 53.41 ms (42.97..67.96) | 48.14 ms (40.04..63.65) | 0.17 ms (0.14..0.20) |
+| stream | `c=10 / t=10` | `d40db59` | **27.66 ms** (24.71..36.67) | **25.67 ms** (22.88..34.28) | **34.09 ms** (34.01..44.34) | **30.74 ms** (30.65..40.69) | **0.08 ms** (0.07..0.11) |
+| stream | `c=50 / t=1` | `950b3b6` | 571.21 ms (558.34..593.48) | 563.76 ms (553.53..585.66) | 899.55 ms (848.55..1031.19) | 820.67 ms (789.38..949.89) | 556.04 ms (529.36..590.01) |
+| stream | `c=50 / t=1` | `d40db59` | **404.42 ms** (329.53..431.66) | **398.37 ms** (324.78..425.41) | **638.01 ms** (536.03..664.05) | **574.83 ms** (487.58..587.87) | **385.55 ms** (312.46..405.86) |
+| stream | `c=50 / t=50` | `950b3b6` | 173.18 ms (152.14..205.00) | 165.37 ms (144.69..200.19) | 208.06 ms (175.79..237.79) | 126.76 ms (96.91..178.62) | 110.71 ms (103.62..136.45) |
+| stream | `c=50 / t=50` | `d40db59` | 173.86 ms (138.86..180.99) | 167.61 ms (134.11..174.94) | 206.09 ms (194.25..245.62) | 157.65 ms (118.07..182.44) | 104.80 ms (92.65..112.57) |
+
+#### Rincian waktu DB & tabel SQL per request pada konkurensi 1 (`d40db59` vs `950b3b6`)
+- **Ringkasan 3 run `c=1`**:
+  - `950b3b6`: `non-stream` **28.0 query/req** (waktu DB `18.64..23.83 ms`, median `20.14 ms`), `stream` **29.0 query/req** (waktu DB `21.31..22.85 ms`, median `21.67 ms`).
+  - `d40db59`: `non-stream` **17.0 query/req** (waktu DB `17.42..17.81 ms`, median `17.47 ms`), `stream` **18.0 query/req** (waktu DB `18.02..20.28 ms`, median `19.77 ms`).
+- **Tabel SQL per request pada `d40db59` (run 3, rata-rata 20 request berurutan)**:
+  - **Non-stream (`17.0` query, `2.0` `withTx`, DB `17.42 ms` — Autentikasi key `1.00`/`1.15 ms` `6.6%`, Admission `10.00`/`10.08 ms` `57.8%`, Settlement `6.00`/`6.20 ms` `35.6%`, Pembaruan lain `0.00`)**:
+
+| Bagian | Query / req | Rata-rata DB / req | SQL (ringkas) |
+|---|---:|---:|---|
+| Settlement | 1.00 | 1.38 ms | `CTE[settlement api_key+ledger_entry+ledger_account+hold]: with k as (update api_key...), e as (insert into ledger_entry...), a as (update ledger_account...), h as (update hold...)` |
+| Admission | 1.00 | 1.33 ms | `commit` |
+| Admission | 1.00 | 1.27 ms | `CTE[admission hold+ledger_account+api_key]: with h as (insert into hold...), a as (update ledger_account...), k as (update api_key...)` |
+| Settlement | 1.00 | 1.26 ms | `commit` |
+| Autentikasi key | 1.00 | 1.15 ms | `select k.*, t.status, (select value from system_setting gateway_paused) from api_key k join tenant t where k.token_hash=$1` |
+| Admission | 1.00 | 1.11 ms | `select k.*, t.status from api_key k join tenant t where k.token_hash=$1 for update of k` |
+| Settlement | 1.00 | 1.09 ms | `CTE[settlement attempt+request]: with t as (insert into attempt...) update request set state=$2, debit=$3, ...` |
+| Admission | 1.00 | 1.05 ms | `select r.id, r.upstream_model, r.max_concurrency, u.id as upstream_id, u.name, u.key_enc, u.base_url_chat as base_url from route r join upstream u ...` |
+| Admission | 1.00 | 0.99 ms | `insert into request(id, tenant_id, api_key_id, model_id, protocol, stream, state, price_version_id, price_snapshot, max_input, max_output, hold) values(...)` |
+| Admission | 1.00 | 0.97 ms | `select k.*, t.status from api_key k join tenant t where k.token_hash=$1 (tanpa lock)` |
+| Admission | 1.00 | 0.91 ms | `select id, model_id, seq, status, currency, input_rate, output_rate, cache_read_rate, cache_write_rate, multiplier_e4, rate_as_of ... from price_version ...` |
+| Admission | 1.00 | 0.90 ms | `select id, posted, held, (select value from system_setting where name='overdraft_micro') as overdraft from ledger_account where tenant_id=$1 for update` |
+| Admission | 1.00 | 0.90 ms | `select status from tenant where id=$1 for share` |
+| Settlement | 1.00 | 0.88 ms | `select id, amount, status, api_key_id from hold where request_id=$1 and account_id=$2 for update` |
+| Settlement | 1.00 | 0.84 ms | `select id, posted, held, currency from ledger_account where tenant_id=$1 for update` |
+| Settlement | 1.00 | 0.74 ms | `begin` |
+| Admission | 1.00 | 0.65 ms | `begin` |
+
+  - **Stream (`18.0` query, `2.0` `withTx`, DB `20.28 ms` — Autentikasi key `1.00`/`1.21 ms` `6.0%`, Admission `10.00`/`10.93 ms` `53.9%`, Settlement `6.00`/`6.49 ms` `32.0%`, Pembaruan lain `1.00`/`1.64 ms` `8.1%`)**:
+    - Identik dengan 17 query non-stream di atas ditambah **1 query** pada `Pembaruan lain`: `update request set state='STREAMING' where id=$1` (`1.64 ms`, query tunggal terlambat pada mode stream).
+
+### Untuk Claude
+1. **Dampak pemangkasan query (`950b3b6` → `d40db59`) pada 3× benchmark berselang-seling (`--pool-max 20`)**:
+   - Pemangkasan `28 → 17` (`non-stream`) dan `29 → 18` (`stream`) memangkas latensi secara konsisten pada mayoritas titik:
+     - `c=10 / t=10`: Overhead TTFB p95 turun **`52.04 → 34.62 ms` (-33.5%)** (`non-stream`) dan **`48.14 → 30.74 ms` (-36.1%)** (`stream`) — keduanya kini nyaman di bawah 50 ms!
+     - `c=50 / t=50 non-stream`: Overhead TTFB p95 turun **`209.08 → 91.59 ms` (-56.2%)**, GW TTFB p95 **`271.43 → 146.61 ms` (-46.0%)**, dan `PoolWait/req` hampir separuh (**`95.62 → 49.09 ms`**, `-48.7%`).
+     - `c=50 / t=50 stream`: GW TTFB p95 hampir datar (`208.06 → 206.09 ms`) dan `PoolWait/req` masih `104.80 ms` karena pada mode stream masih ada **4 checkout pool terpisah di jalur TTFB** (`keys.authenticate`, TX Admission, `candidatesFor`, dan `update request set state='STREAMING'` sebesar `1.64 ms`) yang berebut 20 koneksi pool bersama TX Settlement asinkron dari gelombang request sebelumnya.
+2. **Query pada `d40db59` yang masih dapat digabung atau dihapus (`17 → 12` non-stream, `18 → 13` stream)**:
+   1. **Gabungkan `insert into request(...)` (`server/src/gateway.ts:201`) ke dalam CTE penulisan Admission (`server/src/ledger.ts:145`) (`-1` query, `~1.0 ms/req`)**: tidak mengubah urutan kunci `tenant → account → key` sama sekali, langsung memangkas 1 roundtrip saat kunci akun sedang dipegang.
+   2. **Hapus pembacaan ganda `keys.authenticate(tx, a.secret)` tanpa lock di `placeKeyHold` (`server/src/ledger.ts:135`) (`-1` query, `~1.0 ms/req`)**: `api_key join tenant` saat ini masih dibaca **3 kali per request** (`guarded()`, lalu `ledger.ts:135` tanpa lock hanya untuk memperoleh `tenantId`, lalu `ledger.ts:141` `for update of k`). Karena `guarded()` sudah memverifikasi key dan memiliki `tenantId` (yang tetap dicek ulang secara otoritatif di bawah lock pada `ledger.ts:141` — cukup pastikan `key.tenantId === expectedTenantId`), meneruskan `expectedTenantId` opsional ke `placeKeyHold` menghapus 1 query di dalam TX Admission tanpa melemahkan isolasi tenant ataupun urutan lock (dan tidak memicu deadlock test penutupan akun seperti penggabungan `tenant for share`).
+   3. **Cache in-memory singkat atau invalidasi eksplisit untuk `upstreams.candidatesFor` (`server/src/gateway.ts:211`, `~1.05–1.14 ms/req`) (`-1` query di jalur TTFB)**: daftar route & upstream hanya berubah oleh aksi admin; seperti `route-health.ts` yang sudah in-memory untuk proses tunggal, cache `candidatesFor` (atau pembacaan bersama `price_version`) yang diinvalidasi saat mutasi route/upstream/archive memotong 1 checkout pool di jalur kritis TTFB (terutama membantu `stream c=50/t=50`).
+   4. **Gabungkan `lockAccount` + `select ... from hold ... for update` di Settlement (`server/src/ledger.ts:161-162`) (`-1` query, `~0.9 ms/req`)**: pada jalur normal (hold ada), satu query `select a.id as account_id, h.id, h.amount, h.status, h.api_key_id from ledger_account a join hold h on h.account_id=a.id and h.request_id=$2 where a.tenant_id=$1 for update of a, h` mengunci `ledger_account` dan `hold` sekaligus (bila 0 baris, jatuh ke `404 not_found`).
+   5. **Gabungkan kedua CTE penulisan Settlement (`server/src/ledger.ts:168` dan `server/src/gateway.ts:138`) menjadi 1 CTE tunggal (`-1` query, `~1.1 ms/req`)**: Settlement TX turun dari 6 query (`begin`, 2 `select for update`, 2 CTE tulis, `commit`) menjadi **4 query** (`begin`, 1 `select join for update`, 1 CTE tulis gabungan `k/e/a/h/t/r`, `commit`), memperpendek durasi tahan koneksi pool pada `c=50`.
+3. **Catatan Chromium netns (Bagian A)**: seluruh suite browser kini dapat berjalan dengan `0` `ERR_NETWORK_CHANGED` di WSL2 mirrored tanpa menyentuh konfigurasi WSL/Windows. Lihat subbagian "Cara memakai untuk Hermes dan Claude" di atas.
+
+### Keluaran `verify-all.mjs` penuh akhir (`2026-11-23`)
+Pemeriksaan sebelum jalan: `ps` tidak menunjukkan proses Playwright/Vite/verify-all/bench lain.
+Perintah: `source .antigravity-env.sh && unset PLAYWRIGHT_CHROMIUM_EXECUTABLE && cd web && node scripts/verify-all.mjs` (memakai bawaan `web/scripts/chromium-netns.sh`).
+
+```text
+[1/16] RUN   typecheck-server
+[1/16] PASS  typecheck-server (1.11s) (exit 0) -> web/evidence/verify-all/typecheck-server.txt
+[2/16] RUN   typecheck-web
+[2/16] PASS  typecheck-web (1.38s) (exit 0) -> web/evidence/verify-all/typecheck-web.txt
+[3/16] RUN   server-test
+[3/16] PASS  server-test (155.75s) (exit 0) -> web/evidence/verify-all/server-test.txt
+[4/16] RUN   unit
+[4/16] PASS  unit (1.36s) (exit 0) -> web/evidence/verify-all/unit.txt
+[5/16] RUN   playwright
+[5/16] PASS  playwright (96.77s) (exit 0) -> web/evidence/verify-all/playwright.txt
+[6/16] RUN   test-local
+[6/16] PASS  test-local (13.54s) (exit 0) -> web/evidence/verify-all/test-local.txt
+[7/16] RUN   test-browser
+[7/16] PASS  test-browser (9.14s) (exit 0) -> web/evidence/verify-all/test-browser.txt
+[8/16] RUN   account-local-verify
+[8/16] PASS  account-local-verify (16.73s) (exit 0) -> web/evidence/verify-all/account-local-verify.txt
+[9/16] RUN   admin-audit-local-verify
+[9/16] PASS  admin-audit-local-verify (19.25s) (exit 0) -> web/evidence/verify-all/admin-audit-local-verify.txt
+[10/16] RUN   admin-catalog-local-verify
+[10/16] PASS  admin-catalog-local-verify (20.58s) (exit 0) -> web/evidence/verify-all/admin-catalog-local-verify.txt
+[11/16] RUN   admin-customers-local-verify
+[11/16] PASS  admin-customers-local-verify (22.43s) (exit 0) -> web/evidence/verify-all/admin-customers-local-verify.txt
+[12/16] RUN   admin-overview-local-verify
+[12/16] PASS  admin-overview-local-verify (20.92s) (exit 0) -> web/evidence/verify-all/admin-overview-local-verify.txt
+[13/16] RUN   admin-requests-local-verify
+[13/16] PASS  admin-requests-local-verify (25.40s) (exit 0) -> web/evidence/verify-all/admin-requests-local-verify.txt
+[14/16] RUN   golden-path-local-verify
+[14/16] PASS  golden-path-local-verify (11.15s) (exit 0) -> web/evidence/verify-all/golden-path-local-verify.txt
+[15/16] RUN   portal-local-verify
+[15/16] PASS  portal-local-verify (25.87s) (exit 0) -> web/evidence/verify-all/portal-local-verify.txt
+[16/16] RUN   a11y-audit
+[16/16] PASS  a11y-audit (171.92s) (exit 0) -> web/evidence/verify-all/a11y-audit.txt
+
+langkah                      | hasil |  durasi
+-----------------------------+-------+--------
+typecheck-server             | lulus |   1.11s
+typecheck-web                | lulus |   1.38s
+server-test                  | lulus | 155.75s
+unit                         | lulus |   1.36s
+playwright                   | lulus |  96.77s
+test-local                   | lulus |  13.54s
+test-browser                 | lulus |   9.14s
+account-local-verify         | lulus |  16.73s
+admin-audit-local-verify     | lulus |  19.25s
+admin-catalog-local-verify   | lulus |  20.58s
+admin-customers-local-verify | lulus |  22.43s
+admin-overview-local-verify  | lulus |  20.92s
+admin-requests-local-verify  | lulus |  25.40s
+golden-path-local-verify     | lulus |  11.15s
+portal-local-verify          | lulus |  25.87s
+a11y-audit                   | lulus | 171.92s
+
+Total: 16/16 lulus dalam 613.36s
+```
+
+- Rincian bukti di [`web/evidence/verify-all`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all):
+  - `ERR_NETWORK_CHANGED` di seluruh berkas bukti: **`0`** (`ZERO_ERR_NETWORK_CHANGED`); sisa proses/direktori jembatan: **`0`** (`NO_BRIDGE_LEFTOVERS`, `NO_TMP_LEFTOVERS`).
+  - [`server-test.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/server-test.txt): `146` passed, `0` failed.
+  - [`unit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/unit.txt): `7` passed, `0` failed.
+  - [`playwright.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/playwright.txt): `85 passed (1.6m)`, `0` failed.
+  - [`admin-overview-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-overview-local-verify.txt): `admin-overview-local-verify: PASS (real server overview metrics, kill switch pause/503/resume/200, live customer banner via nav+visibilitychange+same-node+500-retention, negative warning, 360px, links)`.
+  - [`admin-audit-local-verify.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/admin-audit-local-verify.txt): `admin-audit-local-verify: PASS (checkedRows=47, actionsWithSummary=30/30, summaryKeys=38/38, emptySummaryRows=7, boolYa=4, boolTidak=3, microFields=11, invariantViolations=[])`.
+  - [`a11y-audit.txt`](file:///mnt/d/router.dev.zuhri-antigravity/web/evidence/verify-all/a11y-audit.txt): `170` kombinasi layar-lebar diaudit, `0` temuan unik (`a11y-audit: PASS (0 findings)`).
