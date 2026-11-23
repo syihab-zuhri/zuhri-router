@@ -389,3 +389,7 @@ Penyelesaian request di admin kini menampilkan receipt sesudah server menjawab (
 Bukti: `verify-all.mjs --skip server-test` 15/15 dengan Chromium terisolasi, nol `ERR_NETWORK_CHANGED` (932 detik karena beban laptop tinggi, load average 3,6). Hermes: Playwright penuh 115/115, `hermes verify` server 146/146.
 
 Hermes Tahap tiga belas dan Antigravity Tugas tiga belas ditulis untuk besok (founder: "lanjut besok").
+
+### Terpasang `zrouter:r11232126`
+
+Isi: `395eb51` (Hermes Tahap dua belas). Backup sebelum pemasangan `zrouter-20261123T142831Z.dump`. Tanpa migrasi baru. Bukti: kontainer `healthy`, `smoke-public.sh` 7/7, chunk `main` yang tayang memuat "Penyelesaian sudah tercatat sebelumnya". Image dikirim lewat berkas dan `rsync --partial`, cara yang kini dipakai untuk setiap pemasangan.
