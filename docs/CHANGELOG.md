@@ -1,9 +1,16 @@
 # Changelog: Router AI Komersial
 
-Version: 0.44.0
+Version: 0.45.0
 Status: Recorded changes, bukan persetujuan seluruh blueprint
 Updated: 2026-11-23, Asia/Jakarta
 Owner keputusan: founder
+
+## 0.45.0: Gateway 15 query per request; terpasang `r11232034`
+
+Source: usulan Antigravity (Tugas dua belas B), dikerjakan Claude.
+
+- Gateway: query database per request turun dari 17 menjadi 15 (stream dari 18 menjadi 16). Baris request kini ditulis bersama hold saat admission dan diperbarui bersama uang saat settlement. Aturan uang, urutan kunci dan kode penolakan tidak berubah.
+- Bukti pemasangan: suite server 146/146; `verify-all.mjs` 15/15; `smoke-public.sh` 7/7 terhadap https://zrouter.web.id. Tanpa migrasi baru (14 migrasi); backup sebelum pemasangan `zrouter-20261123T135707Z.dump`.
 
 ## 0.44.0: Saldo usang tetap tampil, status circuit di admin, receipt penyelesaian request, Chromium terisolasi untuk test; terpasang `r11231813`
 
